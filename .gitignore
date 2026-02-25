@@ -7,6 +7,7 @@ bazel-*
 bazel-bin
 bazel-out
 bazel-testlogs
+/tmp/
 
 # Ignore Bazel lock file
 MODULE.bazel.lock
