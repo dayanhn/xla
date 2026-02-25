@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+//#include "xla/tests/literal_test_util.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -124,7 +125,75 @@ int main(int argc, char** argv) {
   std::cout << "Executable created with " << executable->addressable_devices().size() 
             << " devices." << std::endl;
 
-  
+  // 构造输入参数
+  std::cout << "Creating input parameters..." << std::endl;
+  auto alpha_literal = xla::LiteralUtil::CreateR0<float>(3.14f);
+  auto x_literal = xla::LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f});
+  auto y_literal = xla::LiteralUtil::CreateR1<float>({10.5f, 20.5f, 30.5f, 40.5f});
+
+  std::cout << "Computation inputs:" << std::endl;
+  std::cout << "\talpha:" << alpha_literal << std::endl;
+  std::cout << "\tx:" << x_literal << std::endl;
+  std::cout << "\ty:" << y_literal << std::endl;
+
+  // 获取设备内存空间
+  PjRtDevice* host_cpu = client->devices()[0];
+  absl::StatusOr<PjRtMemorySpace*> host_cpu_memory_space = 
+      host_cpu->default_memory_space();
+  if (!host_cpu_memory_space.ok()) {
+    std::cerr << "Failed to get memory space: " 
+              << host_cpu_memory_space.status().ToString() << std::endl;
+    return 1;
+  }
+
+  // 将输入转换为设备缓冲区
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> alpha = 
+      client->BufferFromHostLiteral(alpha_literal, *host_cpu_memory_space);
+  if (!alpha.ok()) {
+    std::cerr << "Failed to create alpha buffer: " 
+              << alpha.status().ToString() << std::endl;
+    return 1;
+  }
+
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> x = 
+      client->BufferFromHostLiteral(x_literal, *host_cpu_memory_space);
+  if (!x.ok()) {
+    std::cerr << "Failed to create x buffer: " 
+              << x.status().ToString() << std::endl;
+    return 1;
+  }
+
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> y = 
+      client->BufferFromHostLiteral(y_literal, *host_cpu_memory_space);
+  if (!y.ok()) {
+    std::cerr << "Failed to create y buffer: " 
+              << y.status().ToString() << std::endl;
+    return 1;
+  }
+
+  // 执行计算
+  std::cout << "Executing computation..." << std::endl;
+  absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> result = 
+      executable->Execute({{alpha->get(), x->get(), y->get()}}, {});
+  if (!result.ok()) {
+    std::cerr << "Failed to execute computation: " 
+              << result.status().ToString() << std::endl;
+    return 1;
+  }
+
+  // 获取结果并转换为字面量
+  std::cout << "Getting result..." << std::endl;
+  absl::StatusOr<std::shared_ptr<Literal>> result_or = result->at(0).at(0)->ToLiteralSync();
+  if (!result_or.ok()) {
+    std::cerr << "Failed to get result literal: " 
+              << result_or.status().ToString() << std::endl;
+    return 1;
+  }
+  std::shared_ptr<Literal> result_literal = *result_or;
+
+  // 输出结果
+  std::cout << "Computation output: " << *result_literal << std::endl;
+
   return 0;
 }
 
