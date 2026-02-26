@@ -42,6 +42,8 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/path.h"
+#include "xla/hlo/translate/stablehlo.h"
+#include "xla/hlo/builder/xla_computation.h"
 
 namespace xla {
 
@@ -71,7 +73,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> LoadStableHloProgram(
 
   //std::cout << "Loaded StableHLO program from " << program_path << ":\n"
   //          << program_string << std::endl;
-  std::cout << "Loaded StableHLO program from " << program_path << "successfully.\n";
+  std::cout << "Loaded StableHLO program from " << program_path << " successfully.\n";
 
   return mlir::parseSourceString<mlir::ModuleOp>(program_string, context);
 }
@@ -253,6 +255,42 @@ int execute_gemm_program(std::unique_ptr<PjRtClient> &client,std::unique_ptr<PjR
   return 0;
 }
 
+absl::StatusOr<std::unique_ptr<xla::HloModule>> convert_stablehlo_to_hlo_module(mlir::OwningOpRef<mlir::ModuleOp> &program) { 
+  // 将StableHLO转换为HloModule并打印计算图
+  std::cout << "Converting StableHLO to HloModule..." << std::endl;
+  absl::StatusOr<std::unique_ptr<xla::HloModule>> hlo_module_or = 
+      xla::ConvertStablehloToHlo(*program);
+  if (!hlo_module_or.ok()) {
+    std::cerr << "Failed to convert StableHLO to HloModule: " 
+              << hlo_module_or.status().ToString() << std::endl;
+    return hlo_module_or.status();
+  }
+  std::unique_ptr<xla::HloModule> hlo_module = std::move(*hlo_module_or);
+  
+  // 打印HloModule的计算图
+  std::cout << "\nHloModule computation graph:" << std::endl;
+  std::cout << hlo_module->ToString() << std::endl;
+  return std::move(hlo_module);
+}
+
+int compile_by_stablehlo(mlir::OwningOpRef<mlir::ModuleOp> &program,std::unique_ptr<PjRtClient> &client){
+  // 编译StableHLO程序
+  std::cout << "Compiling StableHLO program for GPU..." << std::endl;
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> executable_or = 
+      client->CompileAndLoad(*program, CompileOptions{});
+  if (!executable_or.ok()) {
+    std::cerr << "Failed to compile StableHLO program: " 
+              << executable_or.status().ToString() << std::endl;
+    return 1;
+  }
+  std::unique_ptr<PjRtLoadedExecutable> executable = std::move(*executable_or);
+
+  std::cout << "Successfully compiled StableHLO program for GPU!" << std::endl;
+  std::cout << "Executable created with " << executable->addressable_devices().size() 
+            << " devices." << std::endl;
+  return 0;
+}
+
 // 主函数
 int main(int argc, char** argv) {
   if (argc != 2) {
@@ -272,7 +310,7 @@ int main(int argc, char** argv) {
   }
   mlir::OwningOpRef<mlir::ModuleOp> program = std::move(*program_or);
 
-  // 创建GPU客户端
+  // 创建GPU客户端:xla/pjrt/gpu/se_gpu_pjrt_client.cc
   absl::StatusOr<std::unique_ptr<PjRtClient>> client_or = CreateGpuClient();
   if (!client_or.ok()) {
     std::cerr << "Failed to create GPU client: " 
@@ -281,12 +319,25 @@ int main(int argc, char** argv) {
   }
   std::unique_ptr<PjRtClient> client = std::move(*client_or);
 
-  // 编译StableHLO程序
-  std::cout << "Compiling StableHLO program for GPU..." << std::endl;
+  //compile_by_stablehlo(program,client);
+
+  // 转换StableHLO到HloModule
+  absl::StatusOr<std::unique_ptr<xla::HloModule>> hlo_module_or = 
+      convert_stablehlo_to_hlo_module(program);
+  if (!hlo_module_or.ok()) {
+    std::cerr << "Failed to convert StableHLO to HloModule: " 
+              << hlo_module_or.status().ToString() << std::endl;
+    return 1;
+  }
+  std::unique_ptr<xla::HloModule> hlo_module = std::move(*hlo_module_or);
+
+  // 使用HloModule进行编译
+  std::cout << "Compiling HloModule for GPU..." << std::endl;
+  XlaComputation computation(hlo_module->ToProto());
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> executable_or = 
-      client->CompileAndLoad(*program, CompileOptions{});
+      client->CompileAndLoad(computation, CompileOptions{});
   if (!executable_or.ok()) {
-    std::cerr << "Failed to compile StableHLO program: " 
+    std::cerr << "Failed to compile HloModule: " 
               << executable_or.status().ToString() << std::endl;
     return 1;
   }

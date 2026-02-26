@@ -23,7 +23,7 @@ tools/python_bin_path.sh
 
 # Visual Studio files
 .vs/
-.vscode/
+# .vscode/
 *.sdf
 *.opensdf
 *.VC.opendb

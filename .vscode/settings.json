@@ -1,0 +1,31 @@
+{
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/build": true,
+    "**/.cache": true,
+    "**/*.log": true,
+    "**/bazel-xla": true,
+    "**/bazel-bin": true,
+    "**/bazel-out": true,
+    "**/bazel-testlogs": true,
+    "**/jax.egg-info": true,
+    "**/tests": true,
+    "**/tmp/**": true
+  },
+  "files.watcherExclude": {
+    "**/node_modules/**": true,
+    "**/dist/**": true,
+    "**/.git/objects/**": true,
+    "**/build": true,
+    "**/.cache": true,
+    "**/*.log": true,
+    "**/bazel-xla": true,
+    "**/bazel-bin": true,
+    "**/bazel-out": true,
+    "**/bazel-testlogs": true,
+    "**/jax.egg-info": true,
+    "**/tests": true,
+    "**/tmp/**": true
+  }
+}
