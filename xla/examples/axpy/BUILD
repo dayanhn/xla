@@ -55,6 +55,7 @@ cc_binary(
         "//xla:error_spec",
         "//xla:literal",
         "//xla:literal_util",
+        "//xla:debug_options_flags",
 
         # we are exercising the PriorityFusion pass itself, so depend on the
         # cc_library that actually compiles the pass.  the original target in
@@ -74,6 +75,7 @@ cc_binary(
         "//xla/service/gpu:gpu_fusible",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu/model:gpu_hlo_cost_analysis",
+        "//xla/service:dump",
 
         # PJRT client libraries provide almost every header under xla/pjrt/
         # that the analyzer source includes (and more).  In the original

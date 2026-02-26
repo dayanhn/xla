@@ -7,7 +7,28 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Launch",
+            "name": "Launch full",
+            "program": "${workspaceFolder}/bazel-bin/xla/examples/axpy/stablehlo_gpu_compiler",
+            "args": ["./xla/examples/axpy/stablehlo_gemm.mlir"],
+            //"program": "${workspaceFolder}/bazel-bin/xla/examples/axpy/priority_fusion_analyzer",
+            //"args": ["./xla/examples/axpy/hlomodule_priority_fusion.mlir"],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "6,7",
+                "XLA_FLAGS" : "--xla_gpu_experimental_enable_triton_heroless_priority_fusion=true --xla_gpu_force_compilation_parallelism=1 --xla_dump_hlo_as_text=true --xla_dump_hlo_as_proto=false --xla_dump_hlo_pass_re=.* --xla_dump_hlo_module_re=.* --xla_dump_emitter_re=triton-fusion --xla_gpu_dump_autotune_logs_to=./tmp/autotune_logs.txt --xla_dump_to=./tmp/xla_dump"
+            },
+            "sourceMap": {
+                "/proc/self/cwd": "${workspaceFolder}",
+                "/proc/self/cwd/external":"${workspaceFolder}/bazel-xla/external"
+            },
+            "preRunCommands": [
+                "shell rm -rf ./tmp/xla_dump/*"
+            ]
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Launch pass",
             //"program": "${workspaceFolder}/bazel-bin/xla/examples/axpy/stablehlo_gpu_compiler",
             //"args": ["./xla/examples/axpy/stablehlo_gemm.mlir"],
             "program": "${workspaceFolder}/bazel-bin/xla/examples/axpy/priority_fusion_analyzer",
@@ -15,7 +36,7 @@
             "cwd": "${workspaceFolder}",
             "env": {
                 "CUDA_VISIBLE_DEVICES": "6,7",
-                "XLA_FLAGS" : "--xla_gpu_experimental_enable_triton_heroless_priority_fusion=true --xla_gpu_force_compilation_parallelism=1 --xla_dump_hlo_as_text=true --xla_dump_hlo_as_proto=false --xla_dump_hlo_pass_re=.* --xla_dump_hlo_module_re=.* --xla_dump_emitter_re=triton-fusion --xla_gpu_dump_autotune_logs_to=./tmp/autotune_logs.txt --xla_dump_to=./tmp/xla_dump"
+                "XLA_FLAGS" : "--xla_gpu_experimental_enable_triton_heroless_priority_fusion=true --xla_dump_hlo_as_dot=true --xla_dump_fusion_visualization=true --xla_dump_hlo_as_text=true  --xla_dump_hlo_pass_re=.* --xla_dump_hlo_module_re=.* --xla_dump_emitter_re=triton-fusion  --xla_dump_to=./tmp/xla_dump"
             },
             "sourceMap": {
                 "/proc/self/cwd": "${workspaceFolder}",

@@ -45,6 +45,9 @@ limitations under the License.
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_pjrt_client.h"
 #include "xla/pjrt/local_device_state.h"
+#include "xla/debug_options_flags.h"
+#include "xla/service/dump.h"
+#include "xla/service/dump_options.h"
 
 namespace xla {
 namespace gpu {
@@ -55,6 +58,8 @@ absl::StatusOr<std::unique_ptr<HloModule>> ParseHloModule(
   HloModuleConfig config;
   config.set_replica_count(1);
   config.set_num_partitions(1);
+  // 加载全局调试选项，包括从环境变量XLA_FLAGS解析的选项
+  config.set_debug_options(GetDebugOptionsFromFlags());
   
   // 解析HloModule内容:xla/hlo/parser/hlo_parser.cc
   return ParseAndReturnUnverifiedModule(hlo_text, config);
@@ -87,8 +92,9 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> CreateGpuClient() {
 absl::Status RunPriorityFusionAnalysis(std::unique_ptr<HloModule> hlo_module) {
   
   // 打印原始HloModule
-  std::cout << "\nOriginal HloModule:\n";
-  std::cout << hlo_module->ToString() << std::endl;
+  //std::cout << "\nOriginal HloModule:\n";
+  //std::cout << hlo_module->ToString() << std::endl;
+  DumpHloModuleDuringPassIfEnabled("priority_fusion", "before", *hlo_module);
 
   // 创建GPU客户端以获取真实设备信息
   absl::StatusOr<std::unique_ptr<PjRtClient>> client_or = CreateGpuClient();
@@ -138,8 +144,9 @@ absl::Status RunPriorityFusionAnalysis(std::unique_ptr<HloModule> hlo_module) {
   std::cout << "PriorityFusion Pass completed. Changed: " << (changed ? "yes" : "no") << std::endl;
 
   // 打印处理后的HloModule
-  std::cout << "\nProcessed HloModule:\n";
-  std::cout << hlo_module->ToString() << std::endl;
+  //std::cout << "\nProcessed HloModule:\n";
+  //std::cout << hlo_module->ToString() << std::endl;
+  DumpHloModuleDuringPassIfEnabled("priority_fusion", "after", *hlo_module);
 
   // 分析融合结果
   std::cout << "\nFusion analysis:" << std::endl;
@@ -174,6 +181,8 @@ int main(int argc, char** argv) {
   }
 
   std::string program_path = argv[1];
+
+  //xla::ParseDebugOptionFlagsFromEnv(true);
   
   // 加载HloModule
   absl::StatusOr<std::unique_ptr<xla::HloModule>> module_or = xla::gpu::LoadHloModuleFromFile(program_path);
