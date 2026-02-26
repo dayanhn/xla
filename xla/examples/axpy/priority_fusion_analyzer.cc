@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/parser/hlo_parser.h"
-#include "xla/hlo/testlib/verified_hlo_module.h"
+
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_fusible.h"
@@ -41,30 +41,27 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/path.h"
+#include "xla/pjrt/pjrt_stream_executor_client.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_pjrt_client.h"
+#include "xla/pjrt/local_device_state.h"
 
 namespace xla {
 namespace gpu {
 
 // 从文件读取HloModule内容并解析
-absl::StatusOr<std::unique_ptr<VerifiedHloModule>> ParseAndReturnVerifiedModule(
+absl::StatusOr<std::unique_ptr<HloModule>> ParseHloModule(
     absl::string_view hlo_text) {
   HloModuleConfig config;
   config.set_replica_count(1);
   config.set_num_partitions(1);
   
-  // 创建VerifiedHloModule
-  auto module = std::make_unique<VerifiedHloModule>(
-      "test_module", config, /*verifier_layout_sensitive=*/false,
-      /*allow_mixed_precision=*/false, ShapeUtil::ByteSizeOfElements);
-  
-  // 解析HloModule内容
-  TF_RETURN_IF_ERROR(module->ParseHloStringAndVerifyModule(hlo_text));
-  
-  return module;
+  // 解析HloModule内容:xla/hlo/parser/hlo_parser.cc
+  return ParseAndReturnUnverifiedModule(hlo_text, config);
 }
 
 // 从文件读取HloModule内容
-absl::StatusOr<std::unique_ptr<VerifiedHloModule>> LoadHloModuleFromFile(
+absl::StatusOr<std::unique_ptr<HloModule>> LoadHloModuleFromFile(
     absl::string_view file_path) {
   // 读取文件内容到字符串
   std::string hlo_text;
@@ -74,20 +71,52 @@ absl::StatusOr<std::unique_ptr<VerifiedHloModule>> LoadHloModuleFromFile(
   std::cout << "Loaded HloModule from " << file_path << " successfully.\n";
 
   // 解析HloModule
-  return ParseAndReturnVerifiedModule(hlo_text);
+  return ParseHloModule(hlo_text);
 }
 
+// 创建GPU PJRT客户端
+absl::StatusOr<std::unique_ptr<PjRtClient>> CreateGpuClient() {
+  xla::GpuClientOptions options;
+  // 可按需调整 options，例如选择特定设备集合：
+  // options.allowed_devices = std::set<int>({0});
+  return xla::GetXlaPjrtGpuClient(options);
+}
+
+
 // 运行PriorityFusion Pass并打印结果
-absl::Status RunPriorityFusionAnalysis(std::unique_ptr<VerifiedHloModule> verified_module) {
-  // 获取HloModule
-  HloModule* hlo_module = verified_module.get();
+absl::Status RunPriorityFusionAnalysis(std::unique_ptr<HloModule> hlo_module) {
   
   // 打印原始HloModule
   std::cout << "\nOriginal HloModule:\n";
   std::cout << hlo_module->ToString() << std::endl;
 
+  // 创建GPU客户端以获取真实设备信息
+  absl::StatusOr<std::unique_ptr<PjRtClient>> client_or = CreateGpuClient();
+  if (!client_or.ok()) {
+    return client_or.status();
+  }
+  std::unique_ptr<PjRtClient> client = std::move(*client_or);
+
+  // 获取第一个GPU设备
+  if (client->devices().empty()) {
+    return absl::NotFoundError("No GPU devices found");
+  }
+  PjRtDevice* device = client->devices()[0];
+
+  // 从设备获取se::DeviceDescription
+  auto* stream_executor_device = dynamic_cast<PjRtStreamExecutorDevice*>(device);
+  if (!stream_executor_device) {
+    return absl::InternalError("Expected PjRtStreamExecutorDevice");
+  }
+  absl::StatusOr<LocalDeviceState*> local_device_state_or = stream_executor_device->GetLocalDeviceState();
+  if (!local_device_state_or.ok()) {
+    return local_device_state_or.status();
+  }
+  LocalDeviceState* local_device_state = *local_device_state_or;
+  se::StreamExecutor* executor = local_device_state->executor();
+  const se::DeviceDescription& device_info = executor->GetDeviceDescription();
+
   // 创建PriorityFusion对象
-  se::DeviceDescription device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   mlir::MLIRContext mlir_context;
   RegisterSymbolicExprStorage(&mlir_context);
   AliasInfo alias_info;
@@ -100,7 +129,7 @@ absl::Status RunPriorityFusionAnalysis(std::unique_ptr<VerifiedHloModule> verifi
 
   // 运行PriorityFusion Pass
   std::cout << "\nRunning PriorityFusion Pass..." << std::endl;
-  absl::StatusOr<bool> result = priority_fusion.Run(hlo_module);
+  absl::StatusOr<bool> result = priority_fusion.Run(hlo_module.get());
   if (!result.ok()) {
     return result.status();
   }
@@ -136,6 +165,7 @@ absl::Status RunPriorityFusionAnalysis(std::unique_ptr<VerifiedHloModule> verifi
 }
 
 }  // namespace gpu
+}  // namespace xla
 
 int main(int argc, char** argv) {
   if (argc != 2) {
@@ -146,23 +176,20 @@ int main(int argc, char** argv) {
   std::string program_path = argv[1];
   
   // 加载HloModule
-  absl::StatusOr<std::unique_ptr<VerifiedHloModule>> module_or = 
-      gpu::LoadHloModuleFromFile(program_path);
+  absl::StatusOr<std::unique_ptr<xla::HloModule>> module_or = xla::gpu::LoadHloModuleFromFile(program_path);
   if (!module_or.ok()) {
     std::cerr << "Failed to load HloModule: " 
               << module_or.status().ToString() << std::endl;
     return 1;
   }
-  std::unique_ptr<VerifiedHloModule> module = std::move(*module_or);
+  std::unique_ptr<xla::HloModule> module = std::move(*module_or);
   
-   // 打印HloModule的计算图
-  std::cout << "\nHloModule computation graph:" << std::endl;
-  std::cout << module->ToString() << std::endl;
-
-
+  // 打印HloModule的计算图
+  //std::cout << "\nHloModule computation graph:" << std::endl;
+  //std::cout << module->ToString() << std::endl;
 
   // 运行PriorityFusion分析
-  absl::Status status = gpu::RunPriorityFusionAnalysis(std::move(module));
+  absl::Status status = xla::gpu::RunPriorityFusionAnalysis(std::move(module));
   if (!status.ok()) {
     std::cerr << "Failed to run PriorityFusion analysis: " 
               << status.ToString() << std::endl;
@@ -173,8 +200,4 @@ int main(int argc, char** argv) {
   return 0;
 }
 
-}  // namespace xla
 
-int main(int argc, char** argv) {
-  return xla::main(argc, argv);
-}
