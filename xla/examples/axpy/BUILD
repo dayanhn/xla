@@ -202,3 +202,77 @@ cc_binary(
 )
 
 
+cc_binary(
+    name = "gpu_run_hlopasses",
+    srcs = ["gpu_run_hlopasses.cc"],
+    deps = [
+        "//xla:error_spec",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla/pjrt:pjrt_api",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt/c:pjrt_c_api_cpu",
+        "//xla/pjrt/c:pjrt_c_api_hdrs",
+        "//xla/pjrt/c_api_client:pjrt_c_api_client",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_pjrt_client",
+        # Ensure the CUDA StreamExecutor platform and PJRT GPU plugin are
+        # linked into the binary so their static initializers run and register
+        # the "cuda" platform and PJRT GPU plugin.
+        "//xla/stream_executor:cuda_platform",
+        "//xla/pjrt/plugin/xla_gpu:gpu_static_registration",
+        # Removed test-only deps: literal_test_util, xla_internal_test_main,
+        # and status_test_util (these targets are marked testonly and cannot be
+        # depended on by non-test binaries).
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@stablehlo//:register",
+        "@tsl//tsl/platform:path",
+    ],
+)
+
+cc_binary(
+    name = "gpu_run_backend",
+    srcs = ["gpu_run_backend.cc"],
+    deps = [
+        "//xla:error_spec",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla/pjrt:pjrt_api",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt/c:pjrt_c_api_cpu",
+        "//xla/pjrt/c:pjrt_c_api_hdrs",
+        "//xla/pjrt/c_api_client:pjrt_c_api_client",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_pjrt_client",
+        # Ensure the CUDA StreamExecutor platform and PJRT GPU plugin are
+        # linked into the binary so their static initializers run and register
+        # the "cuda" platform and PJRT GPU plugin.
+        "//xla/stream_executor:cuda_platform",
+        "//xla/pjrt/plugin/xla_gpu:gpu_static_registration",
+        # Removed test-only deps: literal_test_util, xla_internal_test_main,
+        # and status_test_util (these targets are marked testonly and cannot be
+        # depended on by non-test binaries).
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@stablehlo//:register",
+        "@tsl//tsl/platform:path",
+    ],
+)
+

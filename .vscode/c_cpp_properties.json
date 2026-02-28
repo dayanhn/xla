@@ -3,7 +3,10 @@
         {
             "name": "Linux",
             "includePath": [
-                "${workspaceFolder}/xla"
+                "${workspaceFolder}/xla",
+                "${workspaceFolder}/bazel-xla/external/com_google_absl",
+                "${workspaceFolder}",
+                "${workspaceFolder}/bazel-bin"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/gcc",
