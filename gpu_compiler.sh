@@ -14,6 +14,7 @@ if [ $# -ne 1 ]; then
   echo "  2: run priority_fusion_analyzer"
   echo "  3: run gpu_run_hlopasses"
   echo "  4: run gpu_run_backend"
+  echo "  5: run gpu_run_executable"
   exit 1
 fi
 
@@ -21,14 +22,15 @@ fi
 EXCUTE_TYPE=$1
 
 # 验证 EXCUTE_TYPE 的值
-if ! [[ $EXCUTE_TYPE =~ ^[1-4]$ ]]; then
-  echo "Error: EXCUTE_TYPE must be between 1 and 4"
+if ! [[ $EXCUTE_TYPE =~ ^[1-5]$ ]]; then
+  echo "Error: EXCUTE_TYPE must be between 1 and 5"
   echo "Usage: $0 <EXCUTE_TYPE>"
   echo "EXCUTE_TYPE options:"
   echo "  1: run stablehlo_gpu_compiler"
   echo "  2: run priority_fusion_analyzer"
   echo "  3: run gpu_run_hlopasses"
   echo "  4: run gpu_run_backend"
+  echo "  5: run gpu_run_executable"
   exit 1
 fi
 
@@ -44,4 +46,7 @@ elif [ $EXCUTE_TYPE -eq 3 ]; then
 elif [ $EXCUTE_TYPE -eq 4 ]; then
   echo "run gpu_run_backend"
   ./bazel-bin/xla/examples/axpy/gpu_run_backend ./xla/examples/axpy/hlomodule_opti.mlir
+elif [ $EXCUTE_TYPE -eq 5 ]; then
+  echo "run gpu_run_executable"
+  ./bazel-bin/xla/examples/axpy/gpu_run_executable ./xla/examples/axpy/hlomodule_opti.mlir
 fi

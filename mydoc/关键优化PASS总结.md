@@ -1,0 +1,144 @@
+
+**总结文档（深入分析：ConvRewriter、Triton GEMM 重写、Autotuner、NestGemmFusion、PriorityFusion）**
+
+简要说明：我基于你提供的 IR 快照（位于 ir，关键快照文件名中包含 pass 名称与序号），并查阅了对应实现源码，逐步把每个 pass 的目的、触发条件、在本例中的具体 IR 变化、源码实现位置和对性能/代码生成的影响做了深入说明。最后给出复现/调试建议和可验证检查点。
+
+一、整体编译流程（基于你的快照）
+- 关键快照顺序（与你的 ir）：  
+  0012 — after `conv-rewriter`  
+  0023 — after `triton-gemm-rewriter` (即 GemmFusion)  
+  0029 — after `autotuner`（autotuner 填充 gemm 配置）  
+  0031 — after `nest_gemm_fusion`（将 gemm fusion 变为 nested fusion）  
+  0039 — after `priority-fusion`（优先级融合，最终把 conv 与 gemm 合并为更大 fusion）  
+  0051/0052 — autotune 的 fusion emitter 阶段（autotuner/emitters 前后状态）  
+- 由这些快照可见：pipeline 先把 convolution 变成 cudnn custom-call（或对应 backend custom-call），然后把 dot（matmul）重写为 triton fusion，autotuner 注入具体 triton/gemm 参数（或后续转为 block-level config），再做 nested fusion（把 block-level 配置注入 fusion），最后 priority-fusion 把 conv 的结果与 gemm fusion 合并成一个更大、由 Triton emitter 处理的 fusion，并且 block-level 参数被调整以适配整个融合后的工作量。
+
+二、pass 逐个分析与 IR 差异（含代码位置与实现关键点）
+
+1) conv-rewriter
+- 目的与触发：把 StableHLO / HLO 的 convolution（普通 forward/backward 等）识别并重写为调用 cuDNN/miopen 的 custom-call。这样可以将 conv 交给厂商库以获得高性能实现。
+- 源码位置：`xla/backends/gpu/transforms/conv_rewriter.{h,cc}`。关键函数/判断包括 `ConvIsLowerable`、`CanImplementAsGpuForwardConv`、若匹配则将 conv 替换为 `custom-call`（目标如 `"__cudnn$convForward"`）。
+- 本例 IR 变化（示例来自 `module_...0012.conv_canonicalization.after_conv-rewriter...`）：
+  - StableHLO 的 reshape+convolution 被替换为：
+    %cudnn-conv = (f32[1,32,32,8], u8[0]) custom-call(%reshape.2, %Arg_2.1), custom_call_target="__cudnn$convForward" ...
+  - 注意：在后续快照（0023 等）看到 filter 被 `transpose` 或 `bitcast` 以匹配 cuDNN 接口（例如 `transpose(%Arg_2.1)`），以及 `dim_labels` 在 custom-call 中表述输入/输出布局变化。
+- 影响与原因：
+  - 将 convolution 变为 custom-call 能利用 cuDNN autotuned 算法（并且在 later autotuner 阶段可进一步注入算法选择）；它还把 conv 从后续 fusion/emitters 的可编译图中“显性”表示为一个 custom-call（注意 priority-fusion 后仍可把 conv 的输出 fuse 回去，见后述）。
+  - IR 中可观察到 conv 的 `backend_config` 字段（algorithm、tuning_knobs 等）会被填充/更新（见后文的 autotuner 阶段）。
+
+2) triton-gemm-rewriter（GemmFusion / Triton GEMM 重写）
+- 目的与触发：将适合被 Triton emitter（Triton-based matmul emitter）处理的 `dot`/`scaled-dot` 重写为 `fusion`（kind=kCustom）并在 `backend_config` 中标注 Triton 类型（`"__triton_gemm"` 或类似）。
+- 源码位置：`xla/backends/gpu/transforms/gemm_fusion.{h,cc}`（类名 `GemmFusion`，visitor：`GemmFusionVisitor`，关键函数 `CreateDotFusion`/`FuseDot`/`RunImpl`）。
+- 本例 IR 变化（对比 0012 -> 0023）：
+  - 0012 中 `dot.1 = f32[32,32] dot(%Arg_0.3, %Arg_1.3)`（普通 dot）
+  - 0023 中：出现 `gemm_fusion_dot.1` 的 `fusion(...), backend_config` 且 `fusion_backend_config` 包含 `"kind":"__triton_gemm"`（示例片段）：
+    %gemm_fusion_dot.1 = f32[32,32] fusion(%Arg_0.3, %Arg_1.3) ... backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}...}
+  - fusion 的被调用计算（fusion computation）封装了原 dot（并把 dot 的 inputs 作为 fusion 参数）。
+- 触发判断：
+  - `ShouldTritonHandleGEMM`、`IsMatrixMultiplicationTooSmallForRewriting` 等检查尺寸、类型、是否有更适合的 classical emitter（cublas）等。若合适则重写。
+- 影响：
+  - dot 变为 fusion，后续可由 Triton emitter 生成高性能 GPU code；但需要后续 autotune/annotate 阶段来分配 block/warp/CTA 等参数，或者转为 nested fusion 以便 block-level emitter 使用。
+
+3) autotuner / gemm_autotuner
+- 目的与触发：
+  - 自动搜索（或读取 cache）最优的实现参数（如 Triton GEMM 的 block sizes、num_warps、split_k、算法选择 for cuDNN 等），并将选定的配置写入 fusion 的 `backend_config` 或 module 的 autotune 数据结构。
+  - 由 `AutotunerPass` 调度（源码：`xla/service/gpu/autotuning/autotuner_pass.{h,cc}`），实现细节在 gemm_fusion_autotuner.cc / autotuner 等。
+- 源码位置（重要文件）：
+  - autotuner_pass.cc（入口，创建 Autotuner 并调用 `autotuner->Autotune`）
+  - gemm_fusion_autotuner.cc（更具体的 GEMM autotune 流程：收集 candidate fusion、调用后端（triton/cublas/custom）进行测量或从 cache 读取、最终把选定配置写回 fusion 的 backend_config）
+  - `xla/backends/gpu/autotuner/*`（triton/cublas 后端实现）
+- 本例 IR 变化（0023 -> 0029）：
+  - 0023 中 fusion 的 backend_config 只有 `"kind":"__triton_gemm"`（或没有具体 triton_gemm_config）
+  - 0029 中进入 `post-layout_assignment.after_autotuner`：fusion backend_config 新增了 `triton_gemm_config`（JSON / proto 字段），例如（示例）：
+    "triton_gemm_config":{"block_m":"16","block_n":"16","block_k":"16","split_k":"1","num_stages":"1","num_warps":"2","num_ctas":"1","is_tma_allowed":false,...}
+  - 也可能看到对于 cudnn fusion 的 `algorithm` 字段被插入（见 0029 中 `cudnn_conv_backend_config.algorithm` 被填充）。
+- 关键行为：
+  - Autotuner 会根据 debug flags、cache、是否在 deviceless 模式等，选择要跑哪些后端（`AUTOTUNE_BACKEND_TRITON`, `CUBLAS`, `CUDNN` 等），并返回一个“最优” configuration（或采用缓存），再写回 HLO 的 `backend_config`。
+- 影响：
+  - 有了 triton_gemm_config，后续的 passes（如 `nest_gemm_fusion` / emitter）会使用这些具体参数去构造 block-level emitter 或直接用于 triton codegen，从而影响最终 PTX/Triton kernel 性能和寄存器使用。
+
+4) nest_gemm_fusion（Nested GEMM Fusion）
+- 目的与触发：
+  - 将单一 dot 的 fusion（`__triton_gemm`）转换为 nested fusion 结构：把 dot 的 lhs/rhs 各自做成 block-level nested fusions（`block_fusion`），并把 triton_gemm_config 翻译/注入为 `block_level_fusion_config`（适合 Triton block-level emitter 使用）。
+  - 这样可以在 block-level 层面描述如何 tile（output_tiles、num_warps、num_ctas、num_stages 等），并允许 block-level emitter 生成更高效、可重用的代码。
+- 源码位置：nest_gemm_fusion.cc（类 `NestGemmFusion`，关键函数 `MakeNestedFusionFromGemmFusion`、`AnnotateDotLhsNestedFusion`、`AnnotateDotRhsNestedFusion`）
+- 本例 IR 变化（0029 -> 0031）：
+  - 0029 看到 `fusion_backend_config.kind="__triton_gemm"` 并包含 `triton_gemm_config`。
+  - 0031（`after_nest_gemm_fusion`）看到 `fusion_backend_config.kind="__triton_nested_gemm_fusion"`，并且 `block_level_fusion_config` 被设置：
+    backend_config contains `"kind":"__triton_nested_gemm_fusion","block_level_fusion_config":{"num_warps":"2","output_tiles":[{"sizes":["16","16"]}],"num_ctas":1,"num_stages":1,...}`
+  - 注意：`MakeNestedFusionFromGemmFusion` 会 `clear_triton_gemm_config()` 并把等价的 block-level 信息填入 `block_level_fusion_config`。
+- 影响：
+  - 把 triton_gemm_config → block-level fusion config 的转换使 emitter（尤其是 “block-level emitter”）能直接使用 tiling 信息，便于生成 block（CTA）级内核。
+  - Nested fusion 还可以对 dot 的 operands 做 block-level fusion（参数变为 nested fusion），便于 block-local data reuse。
+
+5) priority-fusion（PriorityFusion）
+- 目的：XLA:GPU 的关键融合引擎。通过估计“fusing 某 producer 到其 consumers 的收益”（成本模型：time_unfused - time_fused），按优先级队列贪心地把收益最大的 producer 融入 consumer，从而生成更大、更高效的 fusion。该 pass 也会决定 fusion 的 `kind`（例如 kLoop/kInput/kCustom 或 Triton-related kinds）以及是否进行 multi-output fusion 等。
+- 源码位置：`xla/backends/gpu/transforms/priority_fusion.{h,cc}`。关键逻辑包括 `PriorityFusionQueue`、`ComputeAndSetPriorities`、`Fuse`、`ChooseKind` 与成本模型 `GpuHloCostAnalysis`。
+- 本例 IR 变化（0031 -> 0039）：
+  - 0031 中已经有 `__triton_nested_gemm_fusion`（nested gemm）以及 conv represented by cudnn custom-call（`get-tuple-element` for conv output）。
+  - 0039（`after_priority-fusion`）中观察到 priority-fusion 将 `gemm` fusion 与 conv 的 `get-tuple-element` 合并成一个更大的 fusion：
+    ROOT %fusion.7 = f32[32,32] fusion(%gemm_fusion_dot.1, %get-tuple-element.3), kind=kCustom, calls=%fused_computation.4, backend_config={"fusion_backend_config":{"kind":"__triton","block_level_fusion_config":{"num_warps":"1","output_tiles":[{"sizes":["1","4"]}],...}}}
+  - 要点：
+    - fusion 的 kind 变为 `"__triton"`（非 nested）并带有 `block_level_fusion_config`（但参数与之前不同，num_warps 由 2→1，output_tiles 由 [16,16] → [1,4]）。即 priority-fusion 为了整体融合的收益/内存/寄存器/并行度权衡选择了不同的 block-level tiling。
+- 为什么会发生这样的变更：
+  - priority-fusion 的成本模型（`GpuHloCostAnalysis` / `gpu_performance_model`）会评估整个 producer+consumer（现在包含 convolution 的 reduce/broadcast/bitcasts 等）的融合收益，可能认为对于融合后的更复杂计算，选择较小的 block tile（或不同的 warps）更有利于寄存器占用、并行度或合并内存访问。
+  - 另外，融合产生的 kernel 工作量结构已改变（比如把 32x32 的矩阵乘与 1x32x32x8 的 conv-reduce 的结果结合），输出 tile 选择会反映对最终输出访问模式的优化。
+- 影响：
+  - 最终 fusion 的 `block_level_fusion_config` 决定 Triton/Block-level emitter 如何布局线程/CTA。优先级融合可能牺牲原始 gemm 的理想 tile（例如将原本独立 gemm 的 16x16 tiles 改为更小的 tiles）以换取把 conv 的计算合并进一个单一 kernel，从而减少全局内存读取/写入、避免一次 kernel 调用和 D2H/H2D 延迟等，但也可能改变 numeric behavior 的实现细节（需要验证）与寄存器压力。
+  - 你在 0039 中看到的 `fusion` 包含了多个子 fused_computation（许多小 fused_computation.N），表示 priority-fusion 生成了一个带多个内联子计算的 custom fusion；最终的 emitter 会负责把这些融合体转为 Triton kernel（或 block-level emitter code）。
+
+三、在本例中具体的 IR 差异要点（摘录并解释）
+- conv-rewriter（0012）：
+  - 原 stablehlo.conv → `custom-call "__cudnn$convForward"`（见 0012），包括 window/pad 信息与 custom-call target。意味着 conv 被标识为 cuDNN 调用。
+- triton-gemm-rewriter（0023）：
+  - 原 dot → `fusion(...), kind=kCustom`，`fusion_backend_config.kind="__triton_gemm"`。fusion computation 被创建（`%gemm_fusion_dot.1_computation`）并替换原 dot。
+- autotuner 填充（0029）：
+  - 加入 `"triton_gemm_config":{...}`，示例中 `block_m=16 block_n=16 block_k=16 num_warps=2` 等；这说明 Autotuner 为该 fusion 选择了一个（或默认的） Triton config。
+- nest_gemm_fusion（0031）：
+  - `__triton_gemm` → `__triton_nested_gemm_fusion`，并添加 `block_level_fusion_config`（num_warps 2、output_tiles [16,16]）。注意它把 triton_gemm_config 转换为 block-level 结构。
+- priority-fusion（0039 / 0052）：
+  - 最终出现 `fusion.7`：`backend_config` 变为 `"kind":"__triton","block_level_fusion_config":{"num_warps":"1","output_tiles":[{"sizes":["1","4"]}],...}`。说明 priority-fusion 将 conv 输出与 gemm 融合，并为新的融合体选择了新的 block-level tile/warps 配置（更小的 tiles、较少的 warps），以权衡整体性能。
+
+四、源码关键引用（便于你深入阅读）
+- conv-rewriter: conv_rewriter.cc（主要逻辑与匹配函数，如 `CanImplementAsGpuForwardConv`, `MatchBackwardFilter`, `MatchBackwardInput`）
+- triton gemm 重写（GemmFusion）：gemm_fusion.cc（`GemmFusion` 类与 `GemmFusionVisitor::HandleDot` 等）
+- autotuner 档：autotuner_pass.cc（AutotunerPass 创建/调用） 与主 autotuner impl gemm_fusion_autotuner.cc、`xla/backends/gpu/autotuner/*`（triton/cublas 后端）
+- nest_gemm_fusion：nest_gemm_fusion.cc（`MakeNestedFusionFromGemmFusion`，`AnnotateDotLhsNestedFusion`）
+- priority-fusion：`xla/backends/gpu/transforms/priority_fusion.{h,cc}`（`PriorityFusion`, `PriorityFusionQueue`, `GpuHloCostAnalysis` 的调用点）
+- block-level / emitter：`xla/backends/gpu/autotuner/block_level_emitter.*`、`xla/backends/gpu/codegen/triton/*`（triton 的 codegen、xtile 编译器与 fusion emitter）
+
+五、为什么这些 pass 的顺序与相互作用重要（总结）
+- conv 被先识别并转为 custom-call，是因为 conv 的最优实现通常是调用厂商库（cuDNN）。但 priority-fusion 能把 conv 的输出与后续算子融合回 larger fusion（这是因为 conv 的结果通过 get-tuple-element / reduce / bitcast 等被消费），以便将 conv + gemm + elementwise 一起在 Triton kernel 中实现，从而减少 global memory roundtrips。
+- Gemm 被先改写为 triton fusion（GemmFusion），随后 autotuner 填充 triton 配置；NestGemmFusion 将这些 triton 配置变为 block-level config，这是因为最终 emitter（如 block-level Triton emitter）需要 block/tile 配置。
+- PriorityFusion 是基于成本模型的贪心融合，会综合考虑融合的收益。它可能改变原来由 autotuner/MakeNestedGemm 所选择的参数（例如改变 blocks/warps），因为这些参数针对不同的 kernel 结构（独立 GEMM vs 合并的 conv+GEMM）有不同的最优点。
+- Autotuner 的运行时间点（在 gemm 重写之后，优先 fusion 之前或之后）以及是否使用 autotuner pass（`xla_gpu_experimental_use_autotuner_pass` 等开关）会直接影响最终 `backend_config` 填充的位置与内容。
+
+六、对你观察到的具体变化的解释（直观）
+- 观察到：`triton_gemm_config`（autotuner）→ `block_level_fusion_config`（nest_gemm_fusion）→ `block_level_fusion_config` 被 priority-fusion 更改。解释：Autotuner 为独立 GEMM 选择了一套（如 16x16 tile, 2 warps）。NestGemmFusion 将这套转换为 block-level fusion config（表征 GEMM 的 block-tiling）。但当 priority-fusion 把 GEMM 与 conv 合在一起时，整体算子形态和寄存器/内存需求发生了变化，因此成本模型/后续重写把 block 参数改为了更适合合并 kernel 的小 tile（例如 [1,4]）并且减少 warp 数（1），以控制寄存器溢出／寄存器压力或提高数据复用/内存一致性。
+- 也可能涉及到 split_k / num_ctas /num_stages 的调整（本例中未显著变化，但可在更复杂案例中看到）。
+
+七、建议的验证步骤 / 调试点（你可以直接在工作区运行）
+- 查看 autotune 日志（你的 gpu_compiler.sh 已设置 `--xla_gpu_dump_autotune_logs_to=./tmp/autotune_logs.txt`）：  
+  - 命令示例：
+    ```bash
+    less ./tmp/autotune_logs.txt
+    ```
+  - 日志中会记录 Autotuner 在尝试的配置、选择理由与 profiling 输出（如果启用 profiler）。
+- 对比 IR：用你已有的 `compare_ir_files.py`，并重点比较上述时间点对应文件（0012、0023、0029、0031、0039、0052）。检查 `backend_config` JSON 字段的变化（`triton_gemm_config` vs `block_level_fusion_config` vs `fusion_backend_config.kind`）。
+- 若要禁用某一阶段以单独观察效果：调整 gpu_compiler.sh 中的 XLA flags（或在 configure.py/debug options 中）：
+  - 例如禁用 `priority-fusion`，可设置 debug flag：`--xla_gpu_experimental_enable_triton_heroless_priority_fusion=false` 或在 pipeline 中注释相关 pass（仅用于本地实验）。
+- 若想强制/覆盖 autotuner 配置：可以通过 `--xla_gpu_override_gemm_autotuner` 或 `xla_gpu_gemm_autotuner_override_file`（参见 debug_options_flags.cc 中相关 flag）来施加固定配置，观察后续 nest/priority 行为的变化。
+
+八、性能与正确性注意点
+- 数值正确性：autotuner 的新配置可能会影响浮点舍入行为（不同实现/tiling 下的加法顺序不同）。`AutotuneConfig.relative_tolerance`（`xla_gpu_autotune_gemm_rtol`）控制验算的允许误差。`autotune_config.check_buffers`（基于 `xla_gpu_autotune_level`）决定是否在 autotune 时进行结果校验。
+- 寄存器溢出 / 编译失败：当 priority-fusion 产生的融合 kernel 过大时，可能导致寄存器溢出或 PTX 编译失败。Autotuner 有选项 `allow_reg_spills`，并且代码中有逻辑来过滤产生寄存器溢出的配置。
+- 维护/调试：若你想保留 conv 在 cuDNN 而不被 priority-fusion 重新融合回 Triton，可尝试在 `priority-fusion` 的 `ChooseKind` 或相关配置中限制 triton_heroless 选项，或在 debug flags 中禁用相关 experimental 功能。
+
+九、结论（总结式要点）
+- conv-rewriter 将 convolution 转为 cuDNN custom-call；此时 conv 可独立由 cuDNN 实现，但随后优先级融合可能会把其输出 re-fuse 回 triton fusion 以减少内存吞吐和 kernel 调用。
+- triton-gemm-rewriter（GemmFusion）把 dot 重写为 fusion(kind="__triton_gemm")，并为 autotuning 做准备。
+- Autotuner 为这些 fusion 选择/写入具体验证/性能配置（`triton_gemm_config` 或 cudnn algorithm），这是影响最终 kernel 性能的关键一步。
+- NestGemmFusion 把 triton_gemm_config 翻译为更通用的 `block_level_fusion_config`（更贴近 emitter 需要的 block/tile 信息）。
+- PriorityFusion 基于成本模型决定是否把 producer 融合进 consumer（或反之），并可能为融合后更复杂的计算选择不同的 block-level config（折中寄存器、并行度与内存重用），因此最终 fusion 的 `block_level_fusion_config` 可能与单独 autotune 得到的 gemm config 不同。
+- 你的 IR 快照完美体现了上述典型流程与相互作用：0012（conv→cudnn）→0023（dot→triton fusion）→0029（autotune 填充 triton config）→0031（nested fusion 注入 block-level config）→0039（priority-fusion 将 conv 与 gemm 合并并更改 block-level tile/warps）→0052（最终 emitter 前的状态）。
+
