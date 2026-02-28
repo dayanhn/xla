@@ -52,45 +52,9 @@ limitations under the License.
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/dump.h"
+#include "xla/examples/axpy/compiler_utils.h"
 
 namespace xla {
-
-// 从文件读取HloModule内容并解析
-absl::StatusOr<std::unique_ptr<HloModule>> ParseHloModule(
-    absl::string_view hlo_text) {
-  HloModuleConfig config;
-  config.set_replica_count(1);
-  config.set_num_partitions(1);
-  // 加载全局调试选项，包括从环境变量XLA_FLAGS解析的选项
-  config.set_debug_options(GetDebugOptionsFromFlags());
-  
-  // 解析HloModule内容:xla/hlo/parser/hlo_parser.cc
-  return ParseAndReturnUnverifiedModule(hlo_text, config);
-}
-
-// 从文件读取HloModule内容
-absl::StatusOr<std::unique_ptr<HloModule>> LoadHloModuleFromFile(
-    absl::string_view file_path) {
-  // 读取文件内容到字符串
-  std::string hlo_text;
-  TF_RETURN_IF_ERROR(tsl::ReadFileToString(
-      tsl::Env::Default(), std::string(file_path), &hlo_text));
-
-  std::cout << "Loaded HloModule from " << file_path << " successfully.\n";
-
-  // 解析HloModule
-  return ParseHloModule(hlo_text);
-}
-
-
-// 创建GPU PJRT客户端
-absl::StatusOr<std::unique_ptr<PjRtClient>> CreateGpuClient() {
-  xla::GpuClientOptions options;
-  // 可按需调整 options，例如选择特定设备集合：
-  // options.allowed_devices = std::set<int>({0});
-  return xla::GetXlaPjrtGpuClient(options);
-}
-
 
 // 主函数
 int main(int argc, char** argv) {
@@ -100,63 +64,24 @@ int main(int argc, char** argv) {
   }
 
   std::string program_path = argv[1];
-  
   // 加载HloModule
-  absl::StatusOr<std::unique_ptr<xla::HloModule>> module_or = LoadHloModuleFromFile(program_path);
-  if (!module_or.ok()) {
-    std::cerr << "Failed to load HloModule: " 
-              << module_or.status().ToString() << std::endl;
-    return 1;
-  }
-  std::unique_ptr<xla::HloModule> hlo_module = std::move(*module_or);
+  std::unique_ptr<xla::HloModule> hlo_module = xla::Compiler_LoadHloModuleFromFile(program_path);
+  if(!hlo_module){ return 1;}
 
-  // 创建GPU客户端:xla/pjrt/gpu/se_gpu_pjrt_client.cc
-  absl::StatusOr<std::unique_ptr<PjRtClient>> client_or = CreateGpuClient();
-  if (!client_or.ok()) {
-    std::cerr << "Failed to create GPU client: " 
-              << client_or.status().ToString() << std::endl;
-    return 1;
-  }
-  std::unique_ptr<PjRtClient> client = std::move(*client_or);
+  // 创建GPU客户端
+  std::unique_ptr<PjRtClient> client = xla::Compiler_CreateGpuClient();
+  if(!client){ return 1;}
 
-  // 将PjRtClient转换为StreamExecutorGpuClient
-  xla::StreamExecutorGpuClient* gpu_client = 
-      dynamic_cast<xla::StreamExecutorGpuClient*>(client.get());
-  if (!gpu_client) {
-    std::cerr << "Failed to cast PjRtClient to StreamExecutorGpuClient" << std::endl;
-    return 1;
-  }
-  
-  // 获取LocalClient
-  xla::LocalClient* local_client = gpu_client->client();
-  if (!local_client) {
-    std::cerr << "Failed to get LocalClient" << std::endl;
-    return 1;
-  }
-  
   // 获取Backend
-  xla::Backend* backend = local_client->mutable_backend();
-  if (!backend) {
-    std::cerr << "Failed to get Backend" << std::endl;
+  xla::Backend* backend = nullptr;
+  se::StreamExecutor* executor = nullptr;
+
+  xla::Compiler::CompileOptions compile_options;
+  if(xla::Compiler_GetGpuBackend(client, backend, executor, compile_options.slice_size) != 0){
     return 1;
   }
-  
-  se::StreamExecutor* executor = backend->default_stream_executor();
-  
-  std::cout << "Running Backend..." << std::endl;
-  xla::Compiler::CompileOptions compile_options;
-  // 获取拓扑描述
-  absl::StatusOr<const xla::PjRtTopologyDescription*> topology_desc_or = gpu_client->GetTopologyDescription();
-  if (topology_desc_or.ok()) {
-    const xla::PjRtTopologyDescription* topology_desc = *topology_desc_or;
-    // 转换为 StreamExecutorGpuTopologyDescription
-    const xla::StreamExecutorGpuTopologyDescription* gpu_topology_desc = 
-        dynamic_cast<const xla::StreamExecutorGpuTopologyDescription*>(topology_desc);
-    if (gpu_topology_desc) {
-      compile_options.slice_size = gpu_topology_desc->gpu_topology().slice_size();
-    }
-  }
 
+  std::cout << "Running Backend..." << std::endl;
   absl::StatusOr<std::unique_ptr<Executable>> executable_or = 
       backend->compiler()->RunBackend(std::move(hlo_module), executor, compile_options);
   if (!executable_or.ok()) {

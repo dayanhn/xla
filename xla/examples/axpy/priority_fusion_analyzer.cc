@@ -48,79 +48,25 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/service/dump.h"
 #include "xla/service/dump_options.h"
+#include "xla/examples/axpy/compiler_utils.h"
 
 namespace xla {
 namespace gpu {
-
-// 从文件读取HloModule内容并解析
-absl::StatusOr<std::unique_ptr<HloModule>> ParseHloModule(
-    absl::string_view hlo_text) {
-  HloModuleConfig config;
-  config.set_replica_count(1);
-  config.set_num_partitions(1);
-  // 加载全局调试选项，包括从环境变量XLA_FLAGS解析的选项
-  config.set_debug_options(GetDebugOptionsFromFlags());
-  
-  // 解析HloModule内容:xla/hlo/parser/hlo_parser.cc
-  return ParseAndReturnUnverifiedModule(hlo_text, config);
-}
-
-// 从文件读取HloModule内容
-absl::StatusOr<std::unique_ptr<HloModule>> LoadHloModuleFromFile(
-    absl::string_view file_path) {
-  // 读取文件内容到字符串
-  std::string hlo_text;
-  TF_RETURN_IF_ERROR(tsl::ReadFileToString(
-      tsl::Env::Default(), std::string(file_path), &hlo_text));
-
-  std::cout << "Loaded HloModule from " << file_path << " successfully.\n";
-
-  // 解析HloModule
-  return ParseHloModule(hlo_text);
-}
-
-// 创建GPU PJRT客户端
-absl::StatusOr<std::unique_ptr<PjRtClient>> CreateGpuClient() {
-  xla::GpuClientOptions options;
-  // 可按需调整 options，例如选择特定设备集合：
-  // options.allowed_devices = std::set<int>({0});
-  return xla::GetXlaPjrtGpuClient(options);
-}
-
 
 // 运行PriorityFusion Pass并打印结果
 absl::Status RunPriorityFusionAnalysis(std::unique_ptr<HloModule> hlo_module) {
   
   // 打印原始HloModule
-  //std::cout << "\nOriginal HloModule:\n";
-  //std::cout << hlo_module->ToString() << std::endl;
   DumpHloModuleDuringPassIfEnabled("priority_fusion", "before", *hlo_module);
 
   // 创建GPU客户端以获取真实设备信息
-  absl::StatusOr<std::unique_ptr<PjRtClient>> client_or = CreateGpuClient();
-  if (!client_or.ok()) {
-    return client_or.status();
-  }
-  std::unique_ptr<PjRtClient> client = std::move(*client_or);
+  std::unique_ptr<PjRtClient> client = xla::Compiler_CreateGpuClient();
+  if(!client){ return absl::InternalError("Failed to create GPU client");}
 
-  // 获取第一个GPU设备
-  if (client->devices().empty()) {
-    return absl::NotFoundError("No GPU devices found");
+  se::DeviceDescription device_info;
+  if(xla::Compiler_GetGpuDeviceInfo(client, device_info) != 0){
+    return absl::InternalError("Failed to get GPU device info");
   }
-  PjRtDevice* device = client->devices()[0];
-
-  // 从设备获取se::DeviceDescription
-  auto* stream_executor_device = dynamic_cast<PjRtStreamExecutorDevice*>(device);
-  if (!stream_executor_device) {
-    return absl::InternalError("Expected PjRtStreamExecutorDevice");
-  }
-  absl::StatusOr<LocalDeviceState*> local_device_state_or = stream_executor_device->GetLocalDeviceState();
-  if (!local_device_state_or.ok()) {
-    return local_device_state_or.status();
-  }
-  LocalDeviceState* local_device_state = *local_device_state_or;
-  se::StreamExecutor* executor = local_device_state->executor();
-  const se::DeviceDescription& device_info = executor->GetDeviceDescription();
 
   // 创建PriorityFusion对象
   mlir::MLIRContext mlir_context;
@@ -128,10 +74,7 @@ absl::Status RunPriorityFusionAnalysis(std::unique_ptr<HloModule> hlo_module) {
   AliasInfo alias_info;
   GpuHloCostAnalysis::Options cost_analysis_options;
   cost_analysis_options.count_multiple_input_accesses = true;
-  
-  PriorityFusion priority_fusion(
-      /*thread_pool=*/nullptr, device_info, &alias_info,
-      cost_analysis_options, &mlir_context);
+  PriorityFusion priority_fusion( /*thread_pool=*/nullptr, device_info, &alias_info,cost_analysis_options, &mlir_context);
 
   // 运行PriorityFusion Pass
   std::cout << "\nRunning PriorityFusion Pass..." << std::endl;
@@ -144,8 +87,6 @@ absl::Status RunPriorityFusionAnalysis(std::unique_ptr<HloModule> hlo_module) {
   std::cout << "PriorityFusion Pass completed. Changed: " << (changed ? "yes" : "no") << std::endl;
 
   // 打印处理后的HloModule
-  //std::cout << "\nProcessed HloModule:\n";
-  //std::cout << hlo_module->ToString() << std::endl;
   DumpHloModuleDuringPassIfEnabled("priority_fusion", "after", *hlo_module);
 
   // 分析融合结果
@@ -181,21 +122,8 @@ int main(int argc, char** argv) {
   }
 
   std::string program_path = argv[1];
-
-  //xla::ParseDebugOptionFlagsFromEnv(true);
-  
-  // 加载HloModule
-  absl::StatusOr<std::unique_ptr<xla::HloModule>> module_or = xla::gpu::LoadHloModuleFromFile(program_path);
-  if (!module_or.ok()) {
-    std::cerr << "Failed to load HloModule: " 
-              << module_or.status().ToString() << std::endl;
-    return 1;
-  }
-  std::unique_ptr<xla::HloModule> module = std::move(*module_or);
-  
-  // 打印HloModule的计算图
-  //std::cout << "\nHloModule computation graph:" << std::endl;
-  //std::cout << module->ToString() << std::endl;
+  std::unique_ptr<xla::HloModule> module = xla::Compiler_LoadHloModuleFromFile(program_path);
+  if(!module){ return 1;}
 
   // 运行PriorityFusion分析
   absl::Status status = xla::gpu::RunPriorityFusionAnalysis(std::move(module));

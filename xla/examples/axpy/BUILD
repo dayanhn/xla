@@ -2,6 +2,53 @@ load("//xla:xla.default.bzl", "xla_cc_test")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
+cc_library(
+    name = "compiler_utils",
+    srcs = ["compiler_utils.cc"],
+    hdrs = ["compiler_utils.h"],
+    deps = [
+        "//xla:error_spec",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:debug_options_flags",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/translate:stablehlo",
+        "//xla/pjrt:pjrt_api",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt/c:pjrt_c_api_cpu",
+        "//xla/pjrt/c:pjrt_c_api_hdrs",
+        "//xla/pjrt/c_api_client:pjrt_c_api_client",
+        "//xla/pjrt/gpu:se_gpu_pjrt_client",
+        "//xla/pjrt/gpu:se_gpu_topology_description",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_pjrt_client",
+        "//xla/pjrt:pjrt_stream_executor_client",
+        "//xla/client:local_client",
+        "//xla/service:service",
+        "//xla/service:local_service",
+        "//xla/stream_executor:stream_executor_memory_allocator",
+        "//xla/stream_executor:stream_executor_address_allocator",
+        "//xla/pjrt/proto:pjrt_partial_program_proto_cc",
+        "//xla/pjrt/proto:topology_description_proto_cc",
+        "//xla/stream_executor:cuda_platform",
+        "//xla/pjrt/plugin/xla_gpu:gpu_static_registration",
+        "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@stablehlo//:register",
+        "@tsl//tsl/platform:path",
+    ],
+)
+
 xla_cc_test(
     name = "stablehlo_compile_test",
     srcs = ["stablehlo_compile_test.cc"],
@@ -51,6 +98,7 @@ cc_binary(
     name = "priority_fusion_analyzer",
     srcs = ["priority_fusion_analyzer.cc"],
     deps = [
+        ":compiler_utils",
         # core utilities used by the analyzer executable.
         "//xla:error_spec",
         "//xla:literal",
@@ -168,6 +216,7 @@ cc_binary(
     name = "stablehlo_gpu_compiler",
     srcs = ["stablehlo_gpu_compiler.cc"],
     deps = [
+        ":compiler_utils",
         "//xla:error_spec",
         "//xla:literal",
         "//xla:literal_util",
@@ -206,6 +255,7 @@ cc_binary(
     name = "gpu_run_hlopasses",
     srcs = ["gpu_run_hlopasses.cc"],
     deps = [
+        ":compiler_utils",
         "//xla:error_spec",
         "//xla:literal",
         "//xla:literal_util",
@@ -243,6 +293,7 @@ cc_binary(
     name = "gpu_run_backend",
     srcs = ["gpu_run_backend.cc"],
     deps = [
+        ":compiler_utils",
         "//xla:error_spec",
         "//xla:literal",
         "//xla:literal_util",
