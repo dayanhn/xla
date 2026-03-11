@@ -1,0 +1,104 @@
+/* Copyright 2026 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "xla/stream_executor/ascend/ascend_platform.h"
+
+#include <memory>
+#include <string>
+#include <utility>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "xla/stream_executor/ascend/ascend_platform_id.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform/initialize.h"
+#include "xla/stream_executor/platform_manager.h"
+
+namespace stream_executor {
+namespace gpu {
+namespace {
+
+static absl::Status PlatformInitialize() {
+  LOG(INFO) << "Ascend platform initialized (placeholder)";
+  return absl::OkStatus();
+}
+
+}  // namespace
+
+AscendPlatform::AscendPlatform() : name_("ASCEND") {}
+
+AscendPlatform::~AscendPlatform() {}
+
+Platform::Id AscendPlatform::id() const {
+  return ascend::kAscendPlatformId;
+}
+
+int AscendPlatform::VisibleDeviceCount() const {
+  static const int num_devices = [] {
+    if (!PlatformInitialize().ok()) {
+      return -1;
+    }
+    int device_count = 8;
+    LOG(INFO) << "Found " << device_count << " Ascend device(s) (placeholder)";
+    return device_count;
+  }();
+  return num_devices;
+}
+
+const std::string& AscendPlatform::Name() const {
+  return name_;
+}
+
+absl::StatusOr<std::unique_ptr<DeviceDescription>>
+AscendPlatform::DescriptionForDevice(int ordinal) const {
+  TF_RETURN_IF_ERROR(PlatformInitialize());
+  auto description = std::make_unique<DeviceDescription>();
+  description->set_device_vendor("Huawei");
+  description->set_name(absl::StrCat("Ascend-910B-", ordinal));
+  description->set_core_count(300);
+  description->set_shared_memory_per_block_optin(64 * 1024);
+  return std::move(description);
+}
+
+absl::StatusOr<StreamExecutor*> AscendPlatform::ExecutorForDevice(int ordinal) {
+  TF_RETURN_IF_ERROR(PlatformInitialize());
+  return executor_cache_.GetOrCreate(
+      ordinal, [this, ordinal]() { return GetUncachedExecutor(ordinal); });
+}
+
+absl::StatusOr<StreamExecutor*> AscendPlatform::FindExisting(int ordinal) {
+  return executor_cache_.Get(ordinal);
+}
+
+absl::StatusOr<std::unique_ptr<StreamExecutor>>
+AscendPlatform::GetUncachedExecutor(int ordinal) {
+  return absl::UnimplementedError("AscendExecutor not implemented yet");
+}
+
+}  // namespace gpu
+
+static void InitializeAscendPlatform() {
+  CHECK_OK(
+      PlatformManager::RegisterPlatform(std::make_unique<gpu::AscendPlatform>()));
+}
+
+}  // namespace stream_executor
+
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(
+    ascend_platform, stream_executor::InitializeAscendPlatform());
