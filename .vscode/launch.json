@@ -4,6 +4,22 @@
     // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
+         {
+            "type": "lldb",
+            "request": "launch",
+            "name": "ascend",
+            "program": "${workspaceFolder}/bazel-bin/xla/stream_executor/ascend/test_ascend_platform",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "env": {
+             },
+            "sourceMap": {
+                "/proc/self/cwd": "${workspaceFolder}",
+                "/proc/self/cwd/external":"${workspaceFolder}/bazel-xla/external"
+            },
+            "preRunCommands": [
+            ]
+        },
         {
             "type": "lldb",
             "request": "launch",

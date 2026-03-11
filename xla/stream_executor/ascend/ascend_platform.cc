@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "third_party/acl/inc/acl/acl.h"
 #include "xla/stream_executor/ascend/ascend_platform_id.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
@@ -34,16 +35,30 @@ namespace stream_executor {
 namespace gpu {
 namespace {
 
-static absl::Status PlatformInitialize() {
-  LOG(INFO) << "Ascend platform initialized (placeholder)";
+static absl::Status InternalInit() {
+  aclError error = aclInit(nullptr);
+  if (error != ACL_ERROR_NONE) {
+    LOG(ERROR) << "Failed call to aclInit: " << error;
+    return absl::InternalError(absl::StrCat("aclInit failed with ", error));
+  }
+  LOG(INFO) << "Ascend platform initialized";
   return absl::OkStatus();
+}
+
+static absl::Status PlatformInitialize() {
+  static absl::Status* initialization_status = [] {
+    return new absl::Status(InternalInit());
+  }();
+  return *initialization_status;
 }
 
 }  // namespace
 
 AscendPlatform::AscendPlatform() : name_("ASCEND") {}
 
-AscendPlatform::~AscendPlatform() {}
+AscendPlatform::~AscendPlatform() {
+  aclFinalize();
+}
 
 Platform::Id AscendPlatform::id() const {
   return ascend::kAscendPlatformId;
@@ -54,9 +69,14 @@ int AscendPlatform::VisibleDeviceCount() const {
     if (!PlatformInitialize().ok()) {
       return -1;
     }
-    int device_count = 8;
-    LOG(INFO) << "Found " << device_count << " Ascend device(s) (placeholder)";
-    return device_count;
+    uint32_t device_count = 0;
+    aclError error = aclrtGetDeviceCount(&device_count);
+    if (error != ACL_ERROR_NONE) {
+      LOG(ERROR) << "Could not retrieve Ascend device count: " << error;
+      return 0;
+    }
+    LOG(INFO) << "Found " << device_count << " Ascend device(s)";
+    return static_cast<int>(device_count);
   }();
   return num_devices;
 }
