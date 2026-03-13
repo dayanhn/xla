@@ -51,6 +51,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":ascend_executor",
         ":ascend_platform_id",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:executor_cache",
@@ -58,7 +59,7 @@ cc_library(
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/platform:initialize",
-        "//third_party/acl:acl",
+        "//third_party/acl:acl_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -88,10 +89,14 @@ cc_library(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor:stream_executor_common",
+        "//third_party/acl:acl_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@tsl//tsl/platform:errors",
     ],
 )
 

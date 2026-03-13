@@ -17,62 +17,93 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_ASCEND_ASCEND_EXECUTOR_H_
 
 #include <memory>
+#include <optional>
+#include <variant>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_common.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/memory_space.h"
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/module_spec.h"
+#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/event_based_timer.h"
+#include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/fft.h"
+#include "xla/stream_executor/dnn.h"
 
-namespace stream_executor {
+namespace stream_executor::ascend {
 
-// Forward declarations
-class Platform;
-class DeviceDescription;
-
-namespace gpu {
-
-// CollectiveAllocatorType from cuda_platform.h
-enum class CollectiveAllocatorType {
-  kNone,
-  kNccl,
-  kNvshmem,
-};
-
-class AscendExecutor : public StreamExecutor {
+// This class implements StreamExecutorCommon for Ascend devices that use ACL libraries.
+class AscendExecutor : public StreamExecutorCommon {
  public:
-  AscendExecutor(Platform* platform, int device_ordinal,
-                CollectiveAllocatorType collective_allocator_type);
-  ~AscendExecutor() override;
+  AscendExecutor(Platform* platform, int device_ordinal)
+      : StreamExecutorCommon(platform), device_ordinal_(device_ordinal) {}
 
-  // StreamExecutor interface implementation
+  ~AscendExecutor() override;
   absl::Status Init() override;
-  int device_ordinal() const override;
-  const Platform* GetPlatform() const override;
-  const DeviceDescription& GetDeviceDescription() const override;
+  int device_ordinal() const override { return device_ordinal_; }
+  bool SynchronizeAllActivity() override;
+  absl::StatusOr<DeviceAddressBase> GetMemoryRange(
+      const DeviceAddressBase& location) const override;
+  absl::StatusOr<std::unique_ptr<EventBasedTimer>> CreateEventBasedTimer(
+      Stream* stream, bool use_delay_kernel) override;
+  absl::StatusOr<DeviceAddressBase> GetSymbol(
+      const std::string& symbol_name, ModuleHandle module_handle) override;
+  absl::Status SynchronousMemZero(DeviceAddressBase* location,
+                                  uint64_t size) override;
+  absl::Status SynchronousMemcpy(DeviceAddressBase* gpu_dst,
+                                 const void* host_src, uint64_t size) override;
+  absl::Status SynchronousMemcpy(void* host_dst,
+                                 const DeviceAddressBase& gpu_src,
+                                 uint64_t size) override;
+  void DeallocateStream(Stream* stream) override;
+  absl::Status EnablePeerAccessTo(StreamExecutor* other) override;
+  bool CanEnablePeerAccessTo(StreamExecutor* other) override;
+  bool CanEnablePeerAccessTo(int other_device_ordinal) override;
+  bool DeviceMemoryUsage(int64_t* free_out, int64_t* total_out) const override;
+  absl::StatusOr<std::unique_ptr<Kernel>> LoadKernel(
+      const KernelLoaderSpec& spec) override;
+  void UnloadKernel(const Kernel* kernel) override;
+  absl::StatusOr<ModuleHandle> LoadModule(
+      const MultiModuleLoaderSpec& spec) override;
+  bool UnloadModule(ModuleHandle module_handle) override;
+  absl::StatusOr<std::shared_ptr<DeviceAddressBase>> CreateOrShareConstant(
+      Stream* stream, absl::Span<const uint8_t> content) override;
+  DeviceAddressBase Allocate(uint64_t size, int64_t memory_space) override;
+  void Deallocate(DeviceAddressBase* mem) override;
+  blas::BlasSupport* AsBlas() override;
+  fft::FftSupport* AsFft() override;
+  dnn::DnnSupport* AsDnn() override;
+  absl::StatusOr<std::unique_ptr<Event>> CreateEvent() override;
+  absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
+      std::optional<std::variant<StreamPriority, int>> priority) override;
+  absl::StatusOr<std::unique_ptr<CommandBuffer>> CreateCommandBuffer(
+      CommandBuffer::Mode mode) override;
+
+  absl::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
+      const override;
+  absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
+      uint64_t size) override;
+
+  bool HostMemoryRegister(void* location, uint64_t size) override;
+  bool HostMemoryUnregister(void* location) override;
+
+  absl::StatusOr<MemorySpace> GetPointerMemorySpace(const void* ptr) override;
 
  private:
-  // Platform this executor is associated with.
-  Platform* platform_;
-
-  // Device ordinal this executor is associated with.
+  // The device ordinal value that this executor was initialized with;
   int device_ordinal_;
-
-  // Collective allocator type.
-  CollectiveAllocatorType collective_allocator_type_;
-
-  // Device description for this executor.
-  std::unique_ptr<DeviceDescription> device_description_;
-
-  // Initialization status.
-  absl::Status initialization_status_;
 };
 
-}  // namespace gpu
-
-namespace ascend {
-
-using AscendExecutor = gpu::AscendExecutor;
-
-}  // namespace ascend
-}  // namespace stream_executor
+}  // namespace stream_executor::ascend
 
 #endif  // XLA_STREAM_EXECUTOR_ASCEND_ASCEND_EXECUTOR_H_

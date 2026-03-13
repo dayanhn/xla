@@ -27,5 +27,6 @@
     "**/jax.egg-info": true,
     "**/tests": true,
     "**/tmp/**": true
-  }
+  },
+  "cmake.sourceDirectory": "/data3/zhongzhw/code/uni_ai/google/xla/third_party/acl"
 }

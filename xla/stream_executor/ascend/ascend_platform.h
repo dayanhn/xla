@@ -25,7 +25,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor {
-namespace gpu {
+namespace ascend {
 
 class AscendPlatform : public Platform {
  public:
@@ -52,12 +52,6 @@ class AscendPlatform : public Platform {
   AscendPlatform(const AscendPlatform&) = delete;
   void operator=(const AscendPlatform&) = delete;
 };
-
-}  // namespace gpu
-
-namespace ascend {
-
-using AscendPlatform = gpu::AscendPlatform;
 
 }  // namespace ascend
 }  // namespace stream_executor

@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "third_party/acl/inc/acl/acl.h"
+#include "xla/stream_executor/ascend/ascend_executor.h"
 #include "xla/stream_executor/ascend/ascend_platform_id.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
@@ -32,7 +33,7 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 
 namespace stream_executor {
-namespace gpu {
+namespace ascend {
 namespace {
 
 static absl::Status InternalInit() {
@@ -90,8 +91,22 @@ AscendPlatform::DescriptionForDevice(int ordinal) const {
   TF_RETURN_IF_ERROR(PlatformInitialize());
   auto description = std::make_unique<DeviceDescription>();
   description->set_device_vendor("Huawei");
-  description->set_name(absl::StrCat("Ascend-910B-", ordinal));
-  description->set_core_count(300);
+  std::string socName = aclrtGetSocName();
+  //LOG(ERROR) << "Current Ascend chipset platform is: " << socName;
+  description->set_name(absl::StrCat(socName+"-", ordinal));
+  int64_t aicore_num = 0;
+  aclError error = aclrtGetDeviceInfo(ordinal, ACL_DEV_ATTR_AICORE_CORE_NUM, &aicore_num);
+  //LOG(ERROR) << "Ascend device " << ordinal << " has " << aicore_num << " ai cores";
+  //error = aclrtGetDeviceInfo(ordinal, ACL_DEV_ATTR_CUBE_CORE_NUM, &aicore_num);
+  //LOG(ERROR) << "Ascend device " << ordinal << " has " << aicore_num << " cube cores";
+  //error = aclrtGetDeviceInfo(ordinal, ACL_DEV_ATTR_VECTOR_CORE_NUM, &aicore_num);
+  //LOG(ERROR) << "Ascend device " << ordinal << " has " << aicore_num << " vector cores";
+  if (error != ACL_ERROR_NONE) {
+    LOG(ERROR) << "Could not retrieve Ascend cube core count: " << error;
+    return absl::InternalError(absl::StrCat("aclrtGetDeviceInfo failed with ", error));
+  }
+  
+  description->set_core_count(aicore_num);
   description->set_shared_memory_per_block_optin(64 * 1024);
   return std::move(description);
 }
@@ -108,14 +123,16 @@ absl::StatusOr<StreamExecutor*> AscendPlatform::FindExisting(int ordinal) {
 
 absl::StatusOr<std::unique_ptr<StreamExecutor>>
 AscendPlatform::GetUncachedExecutor(int ordinal) {
-  return absl::UnimplementedError("AscendExecutor not implemented yet");
+  auto executor = std::make_unique<AscendExecutor>(this, ordinal);
+  TF_RETURN_IF_ERROR(executor->Init());
+  return std::move(executor);
 }
 
-}  // namespace gpu
+}  // namespace ascend
 
 static void InitializeAscendPlatform() {
   CHECK_OK(
-      PlatformManager::RegisterPlatform(std::make_unique<gpu::AscendPlatform>()));
+      PlatformManager::RegisterPlatform(std::make_unique<ascend::AscendPlatform>()));
 }
 
 }  // namespace stream_executor
