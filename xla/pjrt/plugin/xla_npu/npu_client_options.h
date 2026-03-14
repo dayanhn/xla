@@ -1,0 +1,61 @@
+/* Copyright 2024 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#ifndef XLA_PJRT_PLUGIN_XLA_NPU_NPU_CLIENT_OPTIONS_H_
+#define XLA_PJRT_PLUGIN_XLA_NPU_NPU_CLIENT_OPTIONS_H_
+
+#include <cstddef>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <set>
+
+#include "absl/status/statusor.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/pjrt/host_memory_allocator.h"
+
+#include "xla/service/hlo_module_config.h"
+
+namespace xla {
+
+// Options for creating an XLA:NPU PjRtClient.
+struct NpuClientOptions {
+  int node_id = 0;
+
+  int num_nodes = 1;
+
+  std::optional<std::set<int>> allowed_devices = std::nullopt;
+
+  std::optional<std::string> platform_name = std::nullopt;
+
+  bool should_stage_host_to_device_transfers = true;
+
+  // Optional factory for a host memory allocator to use for transfer. Used only
+  // if `should_stage_host_to_device_transfers` is true.
+  HostMemoryAllocator::Factory host_memory_allocator_factory;
+
+  // kv_store must be non-null if num_nodes > 1.
+  std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr;
+
+  bool abort_collectives_on_failure = false;
+
+  std::optional<int> partition_index;
+
+  int max_inflight_computations = 8;
+};
+
+}  // namespace xla
+
+#endif  // XLA_PJRT_PLUGIN_XLA_NPU_NPU_CLIENT_OPTIONS_H_
