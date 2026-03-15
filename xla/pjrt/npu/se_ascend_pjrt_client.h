@@ -63,8 +63,99 @@ limitations under the License.
 
 namespace xla {
 
+class StreamExecutorAscendDevice : public PjRtStreamExecutorDevice {
+ public:
+  StreamExecutorAscendDevice(int id,
+                          std::unique_ptr<LocalDeviceState> local_device_state,
+                          std::string device_kind, std::string device_vendor,
+                          std::string compute_capability, int core_count,
+                          int shared_memory_per_block_optin,
+                          int local_device_id, int process_index,
+                          int process_index_in_partition = 0,
+                          int partition_index = 0,
+                          int numa_node = tsl::port::kNUMANoAffinity);
+
+  absl::string_view device_vendor() const;
+
+  absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats() const override;
+
+  absl::Span<int const> coords() const;
+
+  absl::StatusOr<PjRtMemorySpace*> default_memory_space() const override;
+
+ private:
+  std::string device_vendor_;
+};
+
+class StreamExecutorAscendHbmMemorySpace : public PjRtStreamExecutorMemorySpace {
+ public:
+  static constexpr absl::string_view kKind = "device";
+  static const int kKindId;
+
+  StreamExecutorAscendHbmMemorySpace(int id, PjRtDevice* device);
+};
+
+// A custom PjRtClient that overrides the device assignment method.
+class StreamExecutorAscendClient : public xla::PjRtStreamExecutorClient {
+ public:
+  using xla::PjRtStreamExecutorClient::PjRtStreamExecutorClient;
+
+  StreamExecutorAscendClient(
+      std::string platform_name, LocalClient* client,
+      std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
+      int process_index, std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces,
+      std::unique_ptr<se::DeviceAddressAllocator> allocator,
+      std::unique_ptr<HostMemoryAllocator> host_memory_allocator,
+      bool should_stage_host_to_device_transfers);
+
+  absl::string_view platform_version() const override;
+
+  std::optional<PjRtPluginAttributes> plugin_attributes() const override;
+
+  void UpdateGlobalProcessInfo(
+      absl::Span<tensorflow::CoordinatedTaskStateInfo> infos) override;
+
+  using PjRtStreamExecutorClient::CreateBuffersForAsyncHostToDevice;
+  absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+  CreateBuffersForAsyncHostToDevice(
+      absl::Span<const PjRtClient::ShapeSpec> shape_specs,
+      std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
+      PjRtMemorySpace* memory_space) override;
+
+  absl::StatusOr<xla::DeviceAssignment> GetDefaultDeviceAssignment(
+      int num_replicas, int num_partitions) const override;
+
+  absl::StatusOr<Layout> GetDefaultLayout(
+      PrimitiveType element_type, absl::Span<const int64_t> dims) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadSerialized(
+      absl::string_view serialized, std::optional<CompileOptions> options,
+      const LoadOptions& load_options);
+
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
+      const XlaComputation& computation, CompileOptions options) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
+      mlir::ModuleOp module, CompileOptions options) override;
+
+  absl::StatusOr<PjRtStreamExecutorExecutionOutput> RunAsync(
+      LocalExecutable& exec, PjRtDevice* device,
+      absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> flat_arguments,
+      absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> results,
+      ExecutableRunOptions run_options_inp, bool parameter_is_tupled_arguments,
+      absl::Span<const Shape> executable_parameter_shapes) override;
+
+  absl::Status UpdateCompileOptionsInternal(
+      CompileOptions* options, ExecutableExtras* returned_extras,
+      bool lookup_addressable_devices) override;
+};
+
+std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
+    std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
+    int node_id);
+
 // Public entry point to get an NPU PjRtClient
-absl::StatusOr<std::unique_ptr<PjRtClient>> GetPjRtNpuClient(
+absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorAscendClient(
     const NpuClientOptions& options);
 }  // namespace xla
 

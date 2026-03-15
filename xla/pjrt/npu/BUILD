@@ -8,12 +8,40 @@ package(
 )
 
 cc_library(
+    name = "ascend_helpers",
+    srcs = [
+        "ascend_helpers.cc",
+    ],
+    hdrs = ["ascend_helpers.h"],
+    deps = [
+        "//xla:status_macros",
+        "//xla:util",
+        "//xla/client:client_library",
+        "//xla/client:local_client",
+        "//xla/pjrt:local_device_state",
+        "//xla/pjrt/plugin/xla_npu:npu_client_options",
+        "//xla/service:platform_util",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/integrations:stream_executor_allocator",
+        "//xla/tsl/framework:bfc_allocator",
+        "//xla/tsl/util:env_var",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "se_ascend_pjrt_client",
     srcs = [
         "se_ascend_pjrt_client.cc",
     ],
     hdrs = ["se_ascend_pjrt_client.h"],
     deps = [
+        ":ascend_helpers",
+
         "//xla:executable_run_options",
         "//xla:future",
         "//xla:literal",

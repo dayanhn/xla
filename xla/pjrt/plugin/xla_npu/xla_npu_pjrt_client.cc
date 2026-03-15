@@ -32,7 +32,7 @@ namespace xla {
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetXlaPjrtNpuClient(
      NpuClientOptions options) {
   // TODO(masonchang): Wrap the PjRtCPU Client inside the PJRT Sandwich.
-  return xla::GetPjRtNpuClient(options);
+  return xla::GetStreamExecutorAscendClient(options);
 }
 
 }  // namespace xla

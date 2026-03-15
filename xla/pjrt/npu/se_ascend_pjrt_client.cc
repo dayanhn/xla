@@ -72,6 +72,7 @@ limitations under the License.
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/host_to_device_transfer_manager.h"
 #include "xla/pjrt/local_device_state.h"
+#include "xla/pjrt/npu/ascend_helpers.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -118,38 +119,62 @@ limitations under the License.
 
 namespace xla {
 
-// Implementation of Ascend PjRtClient
-class StreamExecutorAscendClient : public PjRtStreamExecutorClient {
- public:
-  StreamExecutorAscendClient(
-      std::string platform_name,
-      LocalClient* client,
-      std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
-      int process_index,
-      std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces,
-      std::unique_ptr<se::DeviceAddressAllocator> allocator,
-      std::unique_ptr<HostMemoryAllocator> host_memory_allocator,
-      bool should_stage_host_to_device_transfers);
+// Implementation of StreamExecutorAscendDevice
+StreamExecutorAscendDevice::StreamExecutorAscendDevice(
+    int id, std::unique_ptr<LocalDeviceState> local_device_state,
+    std::string device_kind, std::string device_vendor,
+    std::string compute_capability, int core_count,
+    int shared_memory_per_block_optin, int local_device_id, int process_index,
+    int process_index_in_partition, int partition_index,
+    int numa_node)
+    : PjRtStreamExecutorDevice(id, std::move(local_device_state),
+                               std::move(device_kind), std::move(compute_capability),
+                               core_count, shared_memory_per_block_optin,
+                               local_device_id, process_index,
+                               process_index_in_partition, partition_index,
+                               numa_node),
+      device_vendor_(std::move(device_vendor)) {
+}
 
-  ~StreamExecutorAscendClient() override;
-};
+absl::string_view StreamExecutorAscendDevice::device_vendor() const {
+  return device_vendor_;
+}
 
+absl::StatusOr<tsl::AllocatorStats> StreamExecutorAscendDevice::GetAllocatorStats() const {
+  // Placeholder implementation
+  return tsl::AllocatorStats();
+}
+
+absl::Span<int const> StreamExecutorAscendDevice::coords() const {
+  // Placeholder implementation
+  static const std::vector<int> coords = {};
+  return coords;
+}
+
+absl::StatusOr<PjRtMemorySpace*> StreamExecutorAscendDevice::default_memory_space() const {
+  // Placeholder implementation
+  return nullptr;
+}
+
+// Implementation of StreamExecutorAscendHbmMemorySpace
+const int StreamExecutorAscendHbmMemorySpace::kKindId = 0;
+
+StreamExecutorAscendHbmMemorySpace::StreamExecutorAscendHbmMemorySpace(
+    int id, PjRtDevice* device)
+    : PjRtStreamExecutorMemorySpace(id, device, kKind, kKindId) {
+}
+
+// Implementation of StreamExecutorAscendClient
 StreamExecutorAscendClient::StreamExecutorAscendClient(
-    std::string platform_name,
-    LocalClient* client,
+    std::string platform_name, LocalClient* client,
     std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
-    int process_index,
-    std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces,
+    int process_index, std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces,
     std::unique_ptr<se::DeviceAddressAllocator> allocator,
     std::unique_ptr<HostMemoryAllocator> host_memory_allocator,
     bool should_stage_host_to_device_transfers)
     : PjRtStreamExecutorClient(
-          std::move(platform_name),
-          client,
-          std::move(devices),
-          process_index,
-          std::move(memory_spaces),
-          std::move(allocator),
+          std::move(platform_name), client, std::move(devices), process_index,
+          std::move(memory_spaces), std::move(allocator),
           std::move(host_memory_allocator),
           should_stage_host_to_device_transfers,
           nullptr) {
@@ -158,10 +183,172 @@ StreamExecutorAscendClient::StreamExecutorAscendClient(
 StreamExecutorAscendClient::~StreamExecutorAscendClient() {
 }
 
-absl::StatusOr<std::unique_ptr<PjRtClient>> GetPjRtNpuClient(
+absl::string_view StreamExecutorAscendClient::platform_version() const {
+  // Placeholder implementation
+  return "ascend";
+}
+
+std::optional<PjRtPluginAttributes> StreamExecutorAscendClient::plugin_attributes() const {
+  PjRtPluginAttributes attrs;
+  attrs.pjrt_c_api_major_version = 0;
+  attrs.pjrt_c_api_minor_version = 0;
+  attrs.attributes["supports_cross_host_transfers"] = PjRtValueType(false);
+  return attrs;
+}
+
+void StreamExecutorAscendClient::UpdateGlobalProcessInfo(
+    absl::Span<tensorflow::CoordinatedTaskStateInfo> infos) {
+  // Placeholder implementation
+}
+
+absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+StreamExecutorAscendClient::CreateBuffersForAsyncHostToDevice(
+    absl::Span<const PjRtClient::ShapeSpec> shape_specs,
+    std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
+    PjRtMemorySpace* memory_space) {
+  // Placeholder implementation
+  return nullptr;
+}
+
+absl::StatusOr<xla::DeviceAssignment>
+StreamExecutorAscendClient::GetDefaultDeviceAssignment(
+    int num_replicas, int num_partitions) const {
+  if (num_partitions == 1 && num_replicas <= addressable_devices().size()) {
+    xla::DeviceAssignment assignment(num_replicas, 1);
+    for (int i = 0; i < num_replicas; ++i) {
+      assignment(i, 0) = addressable_devices().at(i)->id();
+    }
+    return assignment;
+  }
+  // Fallback to default global device assignment if we can't run locally.
+  return PjRtStreamExecutorClient::GetDefaultDeviceAssignment(num_replicas,
+                                                            num_partitions);
+}
+
+absl::StatusOr<Layout> StreamExecutorAscendClient::GetDefaultLayout(
+    PrimitiveType element_type, absl::Span<const int64_t> dims) {
+  // Placeholder implementation
+  return LayoutUtil::MakeLayout(dims);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> StreamExecutorAscendClient::LoadSerialized(
+    absl::string_view serialized, std::optional<CompileOptions> options,
+    const LoadOptions& load_options) {
+  // Placeholder implementation
+  return nullptr;
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> StreamExecutorAscendClient::CompileAndLoad(
+    const XlaComputation& computation, CompileOptions options) {
+  // Placeholder implementation
+  return PjRtStreamExecutorClient::CompileAndLoad(computation, options);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> StreamExecutorAscendClient::CompileAndLoad(
+    mlir::ModuleOp module, CompileOptions options) {
+  // Placeholder implementation
+  return PjRtStreamExecutorClient::CompileAndLoad(module, options);
+}
+
+absl::StatusOr<PjRtStreamExecutorExecutionOutput>
+StreamExecutorAscendClient::RunAsync(
+    LocalExecutable& exec, PjRtDevice* device,
+    absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> flat_arguments,
+    absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> results,
+    ExecutableRunOptions run_options_inp, bool parameter_is_tupled_arguments,
+    absl::Span<const Shape> executable_parameter_shapes) {
+  // Placeholder implementation
+  return PjRtStreamExecutorClient::RunAsync(exec, device, flat_arguments,
+                                           results, run_options_inp,
+                                           parameter_is_tupled_arguments,
+                                           executable_parameter_shapes);
+}
+
+absl::Status StreamExecutorAscendClient::UpdateCompileOptionsInternal(
+    CompileOptions* options, ExecutableExtras* returned_extras,
+    bool lookup_addressable_devices) {
+  // Placeholder implementation
+  return PjRtStreamExecutorClient::UpdateCompileOptionsInternal(
+      options, returned_extras, lookup_addressable_devices);
+}
+
+// Implementation of BuildLocalDevices
+std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
+    std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
+    int node_id) {
+  std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
+  for (auto& ordinal_and_device : local_device_states) {
+    const se::DeviceDescription& desc = 
+        ordinal_and_device.second->executor()->GetDeviceDescription();
+    auto device = std::make_unique<StreamExecutorAscendDevice>(
+        ordinal_and_device.first, std::move(ordinal_and_device.second),
+        desc.name(), desc.device_vendor(),
+        "", // compute capability string for Ascend
+        desc.core_count(),
+        desc.shared_memory_per_block_optin(),
+        ordinal_and_device.second->local_device_id().value(),
+        node_id,
+        desc.numa_node());
+    devices.push_back(std::move(device));
+  }
+  return devices;
+}
+
+absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorAscendClient(
     const NpuClientOptions& options) {
-  // TODO: Implement actual client creation
-  return absl::UnimplementedError("GetPjRtNpuClient not implemented");
+  auto pjrt_platform_name = "ASCEND";
+
+  TF_ASSIGN_OR_RETURN(
+      LocalClient * xla_client,
+      GetAscendXlaClient(options.platform_name, options.allowed_devices));
+  std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states;
+  TF_ASSIGN_OR_RETURN(local_device_states, BuildLocalDeviceStates(xla_client));
+  EnableAscendPeerAccess(xla_client->backend().stream_executors());
+  TF_ASSIGN_OR_RETURN(auto allocator,
+                      GetStreamExecutorAscendDeviceAllocator(
+                          xla_client->platform(), options.allocator_config,
+                          local_device_states));
+  std::unique_ptr<HostMemoryAllocator> host_memory_allocator;
+  if (options.host_memory_allocator_factory != nullptr) {
+    stream_executor::StreamExecutor* const stream_executor = 
+        local_device_states.begin()->second->compute_stream()->parent();
+    HostMemoryAllocator::Options allocator_options;
+    allocator_options.alignment = tsl::Allocator::kAllocatorAlignment;
+    allocator_options.map_fn = [stream_executor](void* data, size_t size) {
+      // For Ascend, we may not need to register host memory
+      // This is a placeholder implementation
+      return absl::OkStatus();
+    };
+    allocator_options.unmap_fn = [stream_executor](void* data) {
+      // For Ascend, we may not need to unregister host memory
+      // This is a placeholder implementation
+      return absl::OkStatus();
+    };
+    TF_ASSIGN_OR_RETURN(
+        host_memory_allocator,
+        options.host_memory_allocator_factory(std::move(allocator_options)));
+  } else {
+    TF_ASSIGN_OR_RETURN(
+        auto allocator,
+        GetAscendHostAllocator(local_device_states.begin()->second->executor()));
+    host_memory_allocator = std::make_unique<BasicHostMemoryAllocator>(
+        std::move(allocator), tsl::Allocator::kAllocatorAlignment);
+  }
+
+  auto devices = BuildLocalDevices(std::move(local_device_states), options.node_id);
+
+  std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces;
+  for (const auto& device : devices) {
+    auto memory_space = std::make_unique<StreamExecutorAscendHbmMemorySpace>(
+        device->id(), device.get());
+    memory_spaces.push_back(std::move(memory_space));
+  }
+
+  return std::make_unique<StreamExecutorAscendClient>(
+      pjrt_platform_name, xla_client, std::move(devices),
+      options.node_id, std::move(memory_spaces),
+      std::move(allocator), std::move(host_memory_allocator),
+      options.should_stage_host_to_device_transfers);
 }
 
 }  // namespace xla
