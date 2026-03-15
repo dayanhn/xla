@@ -127,12 +127,8 @@ StreamExecutorAscendDevice::StreamExecutorAscendDevice(
     int shared_memory_per_block_optin, int local_device_id, int process_index,
     int process_index_in_partition, int partition_index,
     int numa_node)
-    : PjRtStreamExecutorDevice(id, std::move(local_device_state),
-                               std::move(device_kind), std::move(compute_capability),
-                               core_count, shared_memory_per_block_optin,
-                               local_device_id, process_index,
-                               process_index_in_partition, partition_index,
-                               numa_node),
+    : PjRtStreamExecutorDevice( id, std::move(local_device_state), local_device_id, process_index,
+          process_index_in_partition, partition_index, std::move(device_kind)),
       device_vendor_(std::move(device_vendor)) {
 }
 
@@ -141,19 +137,19 @@ absl::string_view StreamExecutorAscendDevice::device_vendor() const {
 }
 
 absl::StatusOr<tsl::AllocatorStats> StreamExecutorAscendDevice::GetAllocatorStats() const {
-  // Placeholder implementation
-  return tsl::AllocatorStats();
+  // Placeholder implementation - return error for now
+  return tsl::errors::Unimplemented("GetAllocatorStats not yet implemented for Ascend");
 }
 
 absl::Span<int const> StreamExecutorAscendDevice::coords() const {
-  // Placeholder implementation
+  // Placeholder implementation - return empty span
   static const std::vector<int> coords = {};
-  return coords;
+  return absl::MakeSpan(coords);
 }
 
 absl::StatusOr<PjRtMemorySpace*> StreamExecutorAscendDevice::default_memory_space() const {
-  // Placeholder implementation
-  return nullptr;
+  // Placeholder implementation - return error for now
+  return tsl::errors::Unimplemented("default_memory_space not yet implemented for Ascend");
 }
 
 // Implementation of StreamExecutorAscendHbmMemorySpace
@@ -178,9 +174,6 @@ StreamExecutorAscendClient::StreamExecutorAscendClient(
           std::move(host_memory_allocator),
           should_stage_host_to_device_transfers,
           nullptr) {
-}
-
-StreamExecutorAscendClient::~StreamExecutorAscendClient() {
 }
 
 absl::string_view StreamExecutorAscendClient::platform_version() const {
@@ -292,6 +285,22 @@ std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
     devices.push_back(std::move(device));
   }
   return devices;
+}
+
+// Builds a LocalDeviceState for each GPU present.
+absl::StatusOr<std::map<int, std::unique_ptr<LocalDeviceState>>>
+BuildLocalDeviceStates(LocalClient* xla_client) {
+  std::map<int, std::unique_ptr<LocalDeviceState>> addressable_devices;
+  for (se::StreamExecutor* executor :
+       xla_client->backend().stream_executors()) {
+    addressable_devices.emplace(
+        executor->device_ordinal(),
+        std::make_unique<LocalDeviceState>(
+            executor, xla_client, LocalDeviceState::kComputeSynchronized,
+            /*max_inflight_computations=*/32,
+            /*allow_event_reuse=*/true, /*use_callback_stream=*/true));
+  }
+  return std::move(addressable_devices);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorAscendClient(

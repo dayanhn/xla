@@ -15,6 +15,7 @@ cc_library(
     hdrs = ["xla_npu_pjrt_client.h"],
     deps = [
         ":npu_client_options",
+        ":xla_npu_allocator_config",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_c_api_client",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
@@ -42,6 +43,15 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "xla_npu_allocator_config",
+    srcs = [],
+    hdrs = ["xla_npu_allocator_config.h"],
+    deps = [
+        "//xla/tsl/framework:allocator",
+    ],
+)
+
 cc_binary(
     name = "xla_npu_pjrt_client_test",
     srcs = [
@@ -49,6 +59,7 @@ cc_binary(
     ],
     deps = [
         ":npu_client_options",
+        ":xla_npu_allocator_config",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt/npu:se_ascend_pjrt_client",
         ":xla_npu_pjrt_client",

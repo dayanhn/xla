@@ -1,4 +1,5 @@
 load("//xla/tsl:tsl.bzl", "if_google")
+load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -13,22 +14,28 @@ cc_library(
         "ascend_helpers.cc",
     ],
     hdrs = ["ascend_helpers.h"],
+    visibility = internal_visibility(["//xla/pjrt:friends"]),
     deps = [
         "//xla:status_macros",
         "//xla:util",
         "//xla/client:client_library",
         "//xla/client:local_client",
         "//xla/pjrt:local_device_state",
-        "//xla/pjrt/plugin/xla_npu:npu_client_options",
         "//xla/service:platform_util",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/integrations:device_mem_allocator",
         "//xla/stream_executor/integrations:stream_executor_allocator",
+        "//xla/tsl/framework:allocator",
         "//xla/tsl/framework:bfc_allocator",
+        "//xla/tsl/framework:device_id_impl",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "//xla/tsl/util:env_var",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
 )

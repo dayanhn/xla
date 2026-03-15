@@ -13,7 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PJRT_NPU_ASCEND_HELPERS_H_#define XLA_PJRT_NPU_ASCEND_HELPERS_H_
+#ifndef XLA_PJRT_NPU_ASCEND_HELPERS_H_
+#define XLA_PJRT_NPU_ASCEND_HELPERS_H_
 
 #include <memory>
 #include <optional>
@@ -21,13 +22,29 @@ limitations under the License.
 #include <string>
 #include <map>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
-#include "xla/pjrt/plugin/xla_npu/npu_client_options.h"
-#include "xla/stream_executor/device_address_allocator.h"
+#include "xla/service/platform_util.h"
+#include "xla/stream_executor/integrations/device_mem_allocator.h"
+#include "xla/stream_executor/integrations/stream_executor_allocator.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/framework/bfc_allocator.h"
+#include "xla/tsl/framework/device_id.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/env_var.h"
+#include "xla/util.h"
+
 
 namespace xla {
 

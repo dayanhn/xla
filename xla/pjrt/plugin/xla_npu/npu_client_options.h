@@ -27,11 +27,13 @@ limitations under the License.
 #include "xla/pjrt/host_memory_allocator.h"
 
 #include "xla/service/hlo_module_config.h"
+#include "xla/pjrt/plugin/xla_npu/xla_npu_allocator_config.h"
 
 namespace xla {
 
 // Options for creating an XLA:NPU PjRtClient.
 struct NpuClientOptions {
+  NpuAllocatorConfig allocator_config;
   int node_id = 0;
 
   int num_nodes = 1;
