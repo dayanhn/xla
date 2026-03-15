@@ -26,7 +26,19 @@ limitations under the License.
 namespace xla {
 
 struct NpuAllocatorConfig {
+  enum class Kind {
+    kDefault,
+    kBFC,
+    kPlatform,
+  };
 
+  Kind kind = Kind::kDefault;
+  double memory_fraction = 0.9;
+  bool preallocate = false;
+  std::optional<int64_t> npu_system_memory_size;
+  std::vector<tsl::SubAllocator::Visitor> sub_allocator_alloc_visitors;
+  std::vector<tsl::SubAllocator::Visitor> sub_allocator_free_visitors;
+  size_t collective_memory_size = 0;
 };
 
 }  // namespace xla
