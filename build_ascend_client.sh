@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Build script for Ascend PJRT client
-
+clear
 set -e
 
 # 设置ascend环境变量

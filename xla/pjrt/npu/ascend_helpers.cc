@@ -84,7 +84,16 @@ void EnableAscendPeerAccess(absl::Span<se::StreamExecutor* const> executors) {
 
 
 
-// Helper function to get Ascend host allocator
+// Returns a Ascend pinned host memory allocator to use when staging host->Ascend
+// transfers. We use a fixed pool of pinned memory.
+//
+// The pool size is controlled by XLA_PJRT_ASCEND_HOST_MEMORY_LIMIT_GB environment
+// variable, which defaults to 64GB.
+//
+// If XLA_PJRT_ASCEND_HOST_MEMORY_PREALLOCATE is set to true, the pool will be
+// preallocated, and the preallocated size is controlled by
+// XLA_PJRT_ASCEND_HOST_MEMORY_LIMIT_GB environment variable, which defaults to
+// 16GB in this case.
 absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> GetAscendHostAllocator(
     se::StreamExecutor* executor) {
   TF_ASSIGN_OR_RETURN(
@@ -101,7 +110,8 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> GetAscendHostAllocator(
       tsl::ReadBoolFromEnvVar("XLA_PJRT_ASCEND_HOST_MEMORY_PREALLOCATE", false,
                               &xla_pjrt_ascend_host_memory_preallocate));
 
-  const int64_t default_xla_pjrt_ascend_host_memory_limit_gb = 64;
+  const int64_t default_xla_pjrt_ascend_host_memory_limit_gb = 
+      xla_pjrt_ascend_host_memory_preallocate ? 16 : 64;
 
   int64_t xla_pjrt_ascend_host_memory_limit_gb;
   TF_RETURN_IF_ERROR(

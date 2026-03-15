@@ -100,6 +100,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -380,51 +381,6 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
       absl::StrCat("ASCEND_collectivememory_", device_ordinal, "_bfc"), opts);
 }
 
-// Returns a Ascend pinned host memory allocator to use when staging host->Ascend
-// transfers. We use a fixed pool of pinned memory.
-//
-// The pool size is controlled by XLA_PJRT_ASCEND_HOST_MEMORY_LIMIT_GB environment
-// variable, which defaults to 64GB.
-//
-// If XLA_PJRT_ASCEND_HOST_MEMORY_PREALLOCATE is set to true, the pool will be
-// preallocated, and the preallocated size is controlled by
-// XLA_PJRT_ASCEND_HOST_MEMORY_LIMIT_GB environment variable, which defaults to
-// 16GB in this case.
-absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> GetAscendHostAllocator(
-    se::StreamExecutor* executor) {
-  TF_ASSIGN_OR_RETURN(
-      auto host_memory_allocator,
-      executor->CreateMemoryAllocator(stream_executor::MemorySpace::kHost));
-  std::unique_ptr<tsl::SubAllocator> sub_allocator(
-      new se::StreamExecutorAllocator(std::move(host_memory_allocator),
-                                      stream_executor::MemorySpace::kHost,
-                                      /*index=*/0,
-                                      /*alloc_visitors=*/{},
-                                      /*free_visitors=*/{}));
-  bool xla_pjrt_ascend_host_memory_preallocate;
-  TF_RETURN_IF_ERROR(
-      tsl::ReadBoolFromEnvVar("XLA_PJRT_ASCEND_HOST_MEMORY_PREALLOCATE", false,
-                              &xla_pjrt_ascend_host_memory_preallocate));
-
-  const int64_t default_xla_pjrt_ascend_host_memory_limit_gb = 
-      xla_pjrt_ascend_host_memory_preallocate ? 16 : 64;
-
-  int64_t xla_pjrt_ascend_host_memory_limit_gb;
-  TF_RETURN_IF_ERROR(
-      tsl::ReadInt64FromEnvVar("XLA_PJRT_ASCEND_HOST_MEMORY_LIMIT_GB",
-                               default_xla_pjrt_ascend_host_memory_limit_gb,
-                               &xla_pjrt_ascend_host_memory_limit_gb));
-
-  const int64_t kAscendHostMemoryLimitBytes = 
-      xla_pjrt_ascend_host_memory_limit_gb * (1LL << 30);
-
-  tsl::BFCAllocator::Options opts;
-  opts.allow_growth = !xla_pjrt_ascend_host_memory_preallocate;
-  return std::make_unique<tsl::BFCAllocator>(std::move(sub_allocator),
-                                             kAscendHostMemoryLimitBytes,
-                                             /*name=*/"xla_ascend_host_bfc", opts);
-}
-
 // Constructs a Ascend device memory allocator to use, according to the allocator
 // configuration the client requested.
 absl::StatusOr<std::unique_ptr<se::DeviceAddressAllocator>>
@@ -500,6 +456,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorAscendClient(
   TF_ASSIGN_OR_RETURN(
       LocalClient * xla_client,
       GetAscendXlaClient(options.platform_name, options.allowed_devices));
+#if 0      
   std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states;
   TF_ASSIGN_OR_RETURN(local_device_states, BuildLocalDeviceStates(xla_client));
   EnableAscendPeerAccess(xla_client->backend().stream_executors());
@@ -548,6 +505,9 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorAscendClient(
       options.node_id, std::move(memory_spaces),
       std::move(allocator), std::move(host_memory_allocator),
       options.should_stage_host_to_device_transfers);
+#else
+    return nullptr;
+#endif
 }
 
 }  // namespace xla
