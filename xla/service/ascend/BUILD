@@ -51,6 +51,32 @@ cc_library(
 )
 
 cc_library(
+    name = "ascend_transfer_manager",
+    srcs = [
+        "ascend_transfer_manager.cc",
+    ],
+    hdrs = [
+        "ascend_transfer_manager.h",
+    ],
+    tags = [
+        "ascend-only",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla/service:generic_transfer_manager",
+        "//xla/service:transfer_manager",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/ascend:ascend_platform_id",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
+    ],
+    alwayslink = 1,  # Registers itself with the TransferManager registry.
+)
+
+cc_library(
     name = "ascend_compiler",
     srcs = [
         "ascend_compiler.cc",

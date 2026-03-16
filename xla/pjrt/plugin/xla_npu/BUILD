@@ -67,5 +67,6 @@ cc_binary(
         "//xla/stream_executor/ascend:ascend_platform",
         "//xla/service/ascend:ascend_compiler",
         "//xla/service/ascend:ascend_executable",
+        "//xla/service/ascend:ascend_transfer_manager",
     ],
 )
