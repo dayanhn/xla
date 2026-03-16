@@ -68,5 +68,6 @@ cc_binary(
         "//xla/service/ascend:ascend_compiler",
         "//xla/service/ascend:ascend_executable",
         "//xla/service/ascend:ascend_transfer_manager",
+        "//xla/service/ascend:ascend_computation_placer",
     ],
 )

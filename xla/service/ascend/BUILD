@@ -101,3 +101,19 @@ cc_library(
     ],
     alwayslink = 1,  # Registers itself with the Compiler registry.
 )
+
+cc_library(
+    name = "ascend_computation_placer",
+    srcs = [
+        "ascend_computation_placer_registration.cc",
+    ],
+    tags = [
+        "ascend-only",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla/service:computation_placer",
+        "//xla/stream_executor/ascend:ascend_platform_id",
+    ],
+    alwayslink = 1,  # Registers itself with the ComputationPlacer registry.
+)
