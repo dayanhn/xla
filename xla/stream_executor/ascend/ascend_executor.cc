@@ -19,6 +19,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "third_party/acl/inc/acl/acl.h"
+#include "third_party/acl/inc/acl/acl_base.h"
+#include "third_party/acl/inc/acl/acl_rt.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace stream_executor::ascend {
@@ -170,8 +172,32 @@ absl::StatusOr<std::unique_ptr<CommandBuffer>> AscendExecutor::CreateCommandBuff
 }
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>> AscendExecutor::CreateDeviceDescription() const {
-  // TODO: Implement device description creation
-  return absl::UnimplementedError("CreateDeviceDescription not implemented");
+  DeviceDescription desc;
+
+  // Set device address bits (Ascend devices support 64-bit addresses)
+  desc.set_device_address_bits(64);
+
+  std::string socName = aclrtGetSocName();
+  desc.set_name(absl::StrCat(socName+"-", device_ordinal()));
+
+  int64_t total_memory = 0;
+  aclrtGetDeviceInfo(device_ordinal(), ACL_DEV_ATTR_TOTAL_GLOBAL_MEM_SIZE, &total_memory);
+  desc.set_device_memory_size(total_memory);
+
+  // Set device vendor
+  desc.set_device_vendor("Huawei");
+
+  // Set other default values
+  int64_t aicore_num = 0;
+  aclrtGetDeviceInfo(device_ordinal(), ACL_DEV_ATTR_AICORE_CORE_NUM, &aicore_num);
+  desc.set_core_count(aicore_num);
+
+  int64_t l2_size = 0;
+  aclrtGetDeviceInfo(device_ordinal(), ACL_DEV_ATTR_L2_CACHE_SIZE, &l2_size);
+  desc.set_l2_cache_size(l2_size);
+
+
+  return std::make_unique<DeviceDescription>(std::move(desc));
 }
 
 absl::StatusOr<std::unique_ptr<MemoryAllocation>> AscendExecutor::HostMemoryAllocate(

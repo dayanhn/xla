@@ -107,7 +107,7 @@ AscendPlatform::DescriptionForDevice(int ordinal) const {
   }
   
   description->set_core_count(aicore_num);
-  description->set_shared_memory_per_block_optin(64 * 1024);
+  
   return std::move(description);
 }
 
