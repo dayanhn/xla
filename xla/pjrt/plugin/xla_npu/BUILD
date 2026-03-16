@@ -65,5 +65,7 @@ cc_binary(
         ":xla_npu_pjrt_client",
         "@com_google_absl//absl/status:statusor",
         "//xla/stream_executor/ascend:ascend_platform",
+        "//xla/service/ascend:ascend_compiler",
+        "//xla/service/ascend:ascend_executable",
     ],
 )

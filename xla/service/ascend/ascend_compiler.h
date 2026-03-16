@@ -16,30 +16,45 @@ limitations under the License.
 #ifndef XLA_SERVICE_ASCEND_ASCEND_COMPILER_H_
 #define XLA_SERVICE_ASCEND_ASCEND_COMPILER_H_
 
-#include "xla/service/gpu/gpu_compiler.h"
-#include "xla/stream_executor/ascend/ascend_platform_id.h"
+#include "xla/service/llvm_compiler.h"
 
 namespace xla {
 
-// Compiler for Ascend devices.
-class AscendCompiler : public GpuCompiler {
+// An Ascend compiler implementation based on LLVMCompiler.
+class AscendCompiler : public LLVMCompiler {
  public:
   AscendCompiler();
-  ~AscendCompiler() override;
+  ~AscendCompiler() override = default;
 
-  // GpuCompiler interface
-  std::unique_ptr<HloModule> RunHloPasses(
-      std::unique_ptr<HloModule> module,
-      se::StreamExecutor* stream_executor,
+  absl::StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
+      std::unique_ptr<HloModule> hlo_module,
+      std::vector<se::StreamExecutor*> stream_execs,
       const CompileOptions& options) override;
 
-  std::unique_ptr<Executable> CreateExecutable(
-      std::unique_ptr<HloModule> module,
-      se::StreamExecutor* stream_executor) override;
+  absl::StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
+      std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
+      const CompileOptions& options) override;
+
+  absl::StatusOr<std::unique_ptr<Executable>> RunBackend(
+      std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
+      const CompileOptions& options) override;
+
+  absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
+  CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
+                     const AotCompilationOptions& options) override;
 
   se::Platform::Id PlatformId() const override;
 
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override;
+
+  absl::StatusOr<std::unique_ptr<CompiledModule>> Export(
+      Executable* executable) override;
+
+  absl::StatusOr<std::unique_ptr<CompiledModule>> LoadAotCompilationResult(
+      const std::string& serialized_aot_result) override;
+
+  std::vector<std::string> GetLLVMCommandLineOptions(
+      const DebugOptions& debug_options) const;
 };
 
 }  // namespace xla

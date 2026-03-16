@@ -20,8 +20,8 @@ limitations under the License.
 namespace xla {
 
 static bool InitModule() {
-  RegisterCompilerFactory(stream_executor::ascend::kAscendPlatformId,
-                         []() {
+  Compiler::RegisterCompilerFactory(stream_executor::ascend::kAscendPlatformId,
+                         []() -> absl::StatusOr<std::unique_ptr<Compiler>> {
                            return std::make_unique<AscendCompiler>();
                          });
   return true;

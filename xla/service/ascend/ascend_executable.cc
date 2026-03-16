@@ -20,19 +20,37 @@ namespace xla {
 AscendExecutable::AscendExecutable(
     std::unique_ptr<HloModule> hlo_module,
     se::StreamExecutor* stream_executor)
-    : GpuExecutable(std::move(hlo_module), stream_executor) {
+    : Executable(std::move(hlo_module)),
+      stream_executor_(stream_executor) {
 }
 
 AscendExecutable::~AscendExecutable() {
 }
 
+absl::StatusOr<std::unique_ptr<AscendExecutable>> AscendExecutable::Create(
+    std::unique_ptr<HloModule> hlo_module,
+    se::StreamExecutor* stream_executor) {
+  return std::make_unique<AscendExecutable>(
+      std::move(hlo_module), stream_executor);
+}
+
 absl::StatusOr<ExecutionOutput> AscendExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
-    std::vector<ExecutionInput> arguments,
-    HloExecutionProfile* hlo_execution_profile) {
-  // TODO: Implement Ascend-specific execution logic
-  return GpuExecutable::ExecuteAsyncOnStream(
-      run_options, std::move(arguments), hlo_execution_profile);
+    std::vector<ExecutionInput> arguments) {
+  // TODO: Implement Ascend-specific execution
+  return absl::UnimplementedError("ExecuteAsyncOnStream not implemented for Ascend");
+}
+
+int64_t AscendExecutable::SizeOfGeneratedCodeInBytes() const {
+  // TODO: Implement Ascend-specific code size calculation
+  return 0;
+}
+
+absl::Span<const BufferAllocation* absl_nonnull const> AscendExecutable::GetAllocations()
+    const {
+  // TODO: Implement Ascend-specific allocation retrieval
+  static std::vector<const BufferAllocation*> empty;
+  return empty;
 }
 
 }  // namespace xla

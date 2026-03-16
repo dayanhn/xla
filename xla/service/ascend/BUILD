@@ -12,44 +12,66 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
-load("//xla:opts.bzl", "xla_common_options")
-
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
+load(
+    "//xla/tsl:tsl.bzl",
+    "internal_visibility",
+)
 
 package(
-    default_visibility = ["//visibility:public"],
+    default_visibility = internal_visibility([":friends"]),
     licenses = ["notice"],
+)
+
+package_group(
+    name = "friends",
+    packages = [
+        "//xla/...",
+    ],
+)
+
+cc_library(
+    name = "ascend_executable",
+    srcs = [
+        "ascend_executable.cc",
+    ],
+    hdrs = [
+        "ascend_executable.h",
+    ],
+    tags = [
+        "ascend-only",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla/service:executable",
+        "//xla/stream_executor:stream_executor_h",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
 )
 
 cc_library(
     name = "ascend_compiler",
     srcs = [
         "ascend_compiler.cc",
-        "ascend_executable.cc",
         "ascend_compiler_registration.cc",
     ],
     hdrs = [
         "ascend_compiler.h",
-        "ascend_executable.h",
     ],
+    tags = [
+        "ascend-only",
+    ],
+    visibility = ["//visibility:public"],
     deps = [
-        "//xla:literal",
-        "//xla:shape_util",
-        "//xla:statusor",
-        "//xla:types",
-        "//xla:util",
+        ":ascend_executable",
         "//xla/service:compiler",
         "//xla/service:executable",
-        "//xla/service:hlo",
-        "//xla/service/gpu:gpu_compiler",
-        "//xla/service/gpu:gpu_executable",
-        "//xla/stream_executor:platform",
+        "//xla/service:hlo_cost_analysis",
+        "//xla/service:llvm_compiler",
         "//xla/stream_executor/ascend:ascend_platform_id",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/status:statusor",
     ],
-    copts = xla_common_options(),
+    alwayslink = 1,  # Registers itself with the Compiler registry.
 )
