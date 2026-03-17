@@ -27,6 +27,7 @@ cc_library(
         "//xla/pjrt/c:pjrt_c_api_profiler_extension_hdrs",
         "//xla/pjrt/c:pjrt_c_api_tpu_topology_extension_hdrs",
         "//xla/pjrt/npu:se_ascend_pjrt_client",
+        "//xla/service/ascend/ffi:ascend_ffi",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status:statusor",
     ],
