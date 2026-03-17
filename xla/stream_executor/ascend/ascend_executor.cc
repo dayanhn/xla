@@ -21,6 +21,8 @@ limitations under the License.
 #include "third_party/acl/inc/acl/acl.h"
 #include "third_party/acl/inc/acl/acl_base.h"
 #include "third_party/acl/inc/acl/acl_rt.h"
+#include "xla/stream_executor/ascend/ascend_event.h"
+#include "xla/stream_executor/ascend/ascend_stream.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace stream_executor::ascend {
@@ -80,7 +82,9 @@ absl::Status AscendExecutor::SynchronousMemcpy(void* host_dst,
 }
 
 void AscendExecutor::DeallocateStream(Stream* stream) {
-  // TODO: Implement stream deallocation
+  AscendStream* ascend_stream = static_cast<AscendStream*>(stream);
+  absl::MutexLock l(&alive_gpu_streams_mu_);
+  alive_gpu_streams_.erase(ascend_stream->stream_handle());
 }
 
 absl::Status AscendExecutor::EnablePeerAccessTo(StreamExecutor* other) {
@@ -155,14 +159,15 @@ dnn::DnnSupport* AscendExecutor::AsDnn() {
 }
 
 absl::StatusOr<std::unique_ptr<Event>> AscendExecutor::CreateEvent() {
-  // TODO: Implement event creation
-  return absl::UnimplementedError("CreateEvent not implemented");
+  return AscendEvent::Create(this, /*allow_timing=*/false);
 }
 
 absl::StatusOr<std::unique_ptr<Stream>> AscendExecutor::CreateStream(
     std::optional<std::variant<StreamPriority, int>> priority) {
-  // TODO: Implement stream creation
-  return absl::UnimplementedError("CreateStream not implemented");
+  TF_ASSIGN_OR_RETURN(auto stream, AscendStream::Create(this, priority));
+  absl::MutexLock l(&alive_gpu_streams_mu_);
+  alive_gpu_streams_[stream->stream_handle()] = stream.get();
+  return std::move(stream);
 }
 
 absl::StatusOr<std::unique_ptr<CommandBuffer>> AscendExecutor::CreateCommandBuffer(

@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/fft.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/dnn.h"
 
 namespace stream_executor::ascend {
@@ -102,6 +103,12 @@ class AscendExecutor : public StreamExecutorCommon {
  private:
   // The device ordinal value that this executor was initialized with;
   int device_ordinal_;
+  
+  // Mutex to protect access to alive_gpu_streams_.
+  absl::Mutex alive_gpu_streams_mu_;
+  
+  // Map from stream handle to stream pointer for all alive streams.
+  std::unordered_map<void*, Stream*> alive_gpu_streams_ GUARDED_BY(alive_gpu_streams_mu_);
 };
 
 }  // namespace stream_executor::ascend
