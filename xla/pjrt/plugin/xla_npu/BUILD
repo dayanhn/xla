@@ -59,6 +59,9 @@ cc_binary(
         "xla_npu_pjrt_client_test.cc",
     ],
     deps = [
+        "//xla:error_spec",
+        "//xla:literal",
+        "//xla:literal_util",
         ":npu_client_options",
         ":xla_npu_allocator_config",
         "//xla/pjrt:pjrt_client",

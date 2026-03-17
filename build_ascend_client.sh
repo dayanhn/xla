@@ -13,4 +13,4 @@ echo "Building Ascend PJRT client..."
 ./bazel-7.4.1-linux-arm64 build --compilation_mode=dbg --copt=-g --copt=-O0 --strip=never --action_env=ASCEND_TOOLKIT_HOME=$ASCEND_TOOLKIT_HOME   --linkopt=-L$ASCEND_TOOLKIT_HOME/lib64 --linkopt=-Wl,-rpath,$ASCEND_TOOLKIT_HOME/lib64 --linkopt=-lascendcl --linkopt=-lnnopbase --linkopt=-lopapi_nn //xla/pjrt/plugin/xla_npu:xla_npu_pjrt_client_test
 
 echo "Build completed successfully!"
-./bazel-bin/xla/pjrt/plugin/xla_npu/xla_npu_pjrt_client_test
+./bazel-bin/xla/pjrt/plugin/xla_npu/xla_npu_pjrt_client_test /data3/zhongzhw/code/uni_ai/google/xla/xla/pjrt/plugin/xla_npu/test_ffi_hlo.mlir
