@@ -1,12 +1,12 @@
 /**
-* @file rt_error_codes.h
-*
-* Copyright (C) Huawei Technologies Co., Ltd. 2019-2020. All Rights Reserved.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-*/
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef __INC_EXTERNEL_RT_ERROR_CODES_H__
 #define __INC_EXTERNEL_RT_ERROR_CODES_H__
@@ -55,9 +55,11 @@ extern "C" {
 #define  ACL_ERROR_STREAM_TASK_GROUP_INTR        107034 // task group interrupted
 #define  ACL_ERROR_RT_TASK_ABORT_STOP            107035 // device task aborting stop before post process
 #define  ACL_ERROR_RT_STREAM_CAPTURE_UNMATCHED   107036 // the capture was not initiated in this stream
+#define  ACL_ERROR_RT_MODEL_RUNNING              107037 // the model is still running
+#define  ACL_ERROR_RT_STREAM_CAPTURE_WRONG_THREAD 107038 // the thread of end capture and begin capture is not same
 
 #define  ACL_ERROR_RT_FEATURE_NOT_SUPPORT        207000 // feature not support
-#define  ACL_ERROR_RT_MEMORY_ALLOCATION          207001 // memory allocation error
+#define  ACL_ERROR_RT_MEMORY_ALLOCATION          207001 // memory allocation error, only used by out of memory
 #define  ACL_ERROR_RT_MEMORY_FREE                207002 // memory free error
 #define  ACL_ERROR_RT_AICORE_OVER_FLOW           207003 // aicore over flow
 #define  ACL_ERROR_RT_NO_DEVICE                  207004 // no device
@@ -75,7 +77,7 @@ extern "C" {
 #define  ACL_ERROR_RT_AIVEC_OVER_FLOW            207016 // aivec over flow
 #define  ACL_ERROR_RT_OVER_FLOW                  207017 // common over flow
 #define  ACL_ERROR_RT_DEVICE_OOM                 207018 // device oom
-#define  ACL_ERROR_RT_FEATURE_NOT_SUPPORT_UPDATE_OP 207019 // not support to update this op
+#define  ACL_ERROR_RT_FEATURE_NOT_SUPPORT_UPDATE_OP 207019 // not support to update this op 
 
 #define  ACL_ERROR_RT_INTERNAL_ERROR             507000 // runtime internal error
 #define  ACL_ERROR_RT_TS_ERROR                   507001 // ts internel error
@@ -141,11 +143,13 @@ extern "C" {
 #define  ACL_ERROR_RT_AICPU_INFO_LOAD_RSP_ERR    507902 // aicpu info load response error
 #define  ACL_ERROR_RT_STREAM_CAPTURE_INVALIDATED 507903 // capture status is invalidated
 #define  ACL_ERROR_RT_COMM_OP_RETRY_FAIL         507904 // hccl operation retry failed
-
-#define ACLNN_CLEAR_DEVICE_STATE_FAIL            574007  // voltage recovery fail
-#define ACLNN_STRESS_BIT_FAIL                    574006
-#define ACLNN_STRESS_LOW_BIT_FAIL                574008
-#define ACLNN_STRESS_HIGH_BIT_FAIL               574009
+#define  ACL_ERROR_SNAPSHOT_LOCK_TIMEOUT         507905 // snapshot lock timeout
+#define  ACL_ERROR_SNAPSHOT_LOCK_FAILED          507906 // snapshot lock failed
+#define  ACL_ERROR_SNAPSHOT_UNLOCK_FAILED        507907 // snapshot unlock failed
+#define  ACL_ERROR_SNAPSHOT_BACKUP_FAILED        507908 // snapshot backup failed
+#define  ACL_ERROR_SNAPSHOT_RESTORE_FAILED       507909 // snapshot restore failed
+#define  ACL_ERROR_HOST_MEMORY_ALREADY_REGISTERED  507910 // host memory range already registered
+#define  ACL_ERROR_HOST_MEMORY_NOT_REGISTERED      507911 // host memory has not been registered
 
 #ifdef __cplusplus
 }

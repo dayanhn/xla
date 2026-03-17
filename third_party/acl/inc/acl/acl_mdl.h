@@ -54,7 +54,6 @@ typedef struct aclmdlAIPP aclmdlAIPP;
 typedef struct aclAippExtendInfo aclAippExtendInfo;
 typedef struct aclmdlConfigHandle aclmdlConfigHandle;
 typedef struct aclmdlExecConfigHandle aclmdlExecConfigHandle;
-typedef void *aclmdlRI;
 
 typedef enum {
     ACL_YUV420SP_U8 = 1,
@@ -208,28 +207,16 @@ typedef struct aclAippInfo {
 } aclAippInfo;
 
 typedef struct aclmdlExeOMDesc {
-    size_t workSize;
-    size_t weightSize;
-    size_t modelDescSize;
-    size_t kernelSize;
-    size_t kernelArgsSize;
-    size_t staticTaskSize;
-    size_t dynamicTaskSize;
-    size_t fifoTaskSize;
-    size_t reserved[8];
+  size_t workSize;
+  size_t weightSize;
+  size_t modelDescSize;
+  size_t kernelSize;
+  size_t kernelArgsSize;
+  size_t staticTaskSize;
+  size_t dynamicTaskSize;
+  size_t fifoTaskSize;
+  size_t reserved[8];
 } aclmdlExeOMDesc;
-
-typedef enum {
-    ACL_MODEL_RI_CAPTURE_MODE_GLOBAL = 0,
-    ACL_MODEL_RI_CAPTURE_MODE_THREAD_LOCAL,
-    ACL_MODEL_RI_CAPTURE_MODE_RELAXED,
-} aclmdlRICaptureMode;
-
-typedef enum {
-    ACL_MODEL_RI_CAPTURE_STATUS_NONE = 0,
-    ACL_MODEL_RI_CAPTURE_STATUS_ACTIVE,
-    ACL_MODEL_RI_CAPTURE_STATUS_INVALIDATED,
-} aclmdlRICaptureStatus;
 
 /**
  * @ingroup AscendCL
@@ -663,39 +650,6 @@ ACL_FUNC_VISIBILITY aclError aclmdlExecute(uint32_t modelId, const aclmdlDataset
  */
 ACL_FUNC_VISIBILITY aclError aclmdlExecuteV2(uint32_t modelId, const aclmdlDataset *input, aclmdlDataset *output,
                                              aclrtStream stream, const aclmdlExecConfigHandle *handle);
-
-/**
- * @ingroup AscendCL
- * @brief Execute model asynchronous inference until the inference result is returned
- *
- * @param  modelRI [IN]   runtime instance of the model to perform inference
- * @param  stream [IN]    stream
- *
- * @retval ACL_SUCCESS The function is successfully executed.
- * @retval OtherValues Failure
- */
-ACL_FUNC_VISIBILITY aclError aclmdlRIExecuteAsync(aclmdlRI modelRI, aclrtStream stream);
-
-/**
- * @ingroup AscendCL
- * @brief unload model with model id
- *
- * @param  modelId [IN]   model id to be unloaded
- * @retval ACL_ERROR_NONE The function is successfully executed.
- * @retval OtherValues Failure
- */
-ACL_FUNC_VISIBILITY aclError aclmdlUnload(uint32_t modelId);
-
-/**
- * @ingroup AscendCL
- * @brief destroy the model
- *
- * @param  modelRI [IN]   runtime instance of the model to be destroyed
- *
- * @retval ACL_SUCCESS The function is successfully executed.
- * @retval OtherValues Failure
- */
-ACL_FUNC_VISIBILITY aclError aclmdlRIDestroy(aclmdlRI modelRI);
 
 /**
  * @ingroup AscendCL
@@ -1449,35 +1403,6 @@ ACL_FUNC_VISIBILITY aclError aclmdlCreateAndGetOpDesc(uint32_t deviceId, uint32_
 
 /**
  * @ingroup AscendCL
- * @brief init dump
- *
- * @retval ACL_SUCCESS The function is successfully executed.
- * @retval OtherValues Failure
-*/
-ACL_FUNC_VISIBILITY aclError aclmdlInitDump();
-
-/**
- * @ingroup AscendCL
- * @brief set param of dump
- *
- * @param dumpCfgPath [IN]   the path of dump config
- *
- * @retval ACL_SUCCESS The function is successfully executed.
- * @retval OtherValues Failure
-*/
-ACL_FUNC_VISIBILITY aclError aclmdlSetDump(const char *dumpCfgPath);
-
-/**
- * @ingroup AscendCL
- * @brief finalize dump.
- *
- * @retval ACL_SUCCESS The function is successfully executed.
- * @retval OtherValues Failure
-*/
-ACL_FUNC_VISIBILITY aclError aclmdlFinalizeDump();
-
-/**
- * @ingroup AscendCL
  * @brief load model with config
  *
  * @param handle [IN]    pointer to model config handle
@@ -1541,6 +1466,21 @@ ACL_FUNC_VISIBILITY aclError aclmdlSetConfigOpt(aclmdlConfigHandle *handle, aclm
 ACL_FUNC_VISIBILITY aclError aclmdlSetExecConfigOpt(aclmdlExecConfigHandle *handle, aclmdlExecConfigAttr attr,
                                                     const void *attrValue, size_t valueSize);
 
+                                                    /**
+ * @ingroup AscendCL
+ * @brief set config for model load
+ *
+ * @param handle [IN]    pointer to model config handle
+ * @param weightFileName [IN]  external weight file name
+ * @param devPtr [IN]  a pointer to device memory. User should copy external weight data here
+ * @param size [IN]  memory size of devPtr, need 32-byte alignment
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclmdlSetExternalWeightAddress(aclmdlConfigHandle *handle, const char *weightFileName,
+                                                            void *devPtr, size_t size);
+
 /**
  * @ingroup AscendCL
  * @brief get real tensor name from modelDesc
@@ -1562,94 +1502,6 @@ ACL_FUNC_VISIBILITY const char *aclmdlGetTensorRealName(const aclmdlDesc *modelD
  * @retval ACL_ERROR_INVALID_FILE Failure
  */
 ACL_FUNC_VISIBILITY aclError aclRecoverAllHcclTasks(int32_t deviceId);
-
-/**
- * @ingroup AscendCL
- * @brief begin capture
- * @param stream [IN] set the stream to be captured
- * @param mode [IN] capture mode
- * @retval ACL_SUCCESS The function is successfully executed.
- * @retval OtherValues Failure
- */
-ACL_FUNC_VISIBILITY aclError aclmdlRICaptureBegin(aclrtStream stream, aclmdlRICaptureMode mode);
-
-/**
- * @ingroup AscendCL
- * @brief obtain the capture information of a stream
- * @param stream [IN] stream to be queried
- * @param status [OUT] return the stream status
- * @param modelRI [OUT] return the model runtime instance
- * @retval ACL_SUCCESS The function is successfully executed.
- * @retval OtherValues Failure
- */
-ACL_FUNC_VISIBILITY aclError aclmdlRICaptureGetInfo(aclrtStream stream, aclmdlRICaptureStatus *status, aclmdlRI *modelRI);
-
-/**
- * @ingroup AscendCL
- * @brief end the stream capture and obtain the corresponding model
- * @param stream [IN] stream to be ended
- * @param modelRI [OUT] return the model runtime instance
- * @retval ACL_SUCCESS The function is successfully executed.
- * @retval OtherValues Failure
- */
-ACL_FUNC_VISIBILITY aclError aclmdlRICaptureEnd(aclrtStream stream, aclmdlRI *modelRI);
-
-/**
- * @ingroup AscendCL
- * @brief print model information
- * @param modelRI [IN] model runtime instance
- * @retval ACL_SUCCESS The function is successfully executed.
- * @retval OtherValues Failure
- */
-ACL_FUNC_VISIBILITY aclError aclmdlRIDebugPrint(aclmdlRI modelRI);
-
-/**
- * @ingroup AscendCL
- * @brief the start interface of the task group
- * @param stream [IN] capture stream
- * @retval ACL_SUCCESS The function is successfully executed.
- * @retval OtherValues Failure
- */
-ACL_FUNC_VISIBILITY aclError aclmdlRICaptureTaskGrpBegin(aclrtStream stream);
-
-/**
- * @ingroup AscendCL
- * @brief the end interface of the task group
- * @param stream [IN] capture stream
- * @param handle [OUT] task group handle
- * @retval ACL_SUCCESS The function is successfully executed.
- * @retval OtherValues Failure
- */
-ACL_FUNC_VISIBILITY aclError aclmdlRICaptureTaskGrpEnd(aclrtStream stream, aclrtTaskGrp *handle);
-
-/**
- * @ingroup AscendCL
- * @brief begin to update the task group specified by the handle
- * @param stream [IN] specify the stream used for task update
- * @param handle [IN] task group handle
- * @retval ACL_SUCCESS The function is successfully executed.
- * @retval OtherValues Failure
- */
-ACL_FUNC_VISIBILITY aclError aclmdlRICaptureTaskUpdateBegin(aclrtStream stream, aclrtTaskGrp handle);
-
-/**
- * @ingroup AscendCL
- * @brief end the update of the task
- * @param stream [IN] specify the stream used for task update
- * @retval ACL_SUCCESS The function is successfully executed.
- * @retval OtherValues Failure
- */
-ACL_FUNC_VISIBILITY aclError aclmdlRICaptureTaskUpdateEnd(aclrtStream stream);
-
-/**
- * @ingroup AscendCL
- * @brief dump the json content of the model
- * @param modelRI [IN] model runtime instance
- * @param path [IN] json file path
- * @retval ACL_SUCCESS The function is successfully executed.
- * @retval OtherValues Failure
- */
-ACL_FUNC_VISIBILITY aclError aclmdlRIDebugJsonPrint(aclmdlRI modelRI, const char* path);
 
 #ifdef __cplusplus
 }

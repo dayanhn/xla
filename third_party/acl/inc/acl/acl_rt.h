@@ -1,12 +1,12 @@
 /**
-* @file acl_rt.h
-*
-* Copyright (c) Huawei Technologies Co., Ltd. 2019-2020. All rights reserved.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-*/
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef INC_EXTERNAL_ACL_ACL_RT_H_
 #define INC_EXTERNAL_ACL_ACL_RT_H_
@@ -14,27 +14,29 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "acl_base.h"
+#include "acl_rt_allocator.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// Current version is 1.15.0
+// Current version is 1.16.0
 #define ACL_MAJOR_VERSION              1
-#define ACL_MINOR_VERSION              15
+#define ACL_MINOR_VERSION              16
 #define ACL_PATCH_VERSION              0
 #define ACL_EVENT_SYNC                    0x00000001U
 #define ACL_EVENT_CAPTURE_STREAM_PROGRESS 0x00000002U
 #define ACL_EVENT_TIME_LINE               0x00000008U
+#define ACL_EVENT_DEVICE_USE_ONLY         0x00000010U
 #define ACL_EVENT_EXTERNAL                0x00000020U
 #define ACL_EVENT_IPC                     0x00000040U
-
 // for create stream
-#define ACL_STREAM_FAST_LAUNCH  0x00000001U
-#define ACL_STREAM_FAST_SYNC    0x00000002U
-#define ACL_STREAM_PERSISTENT   0x00000004U
-#define ACL_STREAM_HUGE         0x00000008U
-#define ACL_STREAM_CPU_SCHEDULE 0x00000010U
+#define ACL_STREAM_FAST_LAUNCH      0x00000001U
+#define ACL_STREAM_FAST_SYNC        0x00000002U
+#define ACL_STREAM_PERSISTENT       0x00000004U
+#define ACL_STREAM_HUGE             0x00000008U
+#define ACL_STREAM_CPU_SCHEDULE     0x00000010U
+#define ACL_STREAM_DEVICE_USE_ONLY  0x00000020U
 
 #define ACL_STREAM_WAIT_VALUE_GEQ 0x00000000U
 #define ACL_STREAM_WAIT_VALUE_EQ  0x00000001U
@@ -44,6 +46,10 @@ extern "C" {
 #define ACL_CONTINUE_ON_FAILURE 0x00000000U
 #define ACL_STOP_ON_FAILURE     0x00000001U
 
+// for notify | for create notify
+#define ACL_NOTIFY_DEFAULT          0x00000000U
+#define ACL_NOTIFY_DEVICE_USE_ONLY  0x00000001U
+
 // for device get capability
 #define ACL_DEV_FEATURE_SUPPORT     0x00000001
 #define ACL_DEV_FEATURE_NOT_SUPPORT 0x00000000
@@ -51,7 +57,6 @@ extern "C" {
 #define ACL_RT_NOTIFY_EXPORT_FLAG_DEFAULT                0x0UL
 #define ACL_RT_NOTIFY_EXPORT_FLAG_DISABLE_PID_VALIDATION 0x02UL
 
-#define MAX_MODULE_NUM 128
 #define ACL_RT_NOTIFY_IMPORT_FLAG_DEFAULT            0x0UL
 #define ACL_RT_NOTIFY_IMPORT_FLAG_ENABLE_PEER_ACCESS 0x02UL
 
@@ -67,11 +72,9 @@ extern "C" {
 #define ACL_HOST_REG_MAPPED 0x2UL
 #define ACL_HOST_REG_PINNED 0X10000000UL
 
-#define ACL_VALUE_WAIT_EQ                0x1
+#define ACL_RT_MAX_RECORD_PA_NUM_PER_DEV 20U
 
-#define ACL_IPC_EVENT_HANDLE_SIZE        64U
-
-constexpr int32_t DEVICE_UTILIZATION_NOT_SUPPORT = -1;
+#define ACL_IPC_EVENT_HANDLE_SIZE 64U
 
 typedef enum aclrtRunMode {
     ACL_DEVICE,
@@ -165,6 +168,12 @@ typedef struct {
     size_t numAttrs;
 } aclrtMallocConfig;
 
+typedef struct {
+    uint32_t sdid;  // whitelisted 
+    int32_t *pid;
+    size_t num;
+} aclrtServerPid;
+
 typedef enum aclrtMemAttr {
     ACL_DDR_MEM,
     ACL_HBM_MEM,
@@ -178,7 +187,34 @@ typedef enum aclrtMemAttr {
     ACL_HBM_MEM_P2P_NORMAL,
     ACL_HBM_MEM_HUGE1G,
     ACL_HBM_MEM_P2P_HUGE1G,
+    ACL_MEM_NORMAL,
+    ACL_MEM_HUGE,
+    ACL_MEM_HUGE1G,
+    ACL_MEM_P2P_NORMAL,
+    ACL_MEM_P2P_HUGE,
+    ACL_MEM_P2P_HUGE1G,
 } aclrtMemAttr;
+
+enum aclrtMemPgType {
+    NORMAL_PAGE_TYPE = 0U,
+    HUGE_PAGE_TYPE,
+    HUGE1G_PAGE_TYPE,
+};
+
+enum aclrtMemType {
+    HBM_TYPE = 0U,
+    DDR_TYPE,
+    P2P_HBM_TYPE,
+    P2P_DDR_TYPE,
+};
+
+// for ACL_RT_IPC_MEM_ATTR_ACCESS_LINK value
+#define ACL_RT_IPC_MEM_ATTR_ACCESS_LINK_SIO 0
+#define ACL_RT_IPC_MEM_ATTR_ACCESS_LINK_HCCS 1
+
+typedef enum {
+    ACL_RT_IPC_MEM_ATTR_ACCESS_LINK,
+} aclrtIpcMemAttrType;
 
 typedef enum aclrtGroupAttr {
     ACL_GROUP_AICORE_INT,
@@ -227,6 +263,7 @@ typedef enum aclrtMemLocationType {
     ACL_MEM_LOCATION_TYPE_HOST = 0, /**< reserved enum, current version not support */
     ACL_MEM_LOCATION_TYPE_DEVICE,
     ACL_MEM_LOCATION_TYPE_UNREGISTERED,
+    ACL_MEM_LOCATION_TYPE_HOST_NUMA = 4, /*alloc host memeory via NUMA ID */
 } aclrtMemLocationType;
 
 typedef struct aclrtMemLocation {
@@ -254,6 +291,15 @@ typedef enum aclrtMemAllocationType {
 typedef enum aclrtMemHandleType {
     ACL_MEM_HANDLE_TYPE_NONE = 0,
 } aclrtMemHandleType;
+
+typedef enum aclrtMemSharedHandleType {
+    ACL_MEM_SHARE_HANDLE_TYPE_DEFAULT = 0x1,
+    ACL_MEM_SHARE_HANDLE_TYPE_FABRIC = 0x2,
+} aclrtMemSharedHandleType;
+
+typedef struct aclrtMemFabricHandle { 
+    uint8_t data[128];
+} aclrtMemFabricHandle;
 
 typedef struct aclrtPhysicalMemProp {
     aclrtMemHandleType handleType;
@@ -283,15 +329,25 @@ typedef enum aclrtDeviceStatus {
     ACL_RT_DEVICE_STATUS_END = 0xFFFF,
 } aclrtDeviceStatus;
 
-typedef struct aclrtUuid {
-    char bytes[16];
-} aclrtUuid;
-
 typedef void* aclrtBinary;
 typedef void* aclrtBinHandle;
 typedef void* aclrtFuncHandle;
 typedef void* aclrtArgsHandle;
 typedef void* aclrtParamHandle;
+
+typedef void *aclmdlRI;
+
+typedef enum {
+    ACL_MODEL_RI_CAPTURE_MODE_GLOBAL = 0,
+    ACL_MODEL_RI_CAPTURE_MODE_THREAD_LOCAL,
+    ACL_MODEL_RI_CAPTURE_MODE_RELAXED,
+} aclmdlRICaptureMode;
+
+typedef enum {
+    ACL_MODEL_RI_CAPTURE_STATUS_NONE = 0,
+    ACL_MODEL_RI_CAPTURE_STATUS_ACTIVE,
+    ACL_MODEL_RI_CAPTURE_STATUS_INVALIDATED,
+} aclmdlRICaptureStatus;
 
 #define MAX_MEM_UCE_INFO_ARRAY_SIZE 128
 #define UCE_INFO_RESERVED_SIZE 14
@@ -301,6 +357,40 @@ typedef struct aclrtMemUceInfo {
     size_t len;
     size_t reserved[UCE_INFO_RESERVED_SIZE];
 } aclrtMemUceInfo;
+
+typedef enum {
+    ACL_RT_NO_ERROR = 0,
+    ACL_RT_ERROR_MEMORY = 1,
+    ACL_RT_ERROR_L2 = 2,
+    ACL_RT_ERROR_AICORE = 3,
+    ACL_RT_ERROR_LINK = 4,
+    ACL_RT_ERROR_OTHERS = 0xFFFF,
+} aclrtErrorType;
+
+typedef enum aclrtAicoreErrorType {
+    ACL_RT_AICORE_ERROR_UNKNOWN,
+    ACL_RT_AICORE_ERROR_SW,
+    ACL_RT_AICORE_ERROR_HW_LOCAL,
+} aclrtAicoreErrorType;
+
+#define ACL_RT_MEM_UCE_INFO_MAX_NUM 20
+typedef struct {
+    size_t arraySize;
+    aclrtMemUceInfo memUceInfoArray[ACL_RT_MEM_UCE_INFO_MAX_NUM];
+} aclrtMemUceInfoArray;
+
+typedef union aclrtErrorInfoDetail {
+    aclrtMemUceInfoArray uceInfo;
+    aclrtAicoreErrorType aicoreErrType;
+} aclrtErrorInfoDetail;
+
+typedef struct aclrtErrorInfo {
+    uint8_t tryRepair;
+    uint8_t hasDetail;
+    uint8_t reserved[2];
+    aclrtErrorType errorType;
+    aclrtErrorInfoDetail detail;
+} aclrtErrorInfo;
 
 typedef enum aclrtCmoType {
     ACL_RT_CMO_TYPE_PREFETCH = 0,
@@ -348,12 +438,24 @@ typedef enum {
 
 typedef enum aclrtLaunchKernelAttrId {
     ACL_RT_LAUNCH_KERNEL_ATTR_SCHEM_MODE = 1,
+    ACL_RT_LAUNCH_KERNEL_ATTR_LOCAL_MEMORY_SIZE = 2,
     ACL_RT_LAUNCH_KERNEL_ATTR_ENGINE_TYPE = 3,
-    ACL_RT_LAUNCH_KERNEL_ATTR_BLOCKDIM_OFFSET,
-    ACL_RT_LAUNCH_KERNEL_ATTR_BLOCK_TASK_PREFETCH,
-    ACL_RT_LAUNCH_KERNEL_ATTR_DATA_DUMP,
-    ACL_RT_LAUNCH_KERNEL_ATTR_TIMEOUT,
+    ACL_RT_LAUNCH_KERNEL_ATTR_BLOCKDIM_OFFSET = 4,
+    ACL_RT_LAUNCH_KERNEL_ATTR_BLOCK_TASK_PREFETCH = 5,
+    ACL_RT_LAUNCH_KERNEL_ATTR_DATA_DUMP = 6,
+    ACL_RT_LAUNCH_KERNEL_ATTR_TIMEOUT = 7,
+    // ACL_RT_LAUNCH_KERNEL_ATTR_TIMEOUT and ACL_RT_LAUNCH_KERNEL_ATTR_TIMEOUT_US cannot be carried at the same time
+    ACL_RT_LAUNCH_KERNEL_ATTR_TIMEOUT_US = 8,
 } aclrtLaunchKernelAttrId;
+
+/**
+ * @ingroup rts_kernel
+ * @brief kernel launch option timeout value
+ */
+typedef struct {
+    uint32_t timeoutLow;  // low  32bit
+    uint32_t timeoutHigh; // high 32bit
+} aclrtTimeoutUs;
 
 typedef union aclrtLaunchKernelAttrValue {
     uint8_t schemMode;
@@ -362,7 +464,8 @@ typedef union aclrtLaunchKernelAttrValue {
     uint32_t blockDimOffset;
     uint8_t isBlockTaskPrefetch;
     uint8_t isDataDump;
-    uint16_t timeout;
+    uint16_t timeout;   // unit: s
+    aclrtTimeoutUs timeoutUs; // unit: us
     uint32_t rsv[4];
 } aclrtLaunchKernelAttrValue;
 
@@ -380,7 +483,7 @@ typedef enum {
     ACL_STREAM_ATTR_FAILURE_MODE         = 1,
     ACL_STREAM_ATTR_FLOAT_OVERFLOW_CHECK = 2,
     ACL_STREAM_ATTR_USER_CUSTOM_TAG      = 3,
-    ACL_STREAM_ATTR_CACHE_OP_IFNO        = 4,
+    ACL_STREAM_ATTR_CACHE_OP_INFO        = 4,
 } aclrtStreamAttr;
 
 typedef union {
@@ -392,23 +495,28 @@ typedef union {
 } aclrtStreamAttrValue;
 
 typedef enum {
-    ACL_DEV_ATTR_AICPU_CORE_NUM  = 1,    // aicpu number
-    ACL_DEV_ATTR_AICORE_CORE_NUM = 101,  // aicore number
-    ACL_DEV_ATTR_CUBE_CORE_NUM = 102, // cube core number
-    ACL_DEV_ATTR_VECTOR_CORE_NUM = 201,  // vector core number
-    ACL_DEV_ATTR_WARP_SIZE = 202, //  number of threads in a Warp
-    ACL_DEV_ATTR_MAX_THREAD_PER_VECTOR_CORE = 203, // maximum number of concurrent threads per Vector Core
-    ACL_DEV_ATTR_LOCAL_MEM_PER_VECTOR_CORE = 204, // maximum available local memory per Vector Core, in Bytes
-    ACL_DEV_ATTR_TOTAL_GLOBAL_MEM_SIZE = 301, // total available global memory on the Device, in Bytes
-    ACL_DEV_ATTR_L2_CACHE_SIZE = 302, // L2 Cache size, in Bytes
-    ACL_DEV_ATTR_SMP_ID = 401U, // indicates whether devices are on the same OS
-    ACL_DEV_ATTR_PHY_CHIP_ID = 402U, // physical chip id
-    ACL_DEV_ATTR_SUPER_POD_DEVIDE_ID = 403U, // super pod device id
-    ACL_DEV_ATTR_SUPER_POD_SERVER_ID = 404U, // super pod server id
-    ACL_DEV_ATTR_SUPER_POD_ID = 405U, // super pod id
-    ACL_DEV_ATTR_CUST_OP_PRIVILEGE = 406U, // indicates whether the custom operator privilege is enabled
-    ACL_DEV_ATTR_MAINBOARD_ID = 407U, // mainboard id
-    ACL_DEV_ATTR_IS_VIRTUAL = 501U, // whether it is in compute power splitting mode
+    ACL_DEV_ATTR_AICPU_CORE_NUM  = 1,    // number of AI CPUs
+
+    ACL_DEV_ATTR_AICORE_CORE_NUM = 101,  // number of AI Cores
+    ACL_DEV_ATTR_CUBE_CORE_NUM   = 102,  // number of Cube Cores
+
+    ACL_DEV_ATTR_VECTOR_CORE_NUM = 201,  // number of Vector Cores
+    ACL_DEV_ATTR_WARP_SIZE       = 202,  // number of threads in a Warp
+    ACL_DEV_ATTR_MAX_THREAD_PER_VECTOR_CORE = 203,    // maximum number of concurrent threads per Vector Core
+    ACL_DEV_ATTR_LOCAL_MEM_PER_VECTOR_CORE  = 204,    // maximum available local memory per Vector Core, in Bytes
+
+    ACL_DEV_ATTR_TOTAL_GLOBAL_MEM_SIZE = 301,    // total available global memory on the Device, in Bytes
+    ACL_DEV_ATTR_L2_CACHE_SIZE         = 302,    // L2 Cache size, in Bytes
+
+    ACL_DEV_ATTR_SMP_ID = 401U,                 // indicates whether devices are on the same OS
+    ACL_DEV_ATTR_PHY_CHIP_ID = 402U,            // physical chip id
+    ACL_DEV_ATTR_SUPER_POD_DEVIDE_ID = 403U,    // super pod device id
+    ACL_DEV_ATTR_SUPER_POD_SERVER_ID = 404U,    // super pod server id
+    ACL_DEV_ATTR_SUPER_POD_ID = 405U,           // super pod id
+    ACL_DEV_ATTR_CUST_OP_PRIVILEGE = 406U,      // indicates whether the custom operator privilege is enabled
+    ACL_DEV_ATTR_MAINBOARD_ID = 407U,           // mainborad id
+
+    ACL_DEV_ATTR_IS_VIRTUAL = 501U,             // whether it is in compute power splitting mode
 } aclrtDevAttr;
 
 typedef enum {
@@ -468,9 +576,287 @@ typedef struct {
     uint8_t rsv[16];
 } aclrtMemcpyBatchAttr;
 
-typedef struct aclrtIpcEventHandle {
-    char reserved[ACL_IPC_EVENT_HANDLE_SIZE];
-} aclrtIpcEventHandle;
+typedef struct {
+    uint32_t addrOffset;
+    uint32_t dataOffset;
+} aclrtPlaceHolderInfo;
+
+typedef struct {
+    uint8_t isAddr;
+    uint8_t valueOrAddr[8];
+    uint8_t size;
+    uint8_t rsv[6];
+} aclrtRandomParaInfo;
+
+// dropout bitmask
+typedef struct {
+    aclrtRandomParaInfo dropoutRation;
+} aclrtDropoutBitmaskInfo;
+
+// uniform distribution
+typedef struct {
+    aclrtRandomParaInfo min;
+    aclrtRandomParaInfo max;
+} aclrtUniformDisInfo;
+
+// normal distribution
+typedef struct {
+    aclrtRandomParaInfo mean;
+    aclrtRandomParaInfo stddev;
+} aclrtNormalDisInfo;
+
+typedef enum {
+    ACL_RT_RANDOM_NUM_FUNC_TYPE_DROPOUT_BITMASK = 0, // dropout bitmask
+    ACL_RT_RANDOM_NUM_FUNC_TYPE_UNIFORM_DIS, // uniform distribution
+    ACL_RT_RANDOM_NUM_FUNC_TYPE_NORMAL_DIS, // normal distribution
+    ACL_RT_RANDOM_NUM_FUNC_TYPE_TRUNCATED_NORMAL_DIS, // truncated normal distribution
+} aclrtRandomNumFuncType;
+
+typedef struct {
+    aclrtRandomNumFuncType funcType;
+    union {
+        aclrtDropoutBitmaskInfo dropoutBitmaskInfo;
+        aclrtUniformDisInfo uniformDisInfo;
+        aclrtNormalDisInfo normalDisInfo;
+    } paramInfo;
+} aclrtRandomNumFuncParaInfo;
+
+typedef struct {
+    aclDataType dataType;
+    aclrtRandomNumFuncParaInfo randomNumFuncParaInfo;
+    void *randomParaAddr;
+    void *randomResultAddr;
+    void *randomCounterAddr;
+    aclrtRandomParaInfo randomSeed;
+    aclrtRandomParaInfo randomNum;
+    uint8_t rsv[8];
+} aclrtRandomNumTaskInfo;
+
+typedef enum {
+    ACL_RT_DEVICE_TASK_ABORT_PRE = 0,
+    ACL_RT_DEVICE_TASK_ABORT_POST,
+} aclrtDeviceTaskAbortStage;
+
+typedef enum {
+    ACL_RT_UPDATE_RANDOM_TASK = 1,
+    ACL_RT_UPDATE_AIC_AIV_TASK,
+} aclrtUpdateTaskAttrId;
+
+typedef struct {
+    void *srcAddr;
+    size_t size;
+    uint32_t rsv[4];
+} aclrtRandomTaskUpdateAttr;
+
+typedef struct {
+    void *binHandle; // program handle
+    void *funcEntryAddr;
+    void *blockDimAddr;
+    uint32_t rsv[4];
+} aclrtAicAivTaskUpdateAttr;
+
+typedef union {
+    aclrtRandomTaskUpdateAttr randomTaskAttr;
+    aclrtAicAivTaskUpdateAttr aicAivTaskAttr;
+} aclrtUpdateTaskAttrVal;
+
+typedef struct {
+    aclrtUpdateTaskAttrId id;
+    aclrtUpdateTaskAttrVal val;
+} aclrtTaskUpdateInfo;
+
+typedef enum {
+    ACL_RT_DEVICE_STATE_SET_PRE = 0,
+    ACL_RT_DEVICE_STATE_SET_POST,
+    ACL_RT_DEVICE_STATE_RESET_PRE,
+    ACL_RT_DEVICE_STATE_RESET_POST,
+} aclrtDeviceState;
+
+typedef void (*aclrtDeviceStateCallback)(int32_t deviceId, aclrtDeviceState state, void *args);
+
+typedef struct aclrtUuid {
+    char bytes[16];
+} aclrtUuid;
+
+typedef enum {
+    ACL_RT_STREAM_STATE_CREATE_POST = 1,
+    ACL_RT_STREAM_STATE_DESTROY_PRE,
+} aclrtStreamState;
+
+typedef void (*aclrtStreamStateCallback)(aclrtStream stm, aclrtStreamState state, void *args);
+
+typedef int32_t (*aclrtDeviceTaskAbortCallback)(int32_t deviceId, aclrtDeviceTaskAbortStage stage, uint32_t timeout, void *args);
+
+typedef enum {
+    ACL_FUNC_ATTR_KERNEL_TYPE = 1,
+} aclrtFuncAttribute;
+
+typedef enum {
+    ACL_KERNEL_TYPE_AICORE = 0, // MIX KERNEL
+    ACL_KERNEL_TYPE_CUBE = 1,   // AI CUBE CORE
+    ACL_KERNEL_TYPE_VECTOR = 2, // AI VECTOR CORE
+    ACL_KERNEL_TYPE_MIX = 3,
+    ACL_KERNEL_TYPE_AICPU = 100,
+} aclrtKernelType;
+
+#define ACL_RT_MEM_TYPE_DEV   (0X2U)
+#define ACL_RT_MEM_TYPE_DVPP  (0X8U)
+#define ACL_RT_MEM_TYPE_RSVD  (0X10U)
+
+typedef enum {
+    ACL_RT_CNT_NOTIFY_RECORD_SET_VALUE_MODE = 0,
+    ACL_RT_CNT_NOTIFY_RECORD_ADD_MODE = 1,
+    ACL_RT_CNT_NOTIFY_RECORD_BIT_OR_MODE = 2,
+
+    ACL_RT_CNT_NOTIFY_RECORD_BIT_AND_MODE = 4,
+} aclrtCntNotifyRecordMode;
+
+typedef struct {
+    aclrtCntNotifyRecordMode mode;
+    uint32_t value;
+} aclrtCntNotifyRecordInfo;
+
+typedef enum {
+    ACL_RT_CNT_NOTIFY_WAIT_LESS_MODE = 0,
+    ACL_RT_CNT_NOTIFY_WAIT_EQUAL_MODE = 1,
+    ACL_RT_CNT_NOTIFY_WAIT_BIGGER_MODE = 2,
+    ACL_RT_CNT_NOTIFY_WAIT_BIGGER_OR_EQUAL_MODE = 3,
+    ACL_RT_CNT_NOTIFY_WAIT_EQUAL_WITH_BITMASK_MODE = 4,
+} aclrtCntNotifyWaitMode;
+
+typedef struct {
+    aclrtCntNotifyWaitMode mode;
+    uint32_t value;
+    uint32_t timeout;
+    uint8_t isClear;
+    uint8_t rsv[3];
+} aclrtCntNotifyWaitInfo;
+
+typedef enum {
+    ACL_RT_MEM_ACCESS_FLAGS_NONE = 0x0,
+    ACL_RT_MEM_ACCESS_FLAGS_READ = 0x1,
+    ACL_RT_MEM_ACCESS_FLAGS_READWRITE = 0x3,
+} aclrtMemAccessFlags;
+
+typedef struct {
+    aclrtMemAccessFlags flags;
+    aclrtMemLocation location;
+    uint8_t rsv[12];
+} aclrtMemAccessDesc;
+
+#define ACL_PKG_VERSION_MAX_SIZE       128
+#define ACL_PKG_VERSION_PARTS_MAX_SIZE 64
+
+/**
+ * @ingroup AscendCL
+ * @brief enum for CANN package name
+ */
+typedef enum aclCANNPackageName {
+    ACL_PKG_NAME_CANN,
+    ACL_PKG_NAME_RUNTIME,
+    ACL_PKG_NAME_COMPILER,
+    ACL_PKG_NAME_HCCL,
+    ACL_PKG_NAME_TOOLKIT,
+    ACL_PKG_NAME_OPP,
+    ACL_PKG_NAME_OPP_KERNEL,
+    ACL_PKG_NAME_DRIVER
+} aclCANNPackageName;
+
+/**
+ * @ingroup AscendCL
+ * @brief struct for storaging CANN package version
+ */
+typedef struct aclCANNPackageVersion {
+    char version[ACL_PKG_VERSION_MAX_SIZE];
+    char majorVersion[ACL_PKG_VERSION_PARTS_MAX_SIZE];
+    char minorVersion[ACL_PKG_VERSION_PARTS_MAX_SIZE];
+    char releaseVersion[ACL_PKG_VERSION_PARTS_MAX_SIZE];
+    char patchVersion[ACL_PKG_VERSION_PARTS_MAX_SIZE];
+    char reserved[ACL_PKG_VERSION_MAX_SIZE];
+} aclCANNPackageVersion;
+
+/**
+ * @ingroup AscendCL
+ * @brief acl initialize
+ *
+ * @par Restriction
+ * The aclInit interface can be called only once in a process
+ * @param configPath [IN]    the config path,it can be NULL
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclInit(const char *configPath);
+
+/**
+ * @ingroup AscendCL
+ * @brief acl finalize
+ *
+ * @par Restriction
+ * Need to call aclFinalize before the process exits.
+ * After calling aclFinalize,the services cannot continue to be used normally.
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclFinalize();
+
+/**
+ * @ingroup AscendCL
+ * @brief acl finalize reference
+ *
+ * @par Restriction
+ * This interface decrements the internal reference count each time it is called.
+ * Resources are only released when the reference count reaches 0.
+ * To get the current reference count, pass a valid pointer to refCount.
+ * To ignore the reference count, pass nullptr instead.
+ *
+ * @param refCount [IN/OUT] Pointer to receive current reference count after calling aclFinalizeReference; can be nullptr.
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclFinalizeReference(uint64_t *refCount);
+
+/**
+ * @ingroup AscendCL
+ * @brief get recent error message
+ *
+ * @retval null for failed
+ * @retval OtherValues success
+*/
+ACL_FUNC_VISIBILITY const char *aclGetRecentErrMsg();
+
+/**
+ * @ingroup AscendCL
+ * @brief query CANN package version
+ *
+ * @param name[IN] CANN package name
+ * @param version[OUT] CANN package version information
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval ACL_ERROR_INVALID_FILE Failure
+ */
+ACL_DEPRECATED_MESSAGE("aclsysGetCANNVersion is deprecated, use aclsysGetVersionStr and aclsysGetVersionNum instead")
+ACL_FUNC_VISIBILITY aclError aclsysGetCANNVersion(aclCANNPackageName name, aclCANNPackageVersion *version);
+
+/**
+ * @ingroup AscendCL
+ * @brief Query the CANN package version based on the package name and return it as a string.
+ *
+ * @param pkgName[IN] CANN package name
+ * @param versionStr[OUT] CANN package version number in string format
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval ACL_ERROR_INVALID_FILE Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclsysGetVersionStr(char *pkgName, char *versionStr);
+
+/**
+ * @ingroup AscendCL
+ * @brief Query the CANN package version based on the package name and return it as a number.
+ *
+ * @param pkgName[IN] CANN package name
+ * @param versionNum[OUT] CANN package version number
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval ACL_ERROR_INVALID_FILE Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclsysGetVersionNum(char *pkgName, int32_t *versionNum);
 
 /**
  * @ingroup AscendCL
@@ -818,6 +1204,37 @@ ACL_FUNC_VISIBILITY aclError aclrtResetDevice(int32_t deviceId);
 
 /**
  * @ingroup AscendCL
+ * @brief Reset the current operating Device and free resources on the device by FORCE,
+ * including the default context, the default stream,
+ * and all streams created under the default context,
+ * and synchronizes the interface.
+ * If the task under the default context or stream has not been completed,
+ * the system will wait for the task to complete before releasing it.
+ * No matter how many times you call aclrtSetDevice for the same device id,
+ * you only need to call aclrtResetDeviceForce once for resetting.
+ *
+ * @par Restriction
+ * @li The Context, Stream, and Event that are explicitly created
+ * on the device to be reset. Before resetting,
+ * it is recommended to follow the following interface calling sequence,
+ * otherwise business abnormalities may be caused.
+ * @li Interface calling sequence:
+ * call aclrtDestroyEvent interface to release Event or
+ * call aclrtDestroyStream interface to release explicitly created Stream->
+ * call aclrtDestroyContext to release explicitly created Context->
+ * call aclrtResetDeviceForce interface
+ *
+ * @param  deviceId [IN]   the device id
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ * 
+ * @see aclrtResetDevice
+ */
+ACL_FUNC_VISIBILITY aclError aclrtResetDeviceForce(int32_t deviceId);
+
+/**
+ * @ingroup AscendCL
  * @brief get target device of current thread
  *
  * @param deviceId [OUT]  the device id
@@ -861,6 +1278,15 @@ ACL_FUNC_VISIBILITY aclError aclrtSynchronizeDevice(void);
 
 /**
  * @ingroup AscendCL
+ * @brief Wait for compute device to finish and set timeout
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtSynchronizeDeviceWithTimeout(int32_t timeout);
+
+/**
+ * @ingroup AscendCL
  * @brief Set Scheduling TS
  *
  * @param tsId [IN]   the ts id
@@ -869,6 +1295,17 @@ ACL_FUNC_VISIBILITY aclError aclrtSynchronizeDevice(void);
  * @retval OtherValues Failure
  */
 ACL_FUNC_VISIBILITY aclError aclrtSetTsDevice(aclrtTsId tsId);
+
+/**
+ * @ingroup AscendCL
+ * @brief Query the comprehensive usage rate of device
+ * @param deviceId [IN] the need query's deviceId
+ * @param utilizationInfo [OUT] the usage rate of device
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtGetDeviceUtilizationRate(int32_t deviceId, aclrtUtilizationInfo *utilizationInfo);
 
 /**
  * @ingroup AscendCL
@@ -1003,30 +1440,6 @@ ACL_FUNC_VISIBILITY aclError aclrtQueryEventWaitStatus(aclrtEvent event, aclrtEv
 
 /**
  * @ingroup AscendCL
- * @brief get an interprocess handle for a previously allocated event.
- *
- * @param [in]  event  event allocated with ACL_EVENT_IPC flags
- * @param [out] handle handle for interprocess
- *
- * @retval ACL_SUCCESS The function is successfully executed.
- * @retval OtherValues Failure
- */
-ACL_FUNC_VISIBILITY aclError aclrtIpcGetEventHandle(aclrtEvent event, aclrtIpcEventHandle *handle);
-
-/**
- * @ingroup AscendCL
- * @brief opens an interprocess event handle for user in the current process.
- *
- * @param [in]  handle  interprocess handle to open
- * @param [out] event   returns the imported event
- *
- * @retval ACL_SUCCESS The function is successfully executed.
- * @retval OtherValues Failure
- */
-ACL_FUNC_VISIBILITY aclError aclrtIpcOpenEventHandle(aclrtIpcEventHandle handle, aclrtEvent *event);
-
-/**
- * @ingroup AscendCL
  * @brief Block Host Running, wait event to be complete
  *
  * @param  event [IN]   event to wait
@@ -1035,6 +1448,19 @@ ACL_FUNC_VISIBILITY aclError aclrtIpcOpenEventHandle(aclrtIpcEventHandle handle,
  * @retval OtherValues Failure
  */
 ACL_FUNC_VISIBILITY aclError aclrtSynchronizeEvent(aclrtEvent event);
+
+/**
+ * @ingroup AscendCL
+ * @brief Block Host Running, wait event to be complete
+ *
+ * @param  event [IN]   event to wait
+ * @param  timeout [IN]  timeout value,the unit is milliseconds
+ * -1 means waiting indefinitely, 0 means check whether synchronization is immediately completed
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtSynchronizeEventWithTimeout(aclrtEvent event, int32_t timeout);
 
 /**
  * @ingroup AscendCL
@@ -1050,6 +1476,20 @@ ACL_FUNC_VISIBILITY aclError aclrtSynchronizeEvent(aclrtEvent event);
  * @see aclrtCreateEvent | aclrtRecordEvent | aclrtSynchronizeStream
  */
 ACL_FUNC_VISIBILITY aclError aclrtEventElapsedTime(float *ms, aclrtEvent startEvent, aclrtEvent endEvent);
+
+/**
+ * @ingroup AscendCL
+ * @brief get syscnt when event recorded.
+ *
+ * @param event [IN]          event to be record
+ * @param timestamp [OUT]     syscnt
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ *
+ * @see aclrtCreateEvent | aclrtRecordEvent | aclrtSynchronizeStream
+ */
+ACL_FUNC_VISIBILITY aclError aclrtEventGetTimestamp(aclrtEvent event, uint64_t *timestamp);
 
 /**
  * @ingroup AscendCL
@@ -1131,6 +1571,55 @@ ACL_FUNC_VISIBILITY aclError aclrtMallocCached(void **devPtr,
 
 /**
  * @ingroup AscendCL
+ * @brief allocate device memory with config
+ *
+ * @param devPtr [OUT] pointer to allocated memory on device
+ * @param size [IN]    alloc memory size
+ * @param policy [IN]  memory alloc policy
+ * @param cfg [IN]     memory alloc config
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtMallocWithCfg(void **devPtr,
+                                                size_t size,
+                                                aclrtMemMallocPolicy policy,
+                                                aclrtMallocConfig *cfg);
+
+/**
+ * @ingroup AscendCL
+ * @brief allocate device memory for task scheduler
+ *
+ * @param devPtr [OUT] pointer to allocated memory on device
+ * @param size [IN]    alloc memory size
+ * @param policy [IN]  memory alloc policy
+ * @param cfg [IN]     memory alloc config
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtMallocForTaskScheduler(void **devPtr,
+                                                         size_t size,
+                                                         aclrtMemMallocPolicy policy,
+                                                         aclrtMallocConfig *cfg);
+
+/**
+ * @ingroup AscendCL
+ * @brief allocate host memory with config
+ *
+ * @param ptr [OUT]    pointer to allocated memory
+ * @param size [IN]    alloc memory size
+ * @param cfg [IN]     memory alloc config
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtMallocHostWithCfg(void **ptr,
+                                                    uint64_t size,
+                                                    aclrtMallocConfig *cfg);
+
+/**
+ * @ingroup AscendCL
  * @brief get memory attribute, host or device
  *
  * @param ptr [IN]         memory pointer
@@ -1143,17 +1632,82 @@ ACL_FUNC_VISIBILITY aclError aclrtPointerGetAttributes(const void *ptr,
                                                        aclrtPtrAttributes *attributes);
 
 /**
-      * @ingroup AscendCL
-      * @brief register an existing host memory range
-      *
-      * @param ptr [IN]     host pointer to memory to page-lock
-      * @param size [IN]    size in bytes of the address range to page-lock in bytes
-      * @param flag [IN]    flag for allocation request
-      *
-      * @retval ACL_SUCCESS The function is successfully executed.
-      * @retval OtherValues Failure
-      */
+ * @ingroup AscendCL
+ * @brief register host memory
+ *
+ * @param ptr [IN]     memory pointer
+ * @param size [IN]    memory size
+ * @param type [IN]    memory register type
+ * @param ptr [OUT]    pointer to allocated memory on device
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtHostRegister(void *ptr,
+                                               uint64_t size,
+                                               aclrtHostRegisterType type,
+                                               void **devPtr);
+
+/**
+ * @ingroup AscendCL
+ * @brief register an existing host memory range
+ *
+ * @param ptr [IN]     host pointer to memory to page-lock
+ * @param size [IN]    size in bytes of the address range to page-lock in bytes
+ * @param flag [IN]    flag for allocation request
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
 ACL_FUNC_VISIBILITY aclError aclrtHostRegisterV2(void *ptr, uint64_t size, uint32_t flag);
+
+/**
+ * @ingroup AscendCL
+ * @brief return device pointer of mapped host memory registered by aclrtHostRegisterV2
+ *
+ * @param pHost [IN]      requested host pointer mapping
+ * @param pDevice [OUT]   return device pointer for mapped memory
+ * @param flag [IN]       flag for extensions (must be 0 for now)
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtHostGetDevicePointer(void *pHost, void **pDevice, uint32_t flag);
+
+/**
+ * @ingroup AscendCL
+ * @brief unregister host memory
+ *
+ * @param ptr [IN]     memory pointer
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtHostUnregister(void *ptr);
+
+/**
+ * @ingroup AscendCL
+ * @brief get thread last task id
+ *
+ * @param taskId [OUT] thread task id
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtGetThreadLastTaskId(uint32_t *taskId);
+
+/**
+ * @ingroup AscendCL
+ * @brief get stream id from a stream handle
+ *
+ * @param stream [IN]    stream handle
+ * @param streamId [OUT] stream id
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtStreamGetId(aclrtStream stream,
+                                              int32_t *streamId);
 
 /**
  * @ingroup AscendCL
@@ -1217,21 +1771,6 @@ ACL_FUNC_VISIBILITY aclError aclrtMallocHost(void **hostPtr, size_t size);
 
 /**
  * @ingroup AscendCL
- * @brief allocate host memory with config
- *
- * @param  ptr [OUT]    pointer to allocated memory
- * @param  size [IN]    alloc memory size
- * @param  cfg [IN]     memory alloc config
- *
- * @retval ACL_SUCCESS The function is successfully executed.
- * @retval OtherValues Failure
- */
-ACL_FUNC_VISIBILITY aclError aclrtMallocHostWithCfg(void **ptr,
-                                                    uint64_t size,
-                                                    aclrtMallocConfig *cfg);
-
-/**
- * @ingroup AscendCL
  * @brief free host memory
  *
  * @par Function
@@ -1245,6 +1784,38 @@ ACL_FUNC_VISIBILITY aclError aclrtMallocHostWithCfg(void **ptr,
  * @see aclrtMallocHost
  */
 ACL_FUNC_VISIBILITY aclError aclrtFreeHost(void *hostPtr);
+
+/**
+ * @ingroup AscendCL
+ * @brief free device memory with device synchronize
+ *
+ * @par Function
+ *  can only free memory allocated through the aclrtMalloc interface
+ *
+ * @param  devPtr [IN]  Pointer to memory to be freed
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ *
+ * @see aclrtMalloc
+ */
+ACL_FUNC_VISIBILITY aclError aclrtFreeWithDevSync(void *devPtr);
+
+/**
+ * @ingroup AscendCL
+ * @brief free host memory with device synchronize
+ *
+ * @par Function
+ *  can only free memory allocated through the aclrtMallocHost interface
+ *
+ * @param  hostPtr [IN]   free memory pointer
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ *
+ * @see aclrtMallocHost
+ */
+ACL_FUNC_VISIBILITY aclError aclrtFreeHostWithDevSync(void *hostPtr);
 
 /**
  * @ingroup AscendCL
@@ -1318,54 +1889,6 @@ ACL_FUNC_VISIBILITY aclError aclrtMemcpyAsync(void *dst,
 
 /**
  * @ingroup AscendCL
- * @brief Performs a batch of memory copies synchronous.
- * @param [in] dsts         Array of destination pointers.
- * @param [in] destMax      Array of sizes for memcpy operations.
- * @param [in] srcs         Array of memcpy source pointers.
- * @param [in] sizes        Array of sizes for src memcpy operations.
- * @param [in] numBatches   Size of dsts, srcs and sizes arrays.
- * @param [in] attrs        Array of memcpy attributes.
- * @param [in] attrsIndexes Array of indices to specify which copies each entry in the attrs array applies to.
- *                          The attributes specified in attrs[k] will be applied to copies starting from attrsIdxs[k]
- *                          through attrsIdxs[k+1] - 1. Also attrs[numAttrs-1] will apply to copies starting from
- *                          attrsIdxs[numAttrs-1] through count - 1.
- * @param [in] numAttrs     Size of attrs and attrsIdxs arrays.
- * @param [out] failIdx     Pointer to a location to return the index of the copy where a failure was encountered.
- *                          The value will be SIZE_MAX if the error doesn't pertain to any specific copy.
- * @retval ACL_SUCCESS The function is successfully executed.
- * @retval OtherValues Failure
- */
-ACL_FUNC_VISIBILITY aclError aclrtMemcpyBatch(void **dsts, size_t *destMax, void **srcs, size_t *sizes,
-                                              size_t numBatches, aclrtMemcpyBatchAttr *attrs, size_t *attrsIndexes,
-                                              size_t numAttrs, size_t *failIdx);
-
-
-/**
- * @ingroup AscendCL
- * @brief Performs a batch of memory copies synchronous.
- * @param [in] dsts         Array of destination pointers.
- * @param [in] destMax      Array of sizes for memcpy operations.
- * @param [in] srcs         Array of memcpy source pointers.
- * @param [in] sizes        Array of sizes for src memcpy operations.
- * @param [in] numBatches   Size of dsts, srcs and sizes arrays.
- * @param [in] attrs        Array of memcpy attributes.
- * @param [in] attrsIdxs    Array of indices to specify which copies each entry in the attrs array applies to.
- *                          The attributes specified in attrs[k] will be applied to copies starting from attrsIdxs[k]
- *                          through attrsIdxs[k+1] - 1. Also attrs[numAttrs-1] will apply to copies starting from
- *                          attrsIdxs[numAttrs-1] through count - 1.
- * @param [in] numAttrs     Size of attrs and attrsIdxs arrays.
- * @param [out] failIdx     Pointer to a location to return the index of the copy where a failure was encountered.
- *                          The value will be SIZE_MAX if the error doesn't pertain to any specific copy.
- * @param [in] stream       stream handle
- * @retval ACL_SUCCESS The function is successfully executed.
- * @retval OtherValues Failure
- */
-ACL_FUNC_VISIBILITY aclError aclrtMemcpyBatchAsync(void **dsts, size_t *destMax, void **srcs, size_t *sizes,
-                                                   size_t numBatches, aclrtMemcpyBatchAttr *attrs, size_t *attrsIndexes,
-                                                   size_t numAttrs, size_t *failIndex, aclrtStream stream);
-
-/**
- * @ingroup AscendCL
  * @brief  Asynchronous memory replication between Host and Device, would
  *         be synchronous if memory is not allocated via calling acl or rts api.
  *
@@ -1396,54 +1919,6 @@ ACL_FUNC_VISIBILITY aclError aclrtMemcpyAsyncWithCondition(void *dst,
                                                            size_t count,
                                                            aclrtMemcpyKind kind,
                                                            aclrtStream stream);
-
-/**
- * @ingroup AscendCL
- * @brief Performs a batch of memory copies synchronous.
- * @param [in] dsts         Array of destination pointers.
- * @param [in] destMax      Array of sizes for memcpy operations.
- * @param [in] srcs         Array of memcpy source pointers.
- * @param [in] sizes        Array of sizes for src memcpy operations.
- * @param [in] numBatches   Size of dsts, srcs and sizes arrays.
- * @param [in] attrs        Array of memcpy attributes.
- * @param [in] attrsIndexes Array of indices to specify which copies each entry in the attrs array applies to.
- *                          The attributes specified in attrs[k] will be applied to copies starting from attrsIdxs[k]
- *                          through attrsIdxs[k+1] - 1. Also attrs[numAttrs-1] will apply to copies starting from
- *                          attrsIdxs[numAttrs-1] through count - 1.
- * @param [in] numAttrs     Size of attrs and attrsIdxs arrays.
- * @param [out] failIdx     Pointer to a location to return the index of the copy where a failure was encountered.
- *                          The value will be SIZE_MAX if the error doesn't pertain to any specific copy.
- * @retval ACL_SUCCESS The function is successfully executed.
- * @retval OtherValues Failure
- */
-ACL_FUNC_VISIBILITY aclError aclrtMemcpyBatch(void **dsts, size_t *destMax, void **srcs, size_t *sizes,
-                                              size_t numBatches, aclrtMemcpyBatchAttr *attrs, size_t *attrsIndexes,
-                                              size_t numAttrs, size_t *failIdx);
-
-
-/**
- * @ingroup AscendCL
- * @brief Performs a batch of memory copies synchronous.
- * @param [in] dsts         Array of destination pointers.
- * @param [in] destMax      Array of sizes for memcpy operations.
- * @param [in] srcs         Array of memcpy source pointers.
- * @param [in] sizes        Array of sizes for src memcpy operations.
- * @param [in] numBatches   Size of dsts, srcs and sizes arrays.
- * @param [in] attrs        Array of memcpy attributes.
- * @param [in] attrsIdxs    Array of indices to specify which copies each entry in the attrs array applies to.
- *                          The attributes specified in attrs[k] will be applied to copies starting from attrsIdxs[k]
- *                          through attrsIdxs[k+1] - 1. Also attrs[numAttrs-1] will apply to copies starting from
- *                          attrsIdxs[numAttrs-1] through count - 1.
- * @param [in] numAttrs     Size of attrs and attrsIdxs arrays.
- * @param [out] failIdx     Pointer to a location to return the index of the copy where a failure was encountered.
- *                          The value will be SIZE_MAX if the error doesn't pertain to any specific copy.
- * @param [in] stream       stream handle
- * @retval ACL_SUCCESS The function is successfully executed.
- * @retval OtherValues Failure
- */
-ACL_FUNC_VISIBILITY aclError aclrtMemcpyBatchAsync(void **dsts, size_t *destMax, void **srcs, size_t *sizes,
-                                                   size_t numBatches, aclrtMemcpyBatchAttr *attrs, size_t *attrsIndexes,
-                                                   size_t numAttrs, size_t *failIndex, aclrtStream stream);
 
 /**
  * @ingroup AscendCL
@@ -1625,6 +2100,40 @@ ACL_FUNC_VISIBILITY aclError aclrtUnmapMem(void *virPtr);
 
 /**
  * @ingroup AscendCL
+ * @brief Create config handle of stream
+ *
+ * @retval the aclrtStreamConfigHandle pointer
+ */
+ACL_FUNC_VISIBILITY aclrtStreamConfigHandle *aclrtCreateStreamConfigHandle(void);
+
+/**
+ * @ingroup AscendCL
+ * @brief Destroy config handle of model execute
+ *
+ * @param  handle [IN]  Pointer to aclrtStreamConfigHandle to be destroyed
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtDestroyStreamConfigHandle(aclrtStreamConfigHandle *handle);
+
+/**
+ * @ingroup AscendCL
+ * @brief set config for stream
+ *
+ * @param handle [OUT]    pointer to stream config handle
+ * @param attr [IN]       config attr in stream config handle to be set
+ * @param attrValue [IN]  pointer to stream config value
+ * @param valueSize [IN]  memory size of attrValue
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtSetStreamConfigOpt(aclrtStreamConfigHandle *handle, aclrtStreamConfigAttr attr,
+    const void *attrValue, size_t valueSize);
+
+/**
+ * @ingroup AscendCL
  * @brief  create stream instance
  *
  * @param  stream [OUT]   the created stream
@@ -1633,6 +2142,17 @@ ACL_FUNC_VISIBILITY aclError aclrtUnmapMem(void *virPtr);
  * @retval OtherValues Failure
  */
 ACL_FUNC_VISIBILITY aclError aclrtCreateStream(aclrtStream *stream);
+
+/**
+ * @ingroup AscendCL
+ * @brief  create stream instance
+ *
+ * @param  stream [OUT]   the created stream
+ * @param  handle [IN]   the config of stream
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtCreateStreamV2(aclrtStream *stream, const aclrtStreamConfigHandle *handle);
 
 /**
  * @ingroup AscendCL
@@ -1738,6 +2258,22 @@ ACL_FUNC_VISIBILITY aclError aclrtStreamQuery(aclrtStream stream, aclrtStreamSta
  * @retval OtherValues Failure
  */
 ACL_FUNC_VISIBILITY aclError aclrtStreamWaitEvent(aclrtStream stream, aclrtEvent event);
+
+/**
+ * @ingroup AscendCL
+ * @brief Blocks the operation of the specified Stream until
+ * the specified Event is completed or the timeout period elapses.
+ * Support for multiple streams waiting for the same event.
+ * Returns an error code if the wait times out.
+ *
+ * @param  stream [IN]   the wait stream If using the default Stream, set NULL
+ * @param  event [IN]    the event to wait
+ * @param  timeout [IN]  timeout value,the unit is milliseconds
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtStreamWaitEventWithTimeout(aclrtStream stream, aclrtEvent event, int32_t timeout);
 
 /**
  * @ingroup AscendCL
@@ -1889,14 +2425,17 @@ ACL_FUNC_VISIBILITY aclError aclrtGetMemInfo(aclrtMemAttr attr, size_t *free, si
 
 /**
  * @ingroup AscendCL
- * @brief get device infomation.
- * @param [in] deviceId the device id
- * @param [in] attr device attr
- * @param [out] value the device info
+ * @brief Query the device memory information occupied by each component.
+ *
+ * @param deviceId [IN]             the deviceId to be queried.
+ * @param memUsageInfo [IN/OUT]     the memUsageInfo used to store memory usage information.
+ * @param inputNum [IN]             the number of components that are expected to be queried.
+ * @param outputNum [IN/OUT]        the actual number of components queried.
+ *
  * @retval ACL_SUCCESS The function is successfully executed.
  * @retval OtherValues Failure
  */
-ACL_FUNC_VISIBILITY aclError aclrtGetDeviceInfo(uint32_t deviceId, aclrtDevAttr attr, int64_t *value);
+ACL_FUNC_VISIBILITY aclError aclrtGetMemUsageInfo(int32_t deviceId, aclrtMemUsageInfo *memUsageInfo, size_t inputNum, size_t *outputNum);
 
 /**
  * @ingroup AscendCL
@@ -1922,6 +2461,41 @@ ACL_FUNC_VISIBILITY aclError aclrtSetOpExecuteTimeOut(uint32_t timeout);
 
 /**
  * @ingroup AscendCL
+ * @brief Set the timeout interval for op executing
+ *
+ * @param timeout [IN]   op execute timeout, the unit is milliseconds
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtSetOpExecuteTimeOutWithMs(uint32_t timeout);
+
+/**
+ * @ingroup AscendCL
+ * @brief Set the timeout interval for op executing and get actual effective timeout
+ *
+ * @param timeout [IN]   op execute timeout, the unit is microseconds
+ * @param actualTimeout [OUT]   op actual execute timeout, the unit is microseconds
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtSetOpExecuteTimeOutV2(uint64_t timeout, uint64_t *actualTimeout);
+
+
+/**
+ * @ingroup AscendCL
+ * @brief Get the smallest timeout interval for op executing
+ *
+ * @param interval [OUT]   op actual execute timeout, the unit is microseconds
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtGetOpTimeOutInterval(uint64_t *interval);
+
+/**
+ * @ingroup AscendCL
  * @brief enable or disable overflow switch on some stream
  * @param stream [IN]   set overflow switch on this stream
  * @param flag [IN]  0 : disable 1 : enable
@@ -1944,18 +2518,6 @@ ACL_FUNC_VISIBILITY aclError aclrtGetStreamOverflowSwitch(aclrtStream stream, ui
 
 /**
  * @ingroup AscendCL
- * @brief Query the comprehensive usage rate of device
- * @param deviceId [IN] the need query's deviceId
- * @param utilizationInfo [IN] the need query's device unit switch
- * @param utilizationInfo [OUT] the usage rate of device
- *
- * @retval ACL_SUCCESS The function is successfully executed.
- * @retval OtherValues Failure
- */
-ACL_FUNC_VISIBILITY aclError aclrtGetDeviceUtilizationRate(int32_t deviceId, aclrtUtilizationInfo *utilizationInfo);
-
-/**
- * @ingroup AscendCL
  * @brief set saturation mode
  * @param mode [IN]   target saturation mode
  *
@@ -1963,6 +2525,16 @@ ACL_FUNC_VISIBILITY aclError aclrtGetDeviceUtilizationRate(int32_t deviceId, acl
  * @retval OtherValues Failure
  */
 ACL_FUNC_VISIBILITY aclError aclrtSetDeviceSatMode(aclrtFloatOverflowMode mode);
+
+/**
+ * @ingroup AscendCL
+ * @brief get saturation mode
+ * @param mode [OUT]   get saturation mode
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtGetDeviceSatMode(aclrtFloatOverflowMode *mode);
 
 /**
  * @ingroup AscendCL
@@ -1997,16 +2569,255 @@ ACL_FUNC_VISIBILITY aclError aclrtGetOverflowStatus(void *outputAddr, size_t out
 ACL_FUNC_VISIBILITY aclError aclrtResetOverflowStatus(aclrtStream stream);
 
 /**
-* @ingroup AscendCL
-* @brief cache manager operation
-* @param [in] src  device memory address
-* @param [in] size  memory size
-* @param [in] cmoType  type of operation, currently, only ACL_RT_CMO_TYPE_PREFETCH is supported
-* @param [in] stream   stream handle
-*
-* @retval ACL_SUCCESS The function is successfully executed.
-* @retval OtherValues Failure
-*/
+ * @ingroup AscendCL
+ * @brief The thread that handles the hostFunc function on the Stream
+ *
+ * @param hostFuncThreadId [IN] thread ID
+ * @param exeStream        [IN] stream handle
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtSubscribeHostFunc(uint64_t hostFuncThreadId, aclrtStream exeStream);
+
+/**
+ * @ingroup AscendCL
+ * @brief After waiting for a specified time, trigger hostFunc callback function processing
+ *
+ * @par Function
+ *  The thread processing callback specified by the aclrtSubscribeHostFunc interface
+ *
+ * @param timeout [IN]   timeout value
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ *
+ * @see aclrtSubscribeHostFunc
+ */
+ACL_FUNC_VISIBILITY aclError aclrtProcessHostFunc(int32_t timeout);
+
+/**
+ * @ingroup AscendCL
+ * @brief Cancel thread registration,
+ *        the hostFunc function on the specified Stream
+ *        is no longer processed by the specified thread
+ *
+ * @param hostFuncThreadId [IN]   thread ID
+ * @param exeStream        [IN]   stream handle
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtUnSubscribeHostFunc(uint64_t hostFuncThreadId, aclrtStream exeStream);
+
+/**
+ * @ingroup AscendCL
+ * @brief Get device status
+ *
+ * @param deviceId       [IN]   device ID
+ * @param deviceStatus   [OUT]  device status
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtQueryDeviceStatus(int32_t deviceId, aclrtDeviceStatus *deviceStatus);
+
+/**
+ * @ingroup AscendCL
+ * @brief Create data of type aclrtBinary
+ *
+ * @param [in] data   binary data
+ * @param [in] dataLen   binary length
+ *
+ * @retval the aclrtBinary
+ */
+ACL_FUNC_VISIBILITY aclrtBinary aclrtCreateBinary(const void *data, size_t dataLen);
+
+/**
+ * @ingroup AscendCL
+ * @brief Destroy data of type aclrtBinary
+ *
+ * @param modelDesc [IN]   aclrtBinary to be destroyed
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtDestroyBinary(aclrtBinary binary);
+
+
+/**
+ * @ingroup AscendCL
+ * @brief Registers and parses the bin file and loads it to the device.
+ *
+ * @param [in] binary   device binary description
+ * @param [out] binHandle   device binary handle
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtBinaryLoad(const aclrtBinary binary, aclrtBinHandle *binHandle);
+
+
+/**
+ * @ingroup AscendCL
+ * @brief UnLoad binary
+ *
+ * @param [in] binHandle  binary handle
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtBinaryUnLoad(aclrtBinHandle binHandle);
+
+/**
+ * @ingroup AscendCL
+ * @brief Find funcHandle based on binHandle and kernel name
+ *
+ * @param [in] binHandle  binHandle
+ * @param [in] kernelName   kernel name
+ * @param [out] funcHandle   funcHandle
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtBinaryGetFunction(const aclrtBinHandle binHandle, const char *kernelName,
+                                                    aclrtFuncHandle *funcHandle);
+
+/**
+ * @ingroup AscendCL
+ * @brief Kernel Launch to device
+ * @param [in] funcHandle  function handle
+ * @param [in] blockDim  block dimentions
+ * @param [in] argsData  args data
+ * @param [in] argsSize  args size
+ * @param [in] stream   stream handle
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtLaunchKernel(aclrtFuncHandle funcHandle, uint32_t blockDim,
+                                               const void *argsData, size_t argsSize, aclrtStream stream);
+
+/**
+ * @ingroup AscendCL
+ * @brief share the handle that created by the process itself to other process
+ * @param [in] handle       mem handle created by aclrtMallocPhysical
+ * @param [in] handleType  reserved param, must be MEM_HANDLE_TYPE_NONE
+ * @param [in] flags       flags for this operation. Valid flags are:
+ *                           ACL_RT_VMM_EXPORT_FLAG_DEFAULT : Default behavior.
+ *                           ACL_RT_VMM_EXPORT_FLAG_DISABLE_PID_VALIDATION : Remove whitelist verification for PID.
+ * @param [out]            shareableHandle  shareable Handle
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtMemExportToShareableHandle(aclrtDrvMemHandle handle,
+                                                             aclrtMemHandleType handleType, uint64_t flags,
+                                                             uint64_t *shareableHandle);
+
+ /**
+ * @ingroup AscendCL
+ * @brief share the handle that created by the process itself to other process
+ * @param [in] handle   mem handle created by aclrtMallocPhysical
+ * @param [in] flags  reserved param, must be 0
+ * @param [in] shareType  share type of shareableHandle
+ * @param [out] shareableHandle  shareable Handle
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtMemExportToShareableHandleV2(aclrtDrvMemHandle handle, uint64_t flags, 
+    aclrtMemSharedHandleType shareType, void *shareableHandle);                                                            
+
+/**
+ * @ingroup AscendCL
+ * @brief import a mem allocation from a shareable Handle
+ * @param [in] shareableHandle  shareable Handle
+ * @param [in] deviceId  used to generate the handle in the specified Device Id
+ * @param [out] handle handle in the process
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtMemImportFromShareableHandle(uint64_t shareableHandle,
+                                                               int32_t deviceId, aclrtDrvMemHandle *handle);
+
+/**
+ * @ingroup AscendCL
+ * @brief import a mem allocation from a shareable Handle
+ * @param [in] shareableHandle  shareable Handle
+ * @param [in] shareType  share type of shareableHandle
+ * @param [in] flags  reserved param, must be 0
+ * @param [out] handle handle in the process
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtMemImportFromShareableHandleV2(void *shareableHandle, 
+    aclrtMemSharedHandleType shareType, uint64_t flags, aclrtDrvMemHandle *handle);
+
+/**
+ * @ingroup AscendCL
+ * @brief set the process whitelist, only the process configured in the whitelist can use this shareableHandle
+ * @param [in] shareableHandle  shareable Handle
+ * @param [in] deviceId  used to generate the handle in the specified Device Id
+ * @param [out] handle handle in the process
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtMemSetPidToShareableHandle(uint64_t shareableHandle,
+                                                             int32_t *pid, size_t pidNum);
+
+/**
+ * @ingroup AscendCL
+ * @brief set the process whitelist, only the process configured in the whitelist can use this shareableHandle
+ * @param [in] shareableHandle  shareable Handle
+ * @param [in] shareType  share type of shareableHandle
+ * @param [in] pid  array for storing trustlisted process IDs
+ * @param [in] pidNum number of processes in the trustlist
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtMemSetPidToShareableHandleV2(void *shareableHandle, 
+    aclrtMemSharedHandleType shareType, int32_t *pid, size_t pidNum);
+
+/**`
+ * @ingroup AscendCL
+ * @brief get the mem allocation granularity by the option
+ * @param [in] prop  aclrtPhysicalMemProp
+ * @param [in] option  mem granularity option
+ * @param [out] granularity granularity
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtMemGetAllocationGranularity(aclrtPhysicalMemProp *prop,
+                                                              aclrtMemGranularityOptions option,
+                                                              size_t *granularity);
+
+/**
+ * @ingroup AscendCL
+ * @brief Get the pid for the current process on the physical device
+ * @param [out] pid value of pid
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtDeviceGetBareTgid(int32_t *pid);
+
+/**
+ * @ingroup AscendCL
+ * @brief cache manager operation
+ * @param [in] src  device memory address
+ * @param [in] size  memory size
+ * @param [in] cmoType  type of operation
+ * @param [in] stream   stream handle
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
 ACL_FUNC_VISIBILITY aclError aclrtCmoAsync(void *src, size_t size, aclrtCmoType cmoType, aclrtStream stream);
 
 /**`
@@ -2023,18 +2834,6 @@ ACL_FUNC_VISIBILITY aclError aclrtGetMemUceInfo(int32_t deviceId, aclrtMemUceInf
                                                 size_t arraySize, size_t *retSize);
 
 /**`
- * @ingroup AscendCL
- * @brief get the mem usage info
- * @param [in] deviceId
- * @param [in/out] memUsageInfo
- * @param [in] inputNum
- * @param [out] outputNum
- * @retval ACL_SUCCESS The function is successfully executed.
- * @retval OtherValues Failure
- */
-ACL_FUNC_VISIBILITY aclError aclrtGetMemUsageInfo(uint32_t deviceId, aclrtMemUsageInfo *memUsageInfo, size_t inputNum, size_t *outputNum);
-
-/**
  * @ingroup AscendCL
  * @brief stop the task on specified device
  * @param [in] deviceId
@@ -2063,6 +2862,453 @@ ACL_FUNC_VISIBILITY aclError aclrtMemUceRepair(int32_t deviceId, aclrtMemUceInfo
  * @retval OtherValues Failure
  */
 ACL_FUNC_VISIBILITY aclError aclrtStreamAbort(aclrtStream stream);
+
+/**
+ * @ingroup AscendCL
+ * @brief Load kernel binary from file with given path
+ * @param [in] binPath
+ * @param [in] options
+ * @param [out] binHandle
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtBinaryLoadFromFile(const char* binPath, aclrtBinaryLoadOptions *options,
+                                                     aclrtBinHandle *binHandle);
+/**
+ * @ingroup AscendCL
+ * @brief Get Bin dev address
+ * @param [in] binHandle  bin handle
+ * @param [out] binAddr  bin address
+ * @param [out] binSize  bin size
+ * @retval ACL_SUCCESS the function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtBinaryGetDevAddress(const aclrtBinHandle binHandle, void **binAddr, size_t *binSize);
+
+/**
+ * @ingroup AscendCL
+ * @brief Get function handle with the function entry
+ * @param [in] binHandle
+ * @param [in] funcEntry
+ * @param [out] funcHandle
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtBinaryGetFunctionByEntry(aclrtBinHandle binHandle, uint64_t funcEntry,
+                                                           aclrtFuncHandle *funcHandle);
+/**
+ * @ingroup AscendCL
+ * @brief Get kernel pc start address in device
+ * @param [in] funcHandle
+ * @param [out] aicAddr
+ * @param [out] aivAddr
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtGetFunctionAddr(aclrtFuncHandle funcHandle, void **aicAddr, void **aivAddr);
+
+/**
+ * @ingroup AscendCL
+ * @brief Get memcpy desc size
+ * @param [in] kind
+ * @param [out] descSize
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtGetMemcpyDescSize(aclrtMemcpyKind kind, size_t *descSize);
+
+/**
+ * @ingroup AscendCL
+ * @brief Set memcpy desc
+ * @param [out] desc
+ * @param [in] kind
+ * @param [in] srcAddr
+ * @param [in] dstAddr
+ * @param [in] count
+ * @param [in] config
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtSetMemcpyDesc(void *desc, aclrtMemcpyKind kind, void *srcAddr, void *dstAddr,
+                                                size_t count, void *config);
+
+/**
+ * @ingroup AscendCL
+ * @brief Asynchronous memcpy with  offset
+ * @param [in] dst destination address pointer
+ * @param [in] destMax length of destination memory
+ * @param [in] dstDataOffset destination data address offset
+ * @param [in] src source address pointer
+ * @param [in] count the number of byte to copy
+ * @param [in] dstDataOffset source data address offset
+ * @param [in] kind memcpy type
+ * @param [in] stream asynchronous task stream
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtMemcpyAsyncWithOffset(void **dst, size_t destMax, size_t dstDataOffset, const void **src,
+    size_t count, size_t srcDataOffset, aclrtMemcpyKind kind, aclrtStream stream);
+
+/**
+ * @ingroup AscendCL
+ * @brief Use desc to do memcpy
+ * @param [in] desc
+ * @param [in] kind
+ * @param [in] stream
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtMemcpyAsyncWithDesc(void *desc, aclrtMemcpyKind kind, aclrtStream stream);
+
+/**
+ * @ingroup AscendCL
+ * @brief Get kernel args handle memory size
+ * @param [in] funcHandle
+ * @param [out] memSize
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtKernelArgsGetHandleMemSize(aclrtFuncHandle funcHandle, size_t *memSize);
+
+/**
+ * @ingroup AscendCL
+ * @brief Get kernel args memory size
+ * @param [in] funcHandle
+ * @param [in] userArgsSize
+ * @param [out] actualArgsSize
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtKernelArgsGetMemSize(aclrtFuncHandle funcHandle, size_t userArgsSize,
+                                                       size_t *actualArgsSize);
+
+/**
+ * @ingroup AscendCL
+ * @brief Initial kernel args
+ * @param [in] funcHandle
+ * @param [out] argsHandle
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtKernelArgsInit(aclrtFuncHandle funcHandle, aclrtArgsHandle *argsHandle);
+
+/**
+ * @ingroup AscendCL
+ * @brief Initialize kernel args by user memory
+ * @param [in] funcHandle
+ * @param [out] argsHandle
+ * @param [in] userHostMem
+ * @param [in] actualArgsSize
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtKernelArgsInitByUserMem(aclrtFuncHandle funcHandle, aclrtArgsHandle argsHandle,
+                                                          void *userHostMem, size_t actualArgsSize);
+
+/**
+ * @ingroup AscendCL
+ * @brief Append kernel args
+ * @param [in] argsHandle
+ * @param [in] param
+ * @param [in] paramSize
+ * @param [out] paramHandle
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtKernelArgsAppend(aclrtArgsHandle argsHandle, void *param, size_t paramSize,
+                                                   aclrtParamHandle *paramHandle);
+
+/**
+ * @ingroup AscendCL
+ * @brief Append kernel args placeholder
+ * @param [in] argsHandle
+ * @param [out] paramHandle
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtKernelArgsAppendPlaceHolder(aclrtArgsHandle argsHandle,
+                                                              aclrtParamHandle *paramHandle);
+
+/**
+ * @ingroup AscendCL
+ * @brief Get kernel args buffer of placeholder
+ * @param [in] argsHandle
+ * @param [in] paramHandle
+ * @param [in] dataSize
+ * @param [out] bufferAddr
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtKernelArgsGetPlaceHolderBuffer(aclrtArgsHandle argsHandle,
+                                                                 aclrtParamHandle paramHandle, size_t dataSize,
+                                                                 void **bufferAddr);
+
+/**
+ * @ingroup AscendCL
+ * @brief Update kernel args placeholder
+ * @param [in] argsHandle
+ * @param [in] paramHandle
+ * @param [in] param
+ * @param [in] paramSize
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtKernelArgsParaUpdate(aclrtArgsHandle argsHandle, aclrtParamHandle paramHandle,
+                                                       void *param, size_t paramSize);
+
+/**
+ * @ingroup AscendCL
+ * @brief Launch kernel
+ * @param [in] funcHandle
+ * @param [in] blockDim
+ * @param [in] stream
+ * @param [in] cfg
+ * @param [in] argsHandle
+ * @param [in] reserve
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtLaunchKernelWithConfig(aclrtFuncHandle funcHandle, uint32_t blockDim,
+                                                         aclrtStream stream, aclrtLaunchKernelCfg *cfg,
+                                                         aclrtArgsHandle argsHandle, void *reserve);
+
+/**
+ * @ingroup AscendCL
+ * @brief Finalize kernel args
+ * @param [in] argsHandle
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtKernelArgsFinalize(aclrtArgsHandle argsHandle);
+
+/**
+ * @ingroup AscendCL
+ * @brief mem write value
+ * @param [in] devAddr  dev addr
+ * @param [in] value    write value
+ * @param [in] flag     reserved, must be 0
+ * @param [in] stream   asynchronized task stream
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtValueWrite(void* devAddr, uint64_t value, uint32_t flag, aclrtStream stream);
+
+/**
+ * @ingroup AscendCL
+ * @brief mem wait value
+ * @param [in] devAddr  dev addr
+ * @param [in] value    expect value
+ * @param [in] flag     wait mode
+ * @param [in] stream   asynchronized task stream
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtValueWait(void* devAddr, uint64_t value, uint32_t flag, aclrtStream stream);
+
+/**
+ * @ingroup AscendCL
+ * @brief get the number of available streams.
+ * @param [out] streamCount   the number of available streams currently
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtGetStreamAvailableNum(uint32_t *streamCount);
+
+/**
+ * @ingroup AscendCL
+ * @brief set stream attribute
+ * @param [in] stream       stream handle
+ * @param [in] stmAttrType  stream attribute type, which value can be:
+ *                             ACL_STREAM_ATTR_FAILURE_MODE, ACL_STREAM_ATTR_FLOAT_OVERFLOW_CHECK
+ *                             or ACL_STREAM_ATTR_USER_CUSTOM_TAG, ACL_STREAM_ATTR_CACHE_OP_INFO
+ * @param [in] value        stream attribute value
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtSetStreamAttribute(aclrtStream stream, aclrtStreamAttr stmAttrType,
+    aclrtStreamAttrValue *value);
+
+/**
+ * @ingroup AscendCL
+ * @brief get stream attribute
+ * @param [in] stream       stream handle
+ * @param [in] stmAttrType  stream attribute type, which value can be:
+ *                             ACL_STREAM_ATTR_FAILURE_MODE, ACL_STREAM_ATTR_FLOAT_OVERFLOW_CHECK
+ *                             or ACL_STREAM_ATTR_USER_CUSTOM_TAG, ACL_STREAM_ATTR_CACHE_OP_INFO
+ * @param [out] value       stream attribute value
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtGetStreamAttribute(aclrtStream stream, aclrtStreamAttr stmAttrType,
+    aclrtStreamAttrValue *value);
+
+/**
+ * @ingroup AscendCL
+ * @brief create a notify
+ * @param [out] notify  notify to be created
+ * @param [in] flag     notify flag, reserved, must be 0
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtCreateNotify(aclrtNotify *notify, uint64_t flag);
+
+/**
+ * @ingroup AscendCL
+ * @brief destroy a notify
+ * @param [in] notify  notify to be destroy
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtDestroyNotify(aclrtNotify notify);
+
+/**
+ * @ingroup AscendCL
+ * @brief create a count notify
+ * @param [out] cntNotify  cntNotify to be created
+ * @param [in] flag        cntNotify flag, reserved, must be 0
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtCntNotifyCreate(aclrtCntNotify *cntNotify, uint64_t flag);
+
+/**
+ * @ingroup AscendCL
+ * @brief destroy a notify
+ * @param [in] cntNotify  cntNotify to be destroy
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtCntNotifyDestroy(aclrtCntNotify cntNotify);
+
+/**
+ * @ingroup AscendCL
+ * @brief record a notify
+ * @param [in] notify  notify to be recorded
+ * @param [in] stream  input stream
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtRecordNotify(aclrtNotify notify, aclrtStream stream);
+
+/**
+ * @ingroup AscendCL
+ * @brief wait for a notify with timeout
+ * @param [in] notify   notify to be wait
+ * @param [in] stream   input stream
+ * @param [in] timeout  input timeout, unit is ms
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtWaitAndResetNotify(aclrtNotify notify, aclrtStream stream, uint32_t timeout);
+
+/**
+ * @ingroup AscendCL
+ * @brief get notify id
+ * @param [in] notify     notify to be get
+ * @param [out] notifyId  notify id
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtGetNotifyId(aclrtNotify notify, uint32_t *notifyId);
+
+/**
+ * @ingroup AscendCL
+ * @brief get event id
+ * @param [in] event     event to be get
+ * @param [out] eventId  event id
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtGetEventId(aclrtEvent event, uint32_t *eventId);
+
+/**
+ * @ingroup AscendCL
+ * @brief get avaliable event count
+ * @param [out] eventCount  avaliable event count
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtGetEventAvailNum(uint32_t *eventCount);
+
+/**
+ * @ingroup AscendCL
+ * @brief get device infomation.
+ * @param [in] deviceId  the device id
+ * @param [in] attr      device attr
+ * @param [out] value    the device info
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtGetDeviceInfo(uint32_t deviceId, aclrtDevAttr attr, int64_t *value);
+
+/**
+ * @ingroup AscendCL
+ * @brief get priority range of current device
+ * @param [out] leastPriority     least priority
+ * @param [out] greatestPriority  greatest priority
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtDeviceGetStreamPriorityRange(int32_t *leastPriority, int32_t *greatestPriority);
+
+/**
+ * @ingroup AscendCL
+ * @brief get device feature ability by device id, such as task schedule ability.
+ * @param [in] deviceId        device id
+ * @param [in] devFeatureType  device feature type
+ * @param [out] value
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtGetDeviceCapability(int32_t deviceId, aclrtDevFeatureType devFeatureType,
+    int32_t *value);
+
+/**
+ * @ingroup AscendCL
+ * @brief get uuid of device by device id
+ * @param [in] deviceId        device id
+ * @param [out] uuid           16-byte Universally Unique Identifier for 
+ *                              globally unique identification of an NPU device.
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtDeviceGetUuid(int32_t deviceId, aclrtUuid *uuid);
+
+/**
+ * @ingroup AscendCL
+ * @brief get current default stream
+ * @param [out] stream  default stream
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtCtxGetCurrentDefaultStream(aclrtStream *stream);
+
+/**
+ * @ingroup AscendCL
+ * @brief get the state of primary context
+ * @param [in] deviceId        device id
+ * @param [out] flags  reserved, must be nullptr
+ * @param [out] active state of primary context, 0 is inactive, 1 is active
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtGetPrimaryCtxState(int32_t deviceId, uint32_t *flags, int32_t *active);
+
+/**
+ * @ingroup AscendCL
+ * @brief get current default stream
+ * @param [in] dst      dst memory
+ * @param [in] src      src memory
+ * @param [in] count    count
+ * @param [in] kind     reduce kind
+ * @param [in] type     data type
+ * @param [in] stream   associated stream
+ * @param [in] reserve  reserved, must be nullptr
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtReduceAsync(void *dst, const void *src, uint64_t count, aclrtReduceKind kind,
+    aclDataType type, aclrtStream stream, void *reserve);
 
 /**
  * @ingroup AscendCL
@@ -2108,6 +3354,17 @@ ACL_FUNC_VISIBILITY aclError aclrtGetStreamResLimit(aclrtStream stream, aclrtDev
 
 /**
  * @ingroup AscendCL
+ * @brief Set the value of the limited resources of the specified stream
+ * @param [in] stream   the stream handle
+ * @param [in] type     resource type
+ * @param [in] value    resource limit value
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtSetStreamResLimit(aclrtStream stream, aclrtDevResLimitType type, uint32_t value);
+
+/**
+ * @ingroup AscendCL
  * @brief Reset the value of the limited resources of the specified stream
  * @param [in] stream   the stream handle
  * @retval ACL_SUCCESS The function is successfully executed.
@@ -2145,84 +3402,1260 @@ ACL_FUNC_VISIBILITY aclError aclrtGetResInCurrentThread(aclrtDevResLimitType typ
 
 /**
  * @ingroup AscendCL
- * @brief Set the operation execution timeout for the current thread
- * @param [in]  timeout        Desired operation timeout value (in microsecond)
- * @param [out] actualTimeout  Pointer to a uint64_t variable to store the actual timeout value applied
- * @retval ACL_SUCCESS The function is successfully executed
+ * @brief create label instance
+ * @param label [out]  created label
+ * @retval ACL_SUCCESS The function is successfully executed.
  * @retval OtherValues Failure
  */
-ACL_FUNC_VISIBILITY aclError aclrtSetOpExecuteTimeOutV2(uint64_t timeout, uint64_t *actualTimeout);
+ACL_FUNC_VISIBILITY aclError aclrtCreateLabel(aclrtLabel *label);
 
 /**
  * @ingroup AscendCL
- * @brief Write data to the specified memory. Asynchronous Interface.
+ * @brief set label and stream instance
+ * @param label [in]  set label
+ * @param stream [in] stream to be set
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtSetLabel(aclrtLabel label, aclrtStream stream);
+
+/**
+ * @ingroup AscendCL
+ * @brief destroy label instance
+ * @param label [in] label to destroy
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtDestroyLabel(aclrtLabel label);
+
+/**
+ * @ingroup AscendCL
+ * @brief create label list
+ * @param labels [in]     model label list
+ * @param num [in]        label number
+ * @param labelList [out] created label list
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtCreateLabelList(aclrtLabel *labels, size_t num, aclrtLabelList *labelList);
+
+/**
+ * @ingroup AscendCL
+ * @brief destory label list
+ * @param labelList [in]  label list to destroy
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtDestroyLabelList(aclrtLabelList labelList);
+
+/**
+ * @ingroup AscendCL
+ * @brief label switch by index
+ * @param ptr [in]       index value ptr
+ * @param maxValue [in]  index max value
+ * @param labelList [in] label list
+ * @param stream [in]    associated stream
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtSwitchLabelByIndex(void *ptr, uint32_t maxValue, aclrtLabelList labelList,
+    aclrtStream stream);
+
+/**
+ * @ingroup AscendCL
+ * @brief active a stream
+ * @param activeStream [in] stream to be activated
+ * @param stream [in]       stream to send task
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtActiveStream(aclrtStream activeStream, aclrtStream stream);
+
+/**
+ * @ingroup AscendCL
+ * @brief execute extensible stream switch task
+ * @param leftValue [in]   pointer of value
+ * @param cond [in]        judge condition
+ * @param rightValue [in]  pointer of target value
+ * @param dataType [in]    data type of target value
+ * @param trueStream [in]  stream to be activated when leftValue equal to rightValue
+ * @param falseStream [in] reserved parameter
+ * @param stream [in]      stream to send task
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtSwitchStream(void *leftValue, aclrtCondition cond, void *rightValue,
+    aclrtCompareDataType dataType, aclrtStream trueStream, aclrtStream falseStream, aclrtStream stream);
+
+/**
+ * @ingroup AscendCL
+ * @brief get kernel name
+ * @param funcHandle [in] function Handle
+ * @param maxLen [in]     max length of kernel name
+ * @param name [out]      kernel name
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtGetFunctionName(aclrtFuncHandle funcHandle, uint32_t maxLen, char *name);
+
+/**
+ * @ingroup AscendCL
+ * @brief get aclrtMbuf from aclrtMbuf chain by index
+ * @param headBuf [in]  aclrtMbuf chain head
+ * @param index [in]    the index which is smaller than num acquired from aclrtGetBufChainNum
+ * @param buf [out]     the aclrtMbuf from aclrtMbuf on index
+ * @retval ACL_SUCCESS  The function is successfully executed.
+ * @retval OtherValues Failure
  *
- * @param devAddr [IN]  Memory address on the Device side.
- * @param value [IN]   The data to be written into the memory.
- * @param flag [IN]   Reserved parameter, currently fixed to 0.
- * @param stream [IN]   stream handle
+ * @see aclrtAppendBufChain aclrtGetBufChainNum
+ */
+ACL_FUNC_VISIBILITY aclError aclrtGetBufFromChain(aclrtMbuf headBuf, uint32_t index, aclrtMbuf *buf);
+
+/**
+ * @ingroup AscendCL
+ * @brief get aclrtMbuf chain total size
+ * @param headBuf [in]  aclrtMbuf chain head
+ * @param num [out]     aclrtMbuf chain total size
+ * @retval ACL_SUCCESS  The function is successfully executed.
+ * @retval OtherValues Failure
+ *
+ * @see aclrtAppendBufChain
+ */
+ACL_FUNC_VISIBILITY aclError aclrtGetBufChainNum(aclrtMbuf headBuf, uint32_t *num);
+
+/**
+ * @ingroup AscendCL
+ * @brief append aclrtMbuf to aclrtMbuf chain
+ * @param headBuf [in]  aclrtMbuf chain head
+ * @param buf [in]      aclrtMbuf to be appended
+ * @retval ACL_SUCCESS  The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtAppendBufChain(aclrtMbuf headBuf, aclrtMbuf buf);
+
+/**
+ * @ingroup AscendCL
+ * @brief copy buf ref
+ * @param buf [in]      aclrtMbuf
+ * @param newBuf [out]  Make a reference copy of the data area of buf and
+ *                      create a new buf header pointing to the same data area
+ * @retval ACL_SUCCESS  The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtCopyBufRef(const aclrtMbuf buf, aclrtMbuf *newBuf);
+
+/**
+ * @ingroup AscendCL
+ * @brief get private data buf address and size
+ * @param buf [in]       aclrtMbuf
+ * @param dataPtr [out]  pointer to the user ptr
+ * @param size [in]      the current private data area size, less than or equal to 96B
+ * @param offset [in]    address offset, less than or equal to 96B
+ * @retval ACL_SUCCESS  The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtGetBufUserData(const aclrtMbuf buf, void *dataPtr, size_t size, size_t offset);
+
+/**
+ * @ingroup AscendCL
+ * @brief set private data buf address and size
+ * @param buf [out]     aclrtMbuf
+ * @param dataPtr [in]  pointer to the user ptr
+ * @param size [in]     the current private data area size, less than or equal to 96B
+ * @param offset [in]   address offset, less than or equal to 96B
+ * @retval ACL_SUCCESS  The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtSetBufUserData(aclrtMbuf buf, const void *dataPtr, size_t size, size_t offset);
+
+/**
+ * @ingroup AscendCL
+ * @brief get data buf address
+ * @param buf [in]       aclrtMbuf
+ * @param dataPtr [out]  pointer to the data ptr which is acquired from aclrtMbuf
+ * @param size [out]     pointer to the size
+ * @retval ACL_SUCCESS  The function is successfully executed.
+ * @retval OtherValues Failure
+ *
+ * @see aclrtAllocBuf
+ */
+ACL_FUNC_VISIBILITY aclError aclrtGetBufData(const aclrtMbuf buf, void **dataPtr, size_t *size);
+
+/**
+ * @ingroup AscendCL
+ * @brief get data buf effective len
+ * @param buf [in]   aclrtMbuf
+ * @param len [out]  get effective len which is set by aclrtSetBufDataLen
+ * @retval ACL_SUCCESS  The function is successfully executed.
+ * @retval OtherValues Failure
+ *
+ * @see aclrtSetBufDataLen
+ */
+ACL_FUNC_VISIBILITY aclError aclrtGetBufDataLen(aclrtMbuf buf, size_t *len);
+
+/**
+ * @ingroup AscendCL
+ * @brief set data buf effective len
+ * @param buf [in]  aclrtMbuf
+ * @param len [in]  set effective len to data buf which must be smaller than size acquired by aclrtGetBufData
+ * @retval ACL_SUCCESS  The function is successfully executed.
+ * @retval OtherValues Failure
+ *
+ * @see aclrtGetBufData aclrtGetBufDataLen
+ */
+ACL_FUNC_VISIBILITY aclError aclrtSetBufDataLen(aclrtMbuf buf, size_t len);
+
+/**
+ * @ingroup AscendCL
+ * @brief free aclrtMbuf
+ * @param buf [in]  pointer to the aclrtMbuf
+ * @retval ACL_SUCCESS  The function is successfully executed.
+ * @retval OtherValues Failure
+ *
+ * @see aclrtAllocBuf
+ */
+ACL_FUNC_VISIBILITY aclError aclrtFreeBuf(aclrtMbuf buf);
+
+/**
+ * @ingroup AscendCL
+ * @brief alloc aclrtMbuf
+ * @param buf [out]  pointer to the aclrtMbuf
+ * @param size [in]  size of aclrtMbuf
+ * @retval ACL_SUCCESS  The function is successfully executed.
+ * @retval OtherValues Failure
+ *
+ * @see aclrtFreeBuf
+ */
+ACL_FUNC_VISIBILITY aclError aclrtAllocBuf(aclrtMbuf *buf, size_t size);
+
+/**
+ * @ingroup AscendCL
+ * @brief Load kernel binary from given bin data buffer
+ * @param data [in]         kernel binary data ptr
+ * @param length [in]       kernel binary data length
+ * @param options [in]      optional, can be nullptr
+ * @param binHandle [out]   load result
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtBinaryLoadFromData(const void *data, size_t length,
+    const aclrtBinaryLoadOptions *options, aclrtBinHandle *binHandle);
+
+/**
+ * @ingroup AscendCL
+ * @brief register cpu func by funcName and kernelName, funcHandle will get
+ * @param handle [in]       binary handle to register func
+ * @param funcName [in]     cpu kernel func name
+ * @param kernelName [in]   cpu kernel op type
+ * @param funcHandle [out]  func Handle
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtRegisterCpuFunc(const aclrtBinHandle handle, const char *funcName,
+    const char *kernelName, aclrtFuncHandle *funcHandle);
+
+/**
+ * @ingroup AscendCL
+ * @brief launch common cmo task on the stream.
+ * @param src [in]       prefetch addrs
+ * @param size [in]      prefetch addrs load
+ * @param cmoType [in]   opcode
+ * @param barrierId [in] logic barrier Id. >0 valid Id, =0 invalid id
+ * @param stream [in]    associated stream
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtCmoAsyncWithBarrier(void *src, size_t size, aclrtCmoType cmoType,
+    uint32_t barrierId, aclrtStream stream);
+
+/**
+ * @ingroup AscendCL
+ * @brief launch barrier cmo task on the stream.
+ * @param taskInfo [in]  barrier task info
+ * @param stream [in]    launch task on the stream
+ * @param flag [in]      reserved, must be 0
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtCmoWaitBarrier(aclrtBarrierTaskInfo *taskInfo, aclrtStream stream, uint32_t flag);
+
+/**
+ * @ingroup AscendCL
+ * @brief get devices topo info
+ * @param deviceId [in]       the logical device id
+ * @param otherDeviceId [in]  the other logical device id
+ * @param value [out]         topo info
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtGetDevicesTopo(uint32_t deviceId, uint32_t otherDeviceId, uint64_t *value);
+
+/**
+ * @ingroup AscendCL
+ * @brief Perform a batch of memory copies synchronous.
+ * @param dsts [in]          dest pointers.
+ * @param destMaxs [in]       array of destination address memory max length
+ * @param srcs [in]          src pointers.
+ * @param sizes [in]         array of memcpy lengths.
+ * @param numBatches [in]    batch number.
+ * @param attrs [in]         array of memcpy attributes.
+ * @param attrsIndexes [in]  attrs[n] is applied from attrsIndexes[n] to attrsIndexes[n+1] - 1. attrs[numAttrs-1]
+ *                           is applied from attrsIndexes[numAttrs-1] to numBatches - 1.
+ * @param numAttrs [in]      attrs and attrsIndexes number.
+ * @param failIndex [out]    if all memcpy succeed or error is none memcpy related, set to SIZE_MAX.
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtMemcpyBatch(void **dsts, size_t *destMaxs, void **srcs, size_t *sizes,
+    size_t numBatches, aclrtMemcpyBatchAttr *attrs, size_t *attrsIndexes, size_t numAttrs, size_t *failIndex);
+
+/**
+ * @ingroup AscendCL
+ * @brief Perform a batch of memory copies synchronous.
+ * @param dsts [in]          dest pointers.
+ * @param destMaxs [in]       array of destination address memory max length
+ * @param srcs [in]          src pointers.
+ * @param sizes [in]         array of memcpy lengths.
+ * @param numBatches [in]    batch number.
+ * @param attrs [in]         array of memcpy attributes.
+ * @param attrsIndexes [in]  attrs[n] is applied from attrsIndexes[n] to attrsIndexes[n+1] - 1. attrs[numAttrs-1]
+ *                           is applied from attrsIndexes[numAttrs-1] to numBatches - 1.
+ * @param numAttrs [in]      attrs and attrsIndexes number.
+ * @param failIndex [out]    if all memcpy succeed or error is none memcpy related, set to SIZE_MAX.
+ * @param stream [IN]        asynchronized task stream
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ * @note if the memory is not page-locked, synchronous copying will be performed.
+ */
+ACL_FUNC_VISIBILITY aclError aclrtMemcpyBatchAsync(void **dsts, size_t *destMaxs, void **srcs, size_t *sizes,
+    size_t numBatches, aclrtMemcpyBatchAttr *attrs, size_t *attrsIndexes, size_t numAttrs, size_t *failIndex,
+    aclrtStream stream);
+
+/**
+ * @ingroup AscendCL
+ * @brief make memory shared interprocess and get key
+ * @param devPtr [in]  device memory address pointer
+ * @param size [in]    identification byteCount
+ * @param key [out]    identification key
+ * @param len [in]     key length
+ * @param flags [in]   flags for this operation. Valid flags are:
+ *                       ACL_RT_IPC_MEM_EXPORT_FLAG_DEFAULT : Default behavior.
+ *                       ACL_RT_IPC_MEM_EXPORT_FLAG_DISABLE_PID_VALIDATION : Remove whitelist verification for PID.
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtIpcMemGetExportKey(void *devPtr, size_t size, char *key, size_t len, uint64_t flags);
+
+/**
+ * @ingroup AscendCL
+ * @brief destroy a interprocess shared memory
+ * @param key [in]  identification key
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtIpcMemClose(const char *key);
+
+/**
+ * @ingroup AscendCL
+ * @brief open a interprocess shared memory
+ * @param devPtr [out]  pointer to device memory pointer
+ * @param key [in]      identification key
+ * @param flags [in]    flags for this operation. Valid flags are:
+ *                        ACL_RT_IPC_MEM_IMPORT_FLAG_DEFAULT : Default behavior.
+ *                        ACL_RT_IPC_MEM_IMPORT_FLAG_ENABLE_PEER_ACCESS : Enables direct access to memory allocations on a peer device.
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtIpcMemImportByKey(void **devPtr, const char *key, uint64_t flags);
+
+/**
+ * @ingroup AscendCL
+ * @brief Ipc set mem pid
+ * @param key [in]  key to be queried
+ * @param pid [in]  process id
+ * @param num [in]  length of pid
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtIpcMemSetImportPid(const char *key, int32_t *pid, size_t num);
+
+/**
+ * @ingroup AscendCL
+ * @brief Set the attribute of shared memory
+ * @param key [in]   identification key
+ * @param type [in]  memory attribute type
+ * @param attr [in]  attribute value
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtIpcMemSetAttr(const char *key, aclrtIpcMemAttrType type, uint64_t attr);
+
+/**
+ * @ingroup AscendCL
+ * @brief Ipc set mem pid
+ * @param key [in]  identification key
+ * @param serverPids [in]  whitelisted server pids
+ * @param num [in]  length of serverPids
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtIpcMemImportPidInterServer(const char *key, aclrtServerPid *serverPids, size_t num);
+
+/**
+ * @ingroup AscendCL
+ * @brief Batch reset notify
+ * @param notifies [in]  notify to be reset
+ * @param num [in]       length of notifies
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtNotifyBatchReset(aclrtNotify *notifies, size_t num);
+
+/**
+ * @ingroup AscendCL
+ * @brief Set a notify to IPC notify
+ * @param notify [in]  notify to be set to IPC notify
+ * @param key [out]    identification key
+ * @param len [in]     length of key
+ * @param flags [in]   flags for this operation. Valid flags are:
+ *                       ACL_RT_NOTIFY_EXPORT_FLAG_DEFAULT : Default behavior.
+ *                       ACL_RT_NOTIFY_EXPORT_FLAG_DISABLE_PID_VALIDATION : Remove whitelist verification for PID.
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtNotifyGetExportKey(aclrtNotify notify, char *key, size_t len, uint64_t flags);
+
+/**
+ * @ingroup AscendCL
+ * @brief Open IPC notify
+ * @param notify [out]  pointer to opened notify
+ * @param key [in]      identification key
+ * @param flags [in]    flags for this operation. Valid flags are:
+ *                        ACL_RT_NOTIFY_IMPORT_FLAG_DEFAULT : Default behavior.
+ *                        ACL_RT_NOTIFY_IMPORT_FLAG_ENABLE_PEER_ACCESS : Enables direct access to notify allocations on a peer device
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtNotifyImportByKey(aclrtNotify *notify, const char *key, uint64_t flags);
+
+/**
+ * @ingroup AscendCL
+ * @brief Ipc set notify pid
+ * @param notify [in]  notify to be queried
+ * @param pid [in]     process id
+ * @param num [in]     length of pid
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtNotifySetImportPid(aclrtNotify notify, int32_t *pid, size_t num);
+
+/**
+ * @ingroup AscendCL
+ * @brief Set the server pids of the shared notify
+ * @param notify [in]  notify to be queried
+ * @param serverPids [in]  whitelisted server pids
+ * @param num [in]     length of serverPids
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtNotifySetImportPidInterServer(aclrtNotify notify, aclrtServerPid *serverPids, size_t num);
+
+/**
+ * @ingroup AscendCL
+ * @brief begin capture
+ * @param stream [IN] set the stream to be captured
+ * @param mode [IN] capture mode
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclmdlRICaptureBegin(aclrtStream stream, aclmdlRICaptureMode mode);
+
+/**
+ * @ingroup AscendCL
+ * @brief obtain the capture information of a stream
+ * @param stream [IN] stream to be queried
+ * @param status [OUT] return the stream status
+ * @param modelRI [OUT] return the model runtime instance
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclmdlRICaptureGetInfo(aclrtStream stream, aclmdlRICaptureStatus *status,
+                                                    aclmdlRI *modelRI);
+
+/**
+ * @ingroup AscendCL
+ * @brief end the stream capture and obtain the corresponding model
+ * @param stream [IN] stream to be ended
+ * @param modelRI [OUT] return the model runtime instance
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclmdlRICaptureEnd(aclrtStream stream, aclmdlRI *modelRI);
+
+/**
+ * @ingroup AscendCL
+ * @brief print model information
+ * @param modelRI [IN] model runtime instance
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_DEPRECATED_MESSAGE("aclmdlRIDebugPrint is deprecated, use aclmdlRIDebugJsonPrint instead")
+ACL_FUNC_VISIBILITY aclError aclmdlRIDebugPrint(aclmdlRI modelRI);
+
+/**
+ * @ingroup AscendCL
+ * @brief print model information
+ * @param modelRI [IN] model runtime instance
+ * @param path [IN] json file path
+ * @param flags [IN] reserve
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclmdlRIDebugJsonPrint(aclmdlRI modelRI, const char *path, uint32_t flags);
+
+/**
+ * @ingroup AscendCL
+ * @brief exchange capture mode
+ * @param mode [IN/OUT] in the current thread, use the input mode to swap out the current mode
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclmdlRICaptureThreadExchangeMode(aclmdlRICaptureMode *mode);
+
+/**
+ * @ingroup AscendCL
+ * @brief Execute model asynchronous inference until the inference result is returned
+ *
+ * @param  modelRI [IN]   runtime instance of the model to perform inference
+ * @param  stream [IN]    stream
  *
  * @retval ACL_SUCCESS The function is successfully executed.
  * @retval OtherValues Failure
  */
-ACL_FUNC_VISIBILITY aclError aclrtValueWrite(void* devAddr, uint64_t value, uint32_t flag, aclrtStream stream);
+ACL_FUNC_VISIBILITY aclError aclmdlRIExecuteAsync(aclmdlRI modelRI, aclrtStream stream);
 
 /**
  * @ingroup AscendCL
- * @brief Unblock after the data in the specified memory meets certain conditions. Asynchronous Interface.
+ * @brief execute model instance synchronously
+ * @param [in] modelRI  model to execute, timeout for sync
+ * @param [in] timeout  max waiting duration of synchronization, unit is ms
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclmdlRIExecute(aclmdlRI modelRI, int32_t timeout);
+
+/**
+ * @ingroup AscendCL
+ * @brief destroy the model
  *
- * @param devAddr [IN]  Memory address on the Device side.
- * @param value [IN]   The value to be compared with the data in the memory.
- * @param flag [IN]    comparison logic.
- * @param stream [IN]  stream handle
+ * @param  modelRI [IN]   runtime instance of the model to be destroyed
  *
  * @retval ACL_SUCCESS The function is successfully executed.
  * @retval OtherValues Failure
  */
-ACL_FUNC_VISIBILITY aclError aclrtValueWait(void* devAddr, uint64_t value, uint32_t flag, aclrtStream stream);
-
-/**
- * @brief set stream attribute
- * @param [in] stream       stream handle
- * @param [in] stmAttrType  stream attribute type, which value can be:
- *                             ACL_STREAM_ATTR_FAILURE_MODE, ACL_STREAM_ATTR_FLOAT_OVERFLOW_CHECK
- *                             or ACL_STREAM_ATTR_USER_CUSTOM_TAG
- * @param [in] value        stream attribute value
- * @retval ACL_SUCCESS The function is successfully executed.
- * @retval OtherValues Failure
- */
-ACL_FUNC_VISIBILITY aclError aclrtSetStreamAttribute(aclrtStream stream, aclrtStreamAttr stmAttrType,
-    aclrtStreamAttrValue *value);
+ACL_FUNC_VISIBILITY aclError aclmdlRIDestroy(aclmdlRI modelRI);
 
 /**
  * @ingroup AscendCL
- * @brief get uuid of device by device id
- * @param [in] deviceId        device id
- * @param [out] uuid           16-byte Universally Unique Identifier for
- *                             globally unique identification of an NPU device.
- * @retval ACL_SUCCESS The function is successfully executed
- * @retval OtherValues Failure
- */
-ACL_FUNC_VISIBILITY aclError aclrtDeviceGetUuid(int32_t deviceId, aclrtUuid *uuid);
-
-/**
- * @ingroup AscendCL
- * @brief Add a callback function to be executed on the host
- *        to the task queue of the Stream
- *        Difference between this api and "aclrtLaunchCallback" is that
- *        thread will be created and registered inside this interface
- *        automatically, while "aclrtLaunchCallback" need manual registration.
- *        For details please refer to official API document
- * @param [in] stream   the stream to launch callback func
- * @param [in] func     callback func to launch
- *                      The function prototype of the callback function is:
- *                      typedef void (*aclrtHostFunc)(void *args);
- * @param [in] args     args for callback func
+ * @brief the start interface of the task group
+ * @param stream [IN] capture stream
  * @retval ACL_SUCCESS The function is successfully executed.
  * @retval OtherValues Failure
  */
-ACL_FUNC_VISIBILITY aclError aclrtLaunchHostFunc(aclrtStream stream, aclrtHostFunc func, void *args);
+ACL_FUNC_VISIBILITY aclError aclmdlRICaptureTaskGrpBegin(aclrtStream stream);
 
+/**
+ * @ingroup AscendCL
+ * @brief the end interface of the task group
+ * @param stream [IN] capture stream
+ * @param handle [OUT] task group handle
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclmdlRICaptureTaskGrpEnd(aclrtStream stream, aclrtTaskGrp *handle);
+
+/**
+ * @ingroup AscendCL
+ * @brief begin to update the task group specified by the handle
+ * @param stream [IN] specify the stream used for task update
+ * @param handle [IN] task group handle
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclmdlRICaptureTaskUpdateBegin(aclrtStream stream, aclrtTaskGrp handle);
+
+/**
+ * @ingroup AscendCL
+ * @brief end the update of the task
+ * @param stream [IN] specify the stream used for task update
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclmdlRICaptureTaskUpdateEnd(aclrtStream stream);
+
+/**
+ * @ingroup AscendCL
+ * @brief create model
+ * @param [in] modelRI  model
+ * @param [in] flag     reserved, must be 0
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclmdlRIBuildBegin(aclmdlRI *modelRI, uint32_t flag);
+
+/**
+ * @ingroup AscendCL
+ * @brief bind model and stream instance
+ * @param [in] modelRI  binded model
+ * @param [in] stream   binded stream
+ * @param [in] flag     flag, which value can be ACL_MODEL_STREAM_FLAG_HEAD or ACL_MODEL_STREAM_FLAG_DEFAULT
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclmdlRIBindStream(aclmdlRI modelRI, aclrtStream stream, uint32_t flag);
+
+/**
+ * @ingroup AscendCL
+ * @brief add a end graph task to stream
+ * @param [in] modelRI  model to execute
+ * @param [in] stream   graph stream
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclmdlRIEndTask(aclmdlRI modelRI, aclrtStream stream);
+
+/**
+ * @ingroup AscendCL
+ * @brief tell runtime Model has been Loaded
+ * @param [in] modelRI  model to execute
+ * @param [in] reserve  reserved, must be nullptr
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclmdlRIBuildEnd(aclmdlRI modelRI, void *reserve);
+
+/**
+ * @ingroup AscendCL
+ * @brief unbind model and stream instance
+ * @param [in] modelRI  unbinded model
+ * @param [in] stream   unbinded stream
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclmdlRIUnbindStream(aclmdlRI modelRI, aclrtStream stream);
+
+/**
+ * @ingroup AscendCL
+ * @brief set model name
+ * @param [in] modelRI  model to execute
+ * @param [in] name     model name
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclmdlRISetName(aclmdlRI modelRI, const char *name);
+
+/**
+ * @ingroup AscendCL
+ * @brief get model name
+ * @param [in] modelRI  model to execute
+ * @param [in] maxLen   max length of model name
+ * @param [out] name    model name
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclmdlRIGetName(aclmdlRI modelRI, uint32_t maxLen, char *name);
+
+/**
+ * @ingroup AscendCL
+ * @brief init dump
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+*/
+ACL_FUNC_VISIBILITY aclError aclmdlInitDump();
+
+/**
+ * @ingroup AscendCL
+ * @brief set param of dump
+ *
+ * @param dumpCfgPath [IN]   the path of dump config
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+*/
+ACL_FUNC_VISIBILITY aclError aclmdlSetDump(const char *dumpCfgPath);
+
+/**
+ * @ingroup AscendCL
+ * @brief finalize dump.
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+*/
+ACL_FUNC_VISIBILITY aclError aclmdlFinalizeDump();
+
+/**
+ * @ingroup AscendCL
+ * @brief query ACL interface version
+ *
+ * @param majorVersion[OUT] ACL interface major version
+ * @param minorVersion[OUT] ACL interface minor version
+ * @param patchVersion[OUT] ACL interface patch version
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtGetVersion(int32_t *majorVersion, int32_t *minorVersion, int32_t *patchVersion);
+
+/**
+ * @ingroup AscendCL
+ * @brief enum for  register callback type
+ */
+typedef enum aclRegisterCallbackType {
+    ACL_REG_TYPE_ACL_MODEL,
+    ACL_REG_TYPE_ACL_OP_EXECUTOR,
+    ACL_REG_TYPE_ACL_OP_CBLAS,
+    ACL_REG_TYPE_ACL_OP_COMPILER,
+    ACL_REG_TYPE_ACL_TDT_CHANNEL,
+    ACL_REG_TYPE_ACL_TDT_QUEUE,
+    ACL_REG_TYPE_ACL_DVPP,
+    ACL_REG_TYPE_ACL_RETR,
+    ACL_REG_TYPE_OTHER = 0xFFFF,
+} aclRegisterCallbackType;
+typedef aclError (*aclInitCallbackFunc)(const char *configStr, size_t len, void *userData);
+typedef aclError (*aclFinalizeCallbackFunc)(void *userData);
+
+/**
+ * @ingroup AscendCL
+ * @brief register callback func which will be called in aclInit
+ *
+ * @param type [IN]  register type
+ * @cbFunc cbFunc [IN]  register callback function pointer
+ * @param userData[IN]  param for cbFunc when called
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval ACL_ERROR_INVALID_FILE Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclInitCallbackRegister(aclRegisterCallbackType type, aclInitCallbackFunc cbFunc,
+                                                     void *userData);
+
+/**
+ * @ingroup AscendCL
+ * @brief unregister callback func which will be called in aclInit
+ *
+ * @param type [IN]  register type
+ * @cbFunc cbFunc [IN]  register callback function pointer
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval ACL_ERROR_INVALID_FILE Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclInitCallbackUnRegister(aclRegisterCallbackType type, aclInitCallbackFunc cbFunc);
+
+/**
+ * @ingroup AscendCL
+ * @brief register callback func which will be called in aclFinalize
+ *
+ * @param type [IN]  register type
+ * @cbFunc cbFunc [IN]  register callback function pointer
+ * @param userData[IN]  param for cbFunc when called
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval ACL_ERROR_INVALID_FILE Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclFinalizeCallbackRegister(aclRegisterCallbackType type, aclFinalizeCallbackFunc cbFunc,
+                                                         void *userData);
+
+/**
+ * @ingroup AscendCL
+ * @brief unregister callback func which will be called in aclFinalize
+ *
+ * @param type [IN]  register type
+ * @cbFunc cbFunc [IN]  register callback function pointer
+ * @param userData[IN]  param for cbFunc when called
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval ACL_ERROR_INVALID_FILE Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclFinalizeCallbackUnRegister(aclRegisterCallbackType type,
+                                                           aclFinalizeCallbackFunc cbFunc);
+
+/**                                                     
+ * @brief check memory type
+ * @param [in] addrList     memory addr list
+ * @param [in] size         memory addr list size
+ * @param [in] memType      memory addr list type
+ * @param [out] checkResult result of check memory type
+ * @param [in] reserve      reserve  reserved, must be zero
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtCheckMemType(void** addrList, uint32_t size, uint32_t memType, uint32_t *checkResult, uint32_t reserve);
+
+/**
+ * @ingroup AscendCL
+ * @brief get logic device id by user device id
+ * @param [in] userDevid     user device id
+ * @param [out] logicDevId   logic device id
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtGetLogicDevIdByUserDevId(const int32_t userDevid, int32_t *const logicDevId);
+
+/**
+ * @ingroup AscendCL
+ * @brief get user device id by logic device id
+ * @param [in] logicDevId logic device id
+ * @param [out] userDevid user device id
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtGetUserDevIdByLogicDevId(const int32_t logicDevId, int32_t *const userDevid);
+
+/**
+ * @ingroup AscendCL
+ * @brief get logic device id by physical device id
+ * @param [in] phyDevId    physical device id
+ * @param [out] logicDevId logic device id
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtGetLogicDevIdByPhyDevId(const int32_t phyDevId, int32_t *const logicDevId);
+
+/**
+ * @ingroup AscendCL
+ * @brief get logic device id by physical device id
+ * @param [in] logicDevId  physical device id
+ * @param [out] phyDevId   logic device id
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtGetPhyDevIdByLogicDevId(const int32_t logicDevId, int32_t *const phyDevId);
+
+/**
+ * @ingroup AscendCL
+ * @brief Support users in deploying custom profiling markers at specified network locations.
+ *
+ * @param [in] userdata Custom information set by user for profiling markers.
+ * @param [in] length   Length of userdata, currently limited to the maximum length that can carry for subsequent markers sqe.
+ * @param [in] stream   Stream issued by the marker operator.
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtProfTrace(void *userdata, int32_t length, aclrtStream stream);
+
+/**
+ * @ingroup AscendCL
+ * @brief Kernel Launch to device
+ * @param [in] funcHandle  function handle
+ * @param [in] blockDim  block dimentions
+ * @param [in] argsData  args data
+ * @param [in] argsSize  args size
+ * @param [in] cfg  configuration information
+ * @param [in] stream   stream handle
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtLaunchKernelV2(aclrtFuncHandle funcHandle, uint32_t blockDim,
+                                                 const void *argsData, size_t argsSize,
+                                                 aclrtLaunchKernelCfg *cfg, aclrtStream stream);
+
+/**
+ * @ingroup AscendCL
+ * @brief Launch kernel with host args
+ * @param [in] funcHandle  function handle
+ * @param [in] blockDim  block dimentions
+ * @param [in] stream  stream handle
+ * @param [in] cfg  configuration information
+ * @param [in] hostArgs  host args data
+ * @param [in] argsSize  args size
+ * @param [in] placeHolderArray  placeHolder array
+ * @param [in] placeHolderNum  placeHolder num
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtLaunchKernelWithHostArgs(aclrtFuncHandle funcHandle, uint32_t blockDim,
+                                                           aclrtStream stream, aclrtLaunchKernelCfg *cfg,
+                                                           void *hostArgs, size_t argsSize,
+                                                           aclrtPlaceHolderInfo *placeHolderArray,
+                                                           size_t placeHolderNum);
+
+/**
+ * @ingroup AscendCL
+ * @brief get context overflowAddr
+ * @param [out] overflowAddr  current ctx's overflowAddr to be get
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtCtxGetFloatOverflowAddr(void **overflowAddr);
+
+/**
+ * @ingroup AscendCL
+ * @brief get Saturation Status task
+ * @param [in] outputAddr  pointer to op output addr
+ * @param [in] outputSize  op output size
+ * @param [in] stream  associated stream
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtGetFloatOverflowStatus(void *outputAddr, uint64_t outputSize, aclrtStream stream);
+
+/**
+ * @ingroup AscendCL
+ * @brief clear Saturation Status task
+ * @param [in] stream  associated stream
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtResetFloatOverflowStatus(aclrtStream stream);
+
+/**
+ * @ingroup AscendCL
+ * @brief launch npu get float status task
+ * @param [in] outputAddr  pointer to op output addr
+ * @param [in] outputSize  op output size
+ * @param [in] checkMode  check mode 
+ * @param [in] stream  associated stream
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtNpuGetFloatOverFlowStatus(void *outputAddr, uint64_t outputSize, uint32_t checkMode, aclrtStream stream);
+
+/**
+ * @ingroup AscendCL
+ * @brief launch npu clear float status task
+ * @param [in] checkMode  check mode
+ * @param [in] stream  associated stream
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtNpuClearFloatOverFlowStatus(uint32_t checkMode, aclrtStream stream); 
+
+/**
+ * @ingroup AscendCL
+ * @brief Enqueues a host function call in s strea,
+ * @param [in] stream  stream handle
+ * @param [in] fn      Specify the callback function to be added
+ *                     The function prototype of the callback function is:
+ *                     typedef void (*aclrtHostFunc)(void *args);
+ * @param [in] args    User data to be passed to the callback function
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtLaunchHostFunc(aclrtStream stream, aclrtHostFunc fn, void *args);
+
+/**
+ * @ingroup AscendCL
+ * @brief get kernel sync address
+ * @param [out] addr  kernel sync addr
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtGetHardwareSyncAddr(void **addr);
+
+/**
+ * @ingroup AscendCL
+ * @brief launch random num task
+ * @param [in] taskInfo  random num task info
+ * @param [in] stream  stream
+ * @param [in] reserve  reserve param
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtRandomNumAsync(const aclrtRandomNumTaskInfo *taskInfo, const aclrtStream stream, void *reserve);
+
+/**
+ * @ingroup AscendCL
+ * @brief register stream state callback func
+ * @param [in] regName  register name
+ * @param [in] callback  callback func
+ * @param [in] args  callback func args
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtRegStreamStateCallback(const char *regName, aclrtStreamStateCallback callback, void *args);
+
+/**
+ * @ingroup AscendCL
+ * @brief register callback func for device id by position
+ * @param [in] regName  register name
+ * @param [in] callback  callback func
+ * @param [in] notifyPos  callback notify position
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtRegDeviceStateCallback(const char *regName, aclrtDeviceStateCallback callback, void *args);
+
+/**
+ * @ingroup AscendCL
+ * @brief register callback func for device task abort
+ * @param [in] regName  register name
+ * @param [in] callback  callback func
+ * @param [in] args  callback func args
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtSetDeviceTaskAbortCallback(const char *regName, aclrtDeviceTaskAbortCallback callback, void *args);
+
+/**
+ * @ingroup AscendCL
+ * @brief get op execute task timeout time.
+ * @param [out] timeoutMs  op execute timeout time
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtGetOpExecuteTimeout(uint32_t *const timeoutMs);
+
+/**
+ * @ingroup AscendCL
+ * @brief get device p2p enable status.
+ * @param [in] deviceId  the logic device id
+ * @param [in] peerDeviceId  the physical device id
+ * @param [in|out] status  enable status value
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtDevicePeerAccessStatus(int32_t deviceId, int32_t peerDeviceId, int32_t *status);
+
+/**
+ * @ingroup AscendCL
+ * @brief stop tasks on stream
+ * @param [in] stream  stream
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtStreamStop(aclrtStream stream);
+
+/**
+ * @ingroup AscendCL
+ * @brief launch update task
+ * @param [in] taskStream  destination stream
+ * @param [in] taskId  destination task id
+ * @param [in] info  task update info
+ * @param [in] execStream  associated stream
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtTaskUpdateAsync(aclrtStream taskStream,
+                                                   uint32_t taskId,
+                                                   aclrtTaskUpdateInfo *info,
+                                                   aclrtStream execStream);
+
+/**
+ * @ingroup AscendCL
+ * @brief get cmo desc size
+ * @param size [OUT]     size cmo desc size
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtCmoGetDescSize(size_t *size);
+
+/**
+ * @ingroup AscendCL
+ * @brief set cmo desc
+ * @param cmoDesc [IN]      cmo desc address
+ * @param src [IN]      source address ptr
+ * @param size [IN]       src mem Length
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtCmoSetDesc(void *cmoDesc, void *src, size_t size);
+
+/**
+ * @ingroup AscendCL
+ * @brief launch com addr task by com Desc
+ * @param cmoDesc [IN]      cmo desc ptr
+ * @param cmoType [IN]    cmo op code
+ * @param stream [IN]       stream
+ * @param reserve [IN]      reverse param
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtCmoAsyncWithDesc(
+    void *cmoDesc, aclrtCmoType cmoType, aclrtStream stream, const void *reserve);
+
+/**
+ * @ingroup AscendCL
+ * @brief check socversion
+ * @param socVersion [IN]   Verify Whether omSocVersion is compatible with the current device
+ * @param canCompatible [OUT]   Check compatibility: return 1 for compatible, 0 for incompatible
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtCheckArchCompatibility(const char *socVersion, int32_t *canCompatible);
+
+/**
+ * @ingroup AscendCL
+ * @brief abort model
+ * @param [in] modelRI  model to abort
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclmdlRIAbort(aclmdlRI modelRI);
+
+/**
+ * @ingroup AscendCL
+ * @brief count notify record
+ * @param cntNotify [in]                count notify object
+ * @param stream [in]                   stream
+ * @param aclrtCntNotifyRecordInfo [in] count notify record info
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtCntNotifyRecord(aclrtCntNotify cntNotify, aclrtStream stream,
+    aclrtCntNotifyRecordInfo *info);
+
+/**
+ * @ingroup AscendCL
+ * @brief count notify wait with timeout
+ * @param cntNotify [in]                count notify object
+ * @param stream [in]                   stream
+ * @param aclrtCntNotifyWaitInfo [in]   count notify wait info
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtCntNotifyWaitWithTimeout(aclrtCntNotify cntNotify, aclrtStream stream,
+    aclrtCntNotifyWaitInfo *info);
+
+/**
+ * @ingroup AscendCL
+ * @brief count notify reset
+ * @param cntNotify [in]    count notify object
+ * @param stream [in]       stream
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtCntNotifyReset(aclrtCntNotify cntNotify, aclrtStream stream);
+
+/**
+ * @ingroup AscendCL
+ * @brief get count notify id
+ * @param cntNotify [in]    count notify object
+ * @param stream [in]       stream
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtCntNotifyGetId(aclrtCntNotify cntNotify, uint32_t *notifyId);
+
+/**
+ * @ingroup AscendCL
+ * @brief stream task clean
+ * @param stream [in]  stream
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtPersistentTaskClean(aclrtStream stream);
+
+/**
+ * @ingroup AscendCL
+ * @brief Get detailed error information of the device
+ *
+ * @param deviceId [IN]   the device ID
+ * @param errorInfo [OUT] the error information
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtGetErrorVerbose(int32_t deviceId, aclrtErrorInfo *errorInfo);
+
+/**
+ * @ingroup AscendCL
+ * @brief Repair device errors
+ *
+ * @param deviceId [IN]   the device ID
+ * @param errorInfo [IN]  the error information
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtRepairError(int32_t deviceId, const aclrtErrorInfo *errorInfo);
+
+/**
+ * @ingroup AscendCL
+ * @brief This command is used to set access to a reserved virtual address range for the other device.
+ * @param [in] virPtr mapped address.
+ * @param [in] size mapped size.
+ * @param [in] desc va location and access type, when location is device, id is devid.
+ * @param [in] count desc num.
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtMemSetAccess(void *virPtr, size_t size, aclrtMemAccessDesc *desc, size_t count);
+
+/**
+ * @ingroup AscendCL
+ * @brief This command is used to get access to a reversed virtual address range for the other device.
+ * @param [in] virPtr    the va that has been mapped to device memory.
+ * @param [in] location  va location, when type is device, id is devid.
+ * @param [in] flag      access type.
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtMemGetAccess(void *virPtr, aclrtMemLocation *location, uint64_t *flag);
+
+typedef enum aclrtProcessState {
+    ACL_RT_PROCESS_STATE_RUNNING = 0,
+    ACL_RT_PROCESS_STATE_LOCKED,
+} aclrtProcessState;
+
+/**
+ * @ingroup AscendCL
+ * @brief cache last task shape data for profilling in aclgraph
+ *
+ * @param [in] infoPtr  cache data ptr
+ * @param [in] infoSize cache data size
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure.
+ */
+ACL_FUNC_VISIBILITY aclError aclrtCacheLastTaskOpInfo(const void * const infoPtr, const size_t infoSize);
+
+typedef struct aclrtIpcEventHandle {
+    char reserved[ACL_IPC_EVENT_HANDLE_SIZE];
+} aclrtIpcEventHandle;
+
+/**
+ * @ingroup AscendCL
+ * @brief get function attribute by attribute type.
+ *
+ * @param [in]  funcHandle function handle
+ * @param [in]  attrType   function attribue type
+ * @param [out] attrValue  function attribue value
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure.
+ */
+ACL_FUNC_VISIBILITY aclError aclrtGetFunctionAttribute(aclrtFuncHandle funcHandle, aclrtFuncAttribute attrType, int64_t *attrValue);
+
+/**
+ * @ingroup AscendCL
+ * @brief get an interprocess handle for a previously allocated event.
+ *
+ * @param [in]  event  event allocated with ACL_EVENT_IPC flags
+ * @param [out] handle handle for interprocess
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure.
+ */
+ACL_FUNC_VISIBILITY aclError aclrtIpcGetEventHandle(aclrtEvent event, aclrtIpcEventHandle *handle);
+
+/**
+ * @ingroup AscendCL
+ * @brief opens an interprocess event handle for user in the current process.
+ *
+ * @param [in]  handle  interprocess handle to open
+ * @param [out] event   returns the imported event
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure.
+ */
+ACL_FUNC_VISIBILITY aclError aclrtIpcOpenEventHandle(aclrtIpcEventHandle handle, aclrtEvent *event);
+
+/**
+ * @ingroup AscendCL
+ * @brief This command is used to return the result to the user via virtual address contrast with physical handle.
+ * @param [in] virPtr   the va that has been mapped to device memory.
+ * @param [out] handle  reverse lookup physical handle based on virtual address.
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtMemRetainAllocationHandle(void* virPtr, aclrtDrvMemHandle *handle);
 #ifdef __cplusplus
 }
 #endif

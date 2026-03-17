@@ -1,11 +1,11 @@
-/**
-* @file acl_dvpp.h
-*
-* Copyright (c) Huawei Technologies Co., Ltd. 2019-2020. All rights reserved.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+/*
+ * This program is free software, you can redistribute it and/or modify it.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
 */
 
 #if !defined(ENABLE_DVPP_INTERFACE)
@@ -1077,10 +1077,10 @@ ACL_FUNC_VISIBILITY aclError aclvencSetChannelDescKeyFrameInterval(aclvencChanne
 
 /**
  * @ingroup AscendCL
- * @brief Set output buffer address for venc channel desc.
+ * @brief Set output buffer addr for venc channel desc.
  *
  * @param channelDesc [OUT] venc channel desc
- * @param bufAddr [IN]      output buffer address
+ * @param bufAddr [IN]      output buffer addr
  *
  * @retval ACL_SUCCESS for success, other for failure
  */
@@ -1146,11 +1146,11 @@ ACL_FUNC_VISIBILITY aclError aclvencSetChannelDescParam(aclvencChannelDesc *chan
 
 /**
  * @ingroup AscendCL
- * @brief Get output buffer address for venc channel desc.
+ * @brief Get output buffer addr for venc channel desc.
  *
  * @param channelDesc[IN] venc channel desc
  *
- * @retval output buffer address
+ * @retval output buffer addr
  */
 ACL_FUNC_VISIBILITY void *aclvencGetChannelDescBufAddr(const aclvencChannelDesc *channelDesc);
 
@@ -2602,7 +2602,7 @@ ACL_FUNC_VISIBILITY uint32_t acldvppGetHistDims(acldvppHist *hist);
  *
  * @param hist [IN]  vpc hist description.
  * @param dim [IN]   which dim to get data.
- * @param data [OUT] address of output hist data.
+ * @param data [OUT] addr of output hist data.
  * @param len [OUT]  len of output hist data.
  *
  * @retval ACL_SUCCESS The function is successfully executed.

@@ -46,12 +46,22 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//xla/ffi:ffi_api",
+        "//xla/ffi/api:ffi",
+        "//xla/ffi",
+        "//xla/ffi:attribute_map",
+        "//xla/ffi:call_frame",
+        "//xla/ffi:execution_context",
+        "//xla/ffi:execution_state",
+        "//xla/ffi:ffi_api",  # buildcleaner: keep
+        "//xla/ffi:ffi_registry",
+        "//xla/ffi:invoke",
+        "//xla/ffi/api:c_api",
         "//xla:shape_util",
+        "//third_party/acl:acl_headers",
         "@com_google_absl//absl/strings",
     ],
     copts = select({
-        "//conditions:default": [],
+        "//conditions:default": ["-Ithird_party/acl/inc"],
     }),
     linkopts = select({
         "//conditions:default": [],

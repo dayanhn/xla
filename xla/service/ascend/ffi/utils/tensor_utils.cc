@@ -1,39 +1,45 @@
-
 #include "xla/service/ascend/ffi/utils/tensor_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "tensorflow/compiler/xla/literal.h"
 
 namespace xla::ffi {
-  aclTensor* ConvertToAclTensor(const BufferBase& buffer) {
-  // Get buffer shape and data type
-  Shape shape = buffer.shape();
-  std::vector<int64_t> dims;
-  for (int i = 0; i < shape.rank(); ++i) {
-    dims.push_back(shape.dimensions(i));
+  template <DataType dtype, size_t rank>
+  aclTensor* ConvertToAclTensor(const Buffer<dtype, rank>& buffer) {
+  // Get buffer dimensions
+  auto dims = buffer.dimensions();
+  std::vector<int64_t> dimensions;
+  for (auto dim : dims) {
+    dimensions.push_back(dim);
   }
 
   // Determine Ascend data type
-  aclDataType data_type = ConvertToAclDataType(shape.element_type());
+  aclDataType data_type = ConvertToAclDataType(PrimitiveType::F32); // TODO: map from dtype
 
   // Calculate strides
-  std::vector<int64_t> strides(dims.size(), 1);
-  for (int i = dims.size() - 2; i >= 0; --i) {
-    strides[i] = strides[i + 1] * dims[i + 1];
+  std::vector<int64_t> strides(dimensions.size(), 1);
+  for (int i = dimensions.size() - 2; i >= 0; --i) {
+    strides[i] = strides[i + 1] * dimensions[i + 1];
   }
 
   // Create aclTensor
   return aclCreateTensor(
-      dims.data(),
-      dims.size(),
+      dimensions.data(),
+      dimensions.size(),
       data_type,
       strides.data(),
       0,
       ACL_FORMAT_ND,
-      dims.data(),
-      dims.size(),
-      const_cast<void*>(buffer.data()));
+      dimensions.data(),
+      dimensions.size(),
+      const_cast<void*>(buffer.untyped_data()));
 }
+
+// Explicit instantiations for common types
+template aclTensor* ConvertToAclTensor<DataType::F32, 0>(const Buffer<DataType::F32, 0>&);
+template aclTensor* ConvertToAclTensor<DataType::F32, 1>(const Buffer<DataType::F32, 1>&);
+template aclTensor* ConvertToAclTensor<DataType::F32, 2>(const Buffer<DataType::F32, 2>&);
+template aclTensor* ConvertToAclTensor<DataType::F32, 3>(const Buffer<DataType::F32, 3>&);
+template aclTensor* ConvertToAclTensor<DataType::F32, 4>(const Buffer<DataType::F32, 4>&);
 
 aclDataType ConvertToAclDataType(PrimitiveType type) {
   switch (type) {

@@ -1,12 +1,12 @@
 /**
-* @file acl_rt_allocator.h
-*
-* Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-*/
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 #ifndef INC_EXTERNAL_ACL_ACL_RT_ALLOCATOR_H_
 #define INC_EXTERNAL_ACL_ACL_RT_ALLOCATOR_H_
 
@@ -15,11 +15,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-typedef void *aclrtAllocatorDesc;
-typedef void *aclrtAllocator;
-typedef void *aclrtAllocatorBlock;
-typedef void *aclrtAllocatorAddr;
 
 typedef void *(*aclrtAllocatorAllocFunc)(aclrtAllocator allocator, size_t size);
 typedef void (*aclrtAllocatorFreeFunc)(aclrtAllocator allocator, aclrtAllocatorBlock block);
@@ -127,6 +122,28 @@ ACL_FUNC_VISIBILITY aclError aclrtAllocatorSetGetAddrFromBlockFuncToDesc(aclrtAl
  * @see aclrtAllocatorUnregister
  */
 ACL_FUNC_VISIBILITY aclError aclrtAllocatorRegister(aclrtStream stream, aclrtAllocatorDesc allocatorDesc);
+
+/**
+ * @ingroup AscendCL
+ * @brief Get allocator and related functions from ACL by stream
+ *
+ * @param stream [IN]    stream handle
+ * @param allocatorDesc [OUT] allocator desc handle
+ * @param allocFunc [OUT] alloc function
+ * @param freeFunc [OUT] free function
+ * @param allocAdviseFunc [OUT] alloc advise function
+ * @param getAddrFromBlockFunc [OUT] get address from block function
+ *
+ * @retval ACL_SUCCESS The function is successfully executed.
+ * @retval OtherValues Failure
+ */
+ACL_FUNC_VISIBILITY aclError aclrtAllocatorGetByStream(aclrtStream stream,
+                                                       aclrtAllocatorDesc *allocatorDesc,
+                                                       aclrtAllocator *allocator,
+                                                       aclrtAllocatorAllocFunc *allocFunc,
+                                                       aclrtAllocatorFreeFunc *freeFunc,
+                                                       aclrtAllocatorAllocAdviseFunc *allocAdviseFunc,
+                                                       aclrtAllocatorGetAddrFromBlockFunc *getAddrFromBlockFunc);
 
 /**
  * @ingroup AscendCL

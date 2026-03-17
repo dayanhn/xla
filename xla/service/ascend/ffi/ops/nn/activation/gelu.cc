@@ -1,7 +1,7 @@
 #include "xla/ffi/api/ffi.h"
 #include "xla/service/ascend/ffi/utils/tensor_utils.h"
-#include "acl/acl.h"
-#include "aclnnop/aclnn_gelu.h"
+#include "third_party/acl/inc/acl/acl.h"
+#include "third_party/acl/inc/aclnnop/aclnn_gelu.h"
 #include "absl/strings/str_cat.h"
 
 namespace ffi = xla::ffi;
@@ -42,7 +42,6 @@ ffi::Error GeluHandler(aclrtStream stream, ffi::Buffer<ffi::F32> self, ffi::Resu
   // Release resources
   aclDestroyTensor(self_tensor);
   aclDestroyTensor(out_tensor);
-  aclOpExecutorDestroy(executor); 
 
   return ffi::Error::Success();
 }

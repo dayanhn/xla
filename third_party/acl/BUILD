@@ -23,6 +23,7 @@ cc_library(
     name = "acl_headers",
     hdrs = glob(["inc/**/*.h"]),
     includes = ["inc"],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
