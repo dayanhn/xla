@@ -44,6 +44,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//xla/service:executable",
+        "//xla/service/gpu:gpu_executable",
         "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -94,7 +95,7 @@ cc_library(
         "//xla/service:compiler",
         "//xla/service:executable",
         "//xla/service:hlo_cost_analysis",
-        "//xla/service:llvm_compiler",
+        "//xla/service/gpu:gpu_compiler",
         "//xla/stream_executor/ascend:ascend_platform_id",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

@@ -16,36 +16,18 @@ limitations under the License.
 #ifndef XLA_SERVICE_ASCEND_ASCEND_EXECUTABLE_H_
 #define XLA_SERVICE_ASCEND_ASCEND_EXECUTABLE_H_
 
-#include "xla/service/executable.h"
+#include "xla/service/gpu/gpu_executable.h"
 
 namespace xla {
 
-// Executable for Ascend devices.
-class AscendExecutable : public Executable {
+// Executable for Ascend devices, inheriting from GpuExecutable.
+class AscendExecutable : public gpu::GpuExecutable {
  public:
   // Creates an AscendExecutable.
   static absl::StatusOr<std::unique_ptr<AscendExecutable>> Create(
-      std::unique_ptr<HloModule> hlo_module,
-      se::StreamExecutor* stream_executor);
+      gpu::GpuExecutable::Params params);
 
   ~AscendExecutable() override;
-
-  absl::StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
-      const ServiceExecutableRunOptions* run_options,
-      std::vector<ExecutionInput> arguments) override;
-
-  int64_t SizeOfGeneratedCodeInBytes() const override;
-
-  absl::Span<const BufferAllocation* absl_nonnull const> GetAllocations()
-      const override;
-
- public:
-  AscendExecutable(
-      std::unique_ptr<HloModule> hlo_module,
-      se::StreamExecutor* stream_executor);
-
-  private:
-  se::StreamExecutor* stream_executor_;
 };
 
 }  // namespace xla

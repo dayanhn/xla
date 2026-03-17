@@ -15,42 +15,25 @@ limitations under the License.
 
 #include "xla/service/ascend/ascend_executable.h"
 
-namespace xla {
+#include "xla/util.h"
 
-AscendExecutable::AscendExecutable(
-    std::unique_ptr<HloModule> hlo_module,
-    se::StreamExecutor* stream_executor)
-    : Executable(std::move(hlo_module)),
-      stream_executor_(stream_executor) {
-}
+namespace xla {
 
 AscendExecutable::~AscendExecutable() {
 }
 
 absl::StatusOr<std::unique_ptr<AscendExecutable>> AscendExecutable::Create(
-    std::unique_ptr<HloModule> hlo_module,
-    se::StreamExecutor* stream_executor) {
-  return std::make_unique<AscendExecutable>(
-      std::move(hlo_module), stream_executor);
-}
-
-absl::StatusOr<ExecutionOutput> AscendExecutable::ExecuteAsyncOnStream(
-    const ServiceExecutableRunOptions* run_options,
-    std::vector<ExecutionInput> arguments) {
-  // TODO: Implement Ascend-specific execution
-  return absl::UnimplementedError("ExecuteAsyncOnStream not implemented for Ascend");
-}
-
-int64_t AscendExecutable::SizeOfGeneratedCodeInBytes() const {
-  // TODO: Implement Ascend-specific code size calculation
-  return 0;
-}
-
-absl::Span<const BufferAllocation* absl_nonnull const> AscendExecutable::GetAllocations()
-    const {
-  // TODO: Implement Ascend-specific allocation retrieval
-  static std::vector<const BufferAllocation*> empty;
-  return empty;
+    gpu::GpuExecutable::Params params) {
+  // Create a GpuExecutable first
+  auto gpu_executable_or = gpu::GpuExecutable::Create(std::move(params));
+  if (!gpu_executable_or.ok()) {
+    return gpu_executable_or.status();
+  }
+  auto gpu_executable = std::move(gpu_executable_or.value());
+  
+  // Convert it to AscendExecutable
+  return std::unique_ptr<AscendExecutable>(
+      static_cast<AscendExecutable*>(gpu_executable.release()));
 }
 
 }  // namespace xla

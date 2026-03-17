@@ -15,40 +15,16 @@ limitations under the License.
 
 #include "xla/service/ascend/ascend_compiler.h"
 
+#include "xla/service/ascend/ascend_executable.h"
+#include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/service/hlo_verifier.h"
 #include "xla/stream_executor/ascend/ascend_platform_id.h"
 
 namespace xla {
 
-AscendCompiler::AscendCompiler() {
-}
-
-absl::StatusOr<std::vector<std::unique_ptr<Executable>>> AscendCompiler::Compile(
-    std::unique_ptr<HloModule> hlo_module,
-    std::vector<se::StreamExecutor*> stream_execs,
-    const CompileOptions& options) {
-  // TODO: Implement Ascend-specific compilation
-  return absl::UnimplementedError("Compile not implemented for Ascend");
-}
-
-absl::StatusOr<std::unique_ptr<HloModule>> AscendCompiler::RunHloPasses(
-    std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-    const CompileOptions& options) {
-  // TODO: Implement Ascend-specific HLO passes
-  return std::move(module);
-}
-
-absl::StatusOr<std::unique_ptr<Executable>> AscendCompiler::RunBackend(
-    std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-    const CompileOptions& options) {
-  // TODO: Implement Ascend-specific backend
-  return absl::UnimplementedError("RunBackend not implemented for Ascend");
-}
-
-absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>> AscendCompiler::CompileAheadOfTime(
-    std::unique_ptr<HloModule> hlo_module,
-    const AotCompilationOptions& options) {
-  // TODO: Implement Ascend-specific AOT compilation
-  return absl::UnimplementedError("CompileAheadOfTime not implemented for Ascend");
+AscendCompiler::AscendCompiler() 
+    : gpu::GpuCompiler(stream_executor::ascend::kAscendPlatformId, "ascend", "e-m:e-i64:64-f80:128-f64:64-f32:32-f16:16-i32:32-i16:16-i8:8-n8:8") {
 }
 
 se::Platform::Id AscendCompiler::PlatformId() const {
@@ -56,28 +32,59 @@ se::Platform::Id AscendCompiler::PlatformId() const {
 }
 
 HloCostAnalysis::ShapeSizeFunction AscendCompiler::ShapeSizeBytesFunction() const {
-  // TODO: Implement Ascend-specific shape size function
-  return [](const Shape& shape) {
-    return ShapeUtil::ByteSizeOf(shape);
-  };
-}
-
-absl::StatusOr<std::unique_ptr<CompiledModule>> AscendCompiler::Export(
-    Executable* executable) {
-  // TODO: Implement Ascend-specific export
-  return absl::UnimplementedError("Export not implemented for Ascend");
-}
-
-absl::StatusOr<std::unique_ptr<CompiledModule>> AscendCompiler::LoadAotCompilationResult(
-    const std::string& serialized_aot_result) {
-  // TODO: Implement Ascend-specific AOT result loading
-  return absl::UnimplementedError("LoadAotCompilationResult not implemented for Ascend");
+  // Use the shape size function from GpuCompiler
+  return gpu::ShapeSizeBytesFunction(8); // Assume 8-byte pointers for Ascend
 }
 
 std::vector<std::string> AscendCompiler::GetLLVMCommandLineOptions(
     const DebugOptions& debug_options) const {
   // TODO: Add Ascend-specific LLVM options
   return {};
+}
+
+absl::StatusOr<std::unique_ptr<Executable>> AscendCompiler::RunBackend(
+    std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
+    const CompileOptions& options) {
+  // Call the parent class RunBackend to get the compilation results
+  auto result = gpu::GpuCompiler::RunBackend(std::move(module), stream_exec, options);
+  if (!result.ok()) {
+    return result.status();
+  }
+  
+  // The parent class returns a GpuExecutable, but we need to return an AscendExecutable
+  // For now, we'll just return the GpuExecutable as-is
+  // TODO: Implement proper Ascend-specific backend processing
+  return result;
+}
+
+absl::Status AscendCompiler::OptimizeHloConvolutionCanonicalization(
+    HloModule* hlo_module, const se::GpuComputeCapability& gpu_version,
+    se::dnn::VersionInfo dnn_version,
+    const se::SemanticVersion& toolkit_version) {
+  // For now, we'll just run a basic pass pipeline
+  HloPassPipeline pipeline("ascend_conv_canonicalization");
+  pipeline.AddInvariantCheckerDebug<HloVerifier>(
+      /*layout_sensitive=*/false,
+      /*allow_mixed_precision=*/false);
+  
+  // TODO: Add Ascend-specific convolution optimizations
+  
+  return pipeline.Run(hlo_module).status();
+}
+
+absl::StatusOr<gpu::GpuCompiler::BackendCompileResult> AscendCompiler::CompileTargetBinary(
+    const HloModuleConfig& module_config, llvm::Module* llvm_module,
+    const stream_executor::DeviceDescription& device_description,
+    bool relocatable, const HloModule* debug_module,
+    const CompileOptions& options, std::optional<int> shard_number) {
+  // For now, we'll just return an empty binary
+  // TODO: Implement proper Ascend binary compilation
+  return gpu::GpuCompiler::BackendCompileResult{
+      /*asm_text=*/"",
+      /*binary=*/{},
+      /*dnn_compiled_graphs=*/{},
+      /*module_stats=*/{}
+  };
 }
 
 }  // namespace xla
