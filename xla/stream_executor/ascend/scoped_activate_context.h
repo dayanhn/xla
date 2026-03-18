@@ -16,12 +16,13 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_ASCEND_SCOPED_ACTIVATE_CONTEXT_H_
 #define XLA_STREAM_EXECUTOR_ASCEND_SCOPED_ACTIVATE_CONTEXT_H_
 
+#include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/ascend/context.h"
 
 namespace stream_executor::ascend {
 
 // RAII helper that activates an Ascend context for the duration of a scope.
-class ScopedActivateContext {
+class ScopedActivateContext : public ActivateContext{
  public:
   explicit ScopedActivateContext(Context* context);
   ~ScopedActivateContext();

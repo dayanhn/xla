@@ -58,7 +58,7 @@ absl::Status AscendExecutor::Init() {
   TF_ASSIGN_OR_RETURN(context_, AscendContext::Create(device_ordinal_));
 
   // Detect peer access capabilities
-  int device_count = 0;
+  uint32_t device_count = 0;
   aclError error = aclrtGetDeviceCount(&device_count);
   if (error != ACL_ERROR_NONE) {
     LOG(ERROR) << "aclrtGetDeviceCount failed with " << error;
