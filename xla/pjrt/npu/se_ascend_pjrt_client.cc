@@ -459,8 +459,9 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorAscendClient(
   
   std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states;
   TF_ASSIGN_OR_RETURN(local_device_states, BuildLocalDeviceStates(xla_client));
-#if 0      
+ 
   EnableAscendPeerAccess(xla_client->backend().stream_executors());
+#if 0       
   TF_ASSIGN_OR_RETURN(auto allocator,
                       GetStreamExecutorAscendDeviceAllocator(
                           xla_client->platform(), options.allocator_config,

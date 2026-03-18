@@ -33,15 +33,25 @@ namespace {
 
 // Returns whether peer access is possible between two devices.
 bool CanEnablePeerAccess(int from_device, int to_device) {
-  // TODO: Implement peer access check for Ascend
-  // This is a placeholder implementation
-  return false;
+  int32_t result_s2d = -1;
+  aclError error = aclrtDeviceCanAccessPeer(&result_s2d, from_device, to_device);
+  if (error != ACL_ERROR_NONE || !result_s2d){
+    return false;
+  }
+  return true;
 }
 
 // Enables peer access between two contexts.
-absl::Status EnablePeerAccess(aclrtContext from_context, aclrtContext to_context) {
-  // TODO: Implement peer access enable for Ascend
-  // This is a placeholder implementation
+absl::Status EnablePeerAccess(int from_device, int to_device) {
+  aclError error = aclrtSetDevice(from_device);
+  if (error != ACL_ERROR_NONE) {
+    LOG(ERROR) << "aclrtSetDevice failed with " << error << ",set device is " << from_device;
+  }
+  error = aclrtDeviceEnablePeerAccess(to_device, 0);
+  if (error != ACL_ERROR_NONE) {
+    LOG(ERROR) << "aclrtDeviceEnablePeerAccess failed with " << error << ", from device " \
+               << from_device << " to device " << to_device;
+  }
   return absl::OkStatus();
 }
 
@@ -142,7 +152,7 @@ absl::Status AscendExecutor::EnablePeerAccessTo(StreamExecutor* other) {
                                            device_ordinal(), " to ", other_device_ordinal));
   }
 
-  return EnablePeerAccess(context_->context(), other_ascend_executor->context()->context());
+  return EnablePeerAccess(device_ordinal(), other_device_ordinal);
 }
 
 bool AscendExecutor::CanEnablePeerAccessTo(StreamExecutor* other) {
