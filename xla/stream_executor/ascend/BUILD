@@ -110,6 +110,68 @@ cc_library(
 )
 
 cc_library(
+    name = "ascend_context_map",
+    hdrs = ["ascend_context_map.h"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
+    name = "ascend_context",
+    srcs = ["ascend_context.cc"],
+    hdrs = ["ascend_context.h"],
+    deps = [
+        ":ascend_status",
+        ":ascend_context_map",
+        ":scoped_activate_context",
+        "//third_party/acl:acl_headers",
+        "//xla/stream_executor:activate_context",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/gpu:context",
+        "@com_google_absl//absl/log:check",
+    ],
+    copts = select({
+        "//conditions:default": ["-Ithird_party/acl/inc"],
+    }),
+)
+
+cc_library(
+    name = "context",
+    hdrs = ["context.h"],
+    deps = [
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_library(
+    name = "scoped_activate_context",
+    srcs = ["scoped_activate_context.cc"],
+    hdrs = ["scoped_activate_context.h"],
+    deps = [
+        ":ascend_context_map",
+        ":context",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/base:core_headers",
+        "//third_party/acl:acl_headers",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/gpu:context",
+        "//xla/stream_executor:activate_context",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/synchronization",
+    ],
+    copts = select({
+        "//conditions:default": ["-Ithird_party/acl/inc"],
+    }),
+)
+
+cc_library(
     name = "ascend_executor",
     srcs = [
         "ascend_executor.cc",
@@ -126,6 +188,8 @@ cc_library(
         ":ascend_event",
         ":ascend_stream",
         ":ascend_status",
+        ":ascend_context",
+        ":scoped_activate_context",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_h",
@@ -157,6 +221,8 @@ cc_library(
         ":ascend_event",
         ":ascend_stream",
         ":ascend_status",
+        ":ascend_context",
+        ":scoped_activate_context",
         ":ascend_platform_id",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:executor_cache",

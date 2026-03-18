@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/fft.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/stream_executor/ascend/ascend_context.h"
 #include "xla/stream_executor/dnn.h"
 
 namespace stream_executor::ascend {
@@ -61,10 +62,10 @@ class AscendExecutor : public StreamExecutorCommon {
       const std::string& symbol_name, ModuleHandle module_handle) override;
   absl::Status SynchronousMemZero(DeviceAddressBase* location,
                                   uint64_t size) override;
-  absl::Status SynchronousMemcpy(DeviceAddressBase* gpu_dst,
+  absl::Status SynchronousMemcpy(DeviceAddressBase* ascend_dst,
                                  const void* host_src, uint64_t size) override;
   absl::Status SynchronousMemcpy(void* host_dst,
-                                 const DeviceAddressBase& gpu_src,
+                                 const DeviceAddressBase& ascend_src,
                                  uint64_t size) override;
   void DeallocateStream(Stream* stream) override;
   absl::Status EnablePeerAccessTo(StreamExecutor* other) override;
@@ -89,6 +90,7 @@ class AscendExecutor : public StreamExecutorCommon {
       std::optional<std::variant<StreamPriority, int>> priority) override;
   absl::StatusOr<std::unique_ptr<CommandBuffer>> CreateCommandBuffer(
       CommandBuffer::Mode mode) override;
+  std::unique_ptr<ActivateContext> Activate() override;
 
   absl::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
       const override;
@@ -100,15 +102,24 @@ class AscendExecutor : public StreamExecutorCommon {
 
   absl::StatusOr<MemorySpace> GetPointerMemorySpace(const void* ptr) override;
 
+  // Returns the underlying Ascend context.
+  AscendContext* context() const { return context_; }
+
  private:
   // The device ordinal value that this executor was initialized with;
   int device_ordinal_;
+  
+  // The Ascend context for this executor.
+  AscendContext* context_ = nullptr;
   
   // Mutex to protect access to alive_ascend_streams_.
   absl::Mutex alive_ascend_streams_mu_;
   
   // Map from stream handle to stream pointer for all alive streams.
   std::unordered_map<void*, Stream*> alive_ascend_streams_;
+  
+  // Cache of peer access capabilities between this device and others.
+  absl::flat_hash_map<int, bool> peer_access_cache_;
 };
 
 }  // namespace stream_executor::ascend

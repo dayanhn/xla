@@ -18,25 +18,67 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/container/flat_hash_map.h"
 #include "third_party/acl/inc/acl/acl.h"
 #include "third_party/acl/inc/acl/acl_base.h"
 #include "third_party/acl/inc/acl/acl_rt.h"
+#include "xla/stream_executor/activate_context.h"
+#include "xla/stream_executor/ascend/ascend_context.h"
 #include "xla/stream_executor/ascend/ascend_event.h"
 #include "xla/stream_executor/ascend/ascend_stream.h"
+#include "xla/stream_executor/ascend/scoped_activate_context.h"
 #include "xla/stream_executor/device_description.h"
+
+namespace {
+
+// Returns whether peer access is possible between two devices.
+bool CanEnablePeerAccess(int from_device, int to_device) {
+  // TODO: Implement peer access check for Ascend
+  // This is a placeholder implementation
+  return false;
+}
+
+// Enables peer access between two contexts.
+absl::Status EnablePeerAccess(aclrtContext from_context, aclrtContext to_context) {
+  // TODO: Implement peer access enable for Ascend
+  // This is a placeholder implementation
+  return absl::OkStatus();
+}
+
+}  // namespace
 
 namespace stream_executor::ascend {
 
-AscendExecutor::~AscendExecutor() {}
+AscendExecutor::~AscendExecutor() {
+  // Context is managed by AscendContext::GetContextMap()
+}
 
 absl::Status AscendExecutor::Init() {
-  // TODO: Implement Ascend-specific initialization
-  // Set device, create context, etc.
-  aclError error = aclrtSetDevice(device_ordinal_);
+  // Create Ascend context
+  TF_ASSIGN_OR_RETURN(context_, AscendContext::Create(device_ordinal_));
+
+  // Detect peer access capabilities
+  int device_count = 0;
+  aclError error = aclrtGetDeviceCount(&device_count);
   if (error != ACL_ERROR_NONE) {
-    return absl::InternalError(absl::StrCat("aclrtSetDevice failed with ", error));
+    LOG(ERROR) << "aclrtGetDeviceCount failed with " << error;
+    device_count = 1; // Assume at least one device
   }
+
+  for (int i = 0; i < device_count; ++i) {
+    if (i == device_ordinal_) {
+      peer_access_cache_[i] = true;
+      continue;
+    }
+
+    peer_access_cache_[i] = CanEnablePeerAccess(device_ordinal_, i);
+  }
+
   return absl::OkStatus();
+}
+
+std::unique_ptr<ActivateContext> AscendExecutor::Activate() {
+  return std::make_unique<ScopedActivateContext>(context_);
 }
 
 bool AscendExecutor::SynchronizeAllActivity() {
@@ -88,18 +130,36 @@ void AscendExecutor::DeallocateStream(Stream* stream) {
 }
 
 absl::Status AscendExecutor::EnablePeerAccessTo(StreamExecutor* other) {
-  // TODO: Implement peer access
-  return absl::UnimplementedError("EnablePeerAccessTo not implemented");
+  AscendExecutor* other_ascend_executor = static_cast<AscendExecutor*>(other);
+  int other_device_ordinal = other_ascend_executor->device_ordinal();
+
+  if (other_device_ordinal == device_ordinal()) {
+    return absl::OkStatus(); // A device can always access its own memory
+  }
+
+  if (!CanEnablePeerAccessTo(other_device_ordinal)) {
+    return absl::InternalError(absl::StrCat("Peer access not supported from device ", 
+                                           device_ordinal(), " to ", other_device_ordinal));
+  }
+
+  return EnablePeerAccess(context_->context(), other_ascend_executor->context()->context());
 }
 
 bool AscendExecutor::CanEnablePeerAccessTo(StreamExecutor* other) {
-  // TODO: Implement peer access check
-  return false;
+  AscendExecutor* other_ascend_executor = static_cast<AscendExecutor*>(other);
+  return CanEnablePeerAccessTo(other_ascend_executor->device_ordinal());
 }
 
 bool AscendExecutor::CanEnablePeerAccessTo(int other_device_ordinal) {
-  // TODO: Implement peer access check
-  return false;
+  auto it = peer_access_cache_.find(other_device_ordinal);
+  if (it != peer_access_cache_.end()) {
+    return it->second;
+  }
+
+  // If not in cache, check and add to cache
+  bool can_access = CanEnablePeerAccess(device_ordinal_, other_device_ordinal);
+  peer_access_cache_[other_device_ordinal] = can_access;
+  return can_access;
 }
 
 bool AscendExecutor::DeviceMemoryUsage(int64_t* free_out, int64_t* total_out) const {
