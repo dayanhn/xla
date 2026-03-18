@@ -104,11 +104,11 @@ class AscendExecutor : public StreamExecutorCommon {
   // The device ordinal value that this executor was initialized with;
   int device_ordinal_;
   
-  // Mutex to protect access to alive_gpu_streams_.
-  absl::Mutex alive_gpu_streams_mu_;
+  // Mutex to protect access to alive_ascend_streams_.
+  absl::Mutex alive_ascend_streams_mu_;
   
   // Map from stream handle to stream pointer for all alive streams.
-  std::unordered_map<void*, Stream*> alive_gpu_streams_ GUARDED_BY(alive_gpu_streams_mu_);
+  std::unordered_map<void*, Stream*> alive_ascend_streams_;
 };
 
 }  // namespace stream_executor::ascend

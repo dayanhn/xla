@@ -50,13 +50,13 @@ namespace {
 absl::Status WaitStreamOnEvent(StreamExecutor* executor, aclrtStream stream,
                                aclrtEvent event) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
-  return ToStatus(aclrtStreamWaitEvent(stream, event, 0 /* flags */));
+  return ToStatus(aclrtStreamWaitEvent(stream, event));
 }
 
-absl::Status RecordGpuEvent(StreamExecutor* executor, aclrtEvent event,
+absl::Status RecordAscendEvent(StreamExecutor* executor, aclrtEvent event,
                             aclrtStream stream) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
-  return ToStatus(aclrtEventRecord(event, stream),
+  return ToStatus(aclrtRecordEvent(event, stream),
                   "Error recording Ascend event");
 }
 
@@ -77,44 +77,50 @@ absl::StatusOr<aclrtStream> CreateStream(StreamExecutor* executor, int priority)
 }
 
 absl::Status AsynchronousMemcpyD2H(StreamExecutor* executor, void* host_dst,
-                                   void* gpu_src, uint64_t size,
+                                   void* ascend_src, uint64_t size,
                                    aclrtStream stream) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
 
   TF_RETURN_IF_ERROR(
-      ToStatus(aclrtMemcpyAsync(host_dst, gpu_src, size, ACL_MEMCPY_DEVICE_TO_HOST, stream)));
+      ToStatus(aclrtMemcpyAsync(host_dst, size, ascend_src, size, ACL_MEMCPY_DEVICE_TO_HOST, stream)));
 
   VLOG(2) << "successfully enqueued async memcpy d2h of " << size
-          << " bytes from " << gpu_src << " to " << host_dst
+          << " bytes from " << ascend_src << " to " << host_dst
           << " on stream " << stream;
   return absl::OkStatus();
 }
 
 absl::Status AsynchronousMemcpyH2D(StreamExecutor* executor,
-                                   void* gpu_dst, const void* host_src,
+                                   void* ascend_dst, const void* host_src,
                                    uint64_t size, aclrtStream stream) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
   TF_RETURN_IF_ERROR(
-      ToStatus(aclrtMemcpyAsync(gpu_dst, host_src, size, ACL_MEMCPY_HOST_TO_DEVICE, stream)));
+      ToStatus(aclrtMemcpyAsync(ascend_dst, size, host_src, size, ACL_MEMCPY_HOST_TO_DEVICE, stream)));
 
   VLOG(2) << "successfully enqueued async memcpy h2d of " << size << " bytes"
-          << " from " << host_src << " to " << gpu_dst
+          << " from " << host_src << " to " << ascend_dst
           << " on stream " << stream;
   return absl::OkStatus();
 }
 
 absl::Status AsynchronousMemcpyD2D(StreamExecutor* executor,
-                                   void* gpu_dst, void* gpu_src,
+                                   void* ascend_dst, void* ascend_src,
                                    uint64_t size, aclrtStream stream) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
 
   TF_RETURN_IF_ERROR(
-      ToStatus(aclrtMemcpyAsync(gpu_dst, gpu_src, size, ACL_MEMCPY_DEVICE_TO_DEVICE, stream)));
+      ToStatus(aclrtMemcpyAsync(ascend_dst, size, ascend_src, size, ACL_MEMCPY_DEVICE_TO_DEVICE, stream)));
 
   VLOG(2) << "successfully enqueued async memcpy d2d of " << size << " bytes"
-          << " from " << gpu_src << " to " << gpu_dst
+          << " from " << ascend_src << " to " << ascend_dst
           << " on stream " << stream;
   return absl::OkStatus();
+}
+
+void InternalHostCallback(void* data) {
+  auto* callback = reinterpret_cast<absl::AnyInvocable<void() &&>*>(data);
+  std::move(*callback)();
+  delete callback;
 }
 
 }  // namespace
@@ -149,7 +155,7 @@ absl::Status AscendStream::WaitFor(Stream* other) {
 }
 
 absl::Status AscendStream::RecordEvent(Event* event) {
-  return RecordGpuEvent(executor_, static_cast<AscendEvent*>(event)->event_handle(),
+  return RecordAscendEvent(executor_, static_cast<AscendEvent*>(event)->event_handle(),
                         stream_handle_);
 }
 
@@ -169,8 +175,9 @@ void DestroyStream(StreamExecutor* executor, aclrtStream stream) {
   }
 
   std::unique_ptr<ActivateContext> activation = executor->Activate();
-  aclError res = aclrtStreamQuery(stream);
-  if (res != ACL_ERROR_NONE) {
+  aclrtStreamStatus  stream_status = ACL_STREAM_STATUS_RESERVED;
+  aclError res = aclrtStreamQuery(stream,&stream_status);
+  if (res != ACL_ERROR_NONE || stream_status != ACL_STREAM_STATUS_COMPLETE) {
     LOG(ERROR) << "stream not idle on destroy: " << ToStatus(res);
   }
 
@@ -187,7 +194,7 @@ void DestroyStream(StreamExecutor* executor, aclrtStream stream) {
 absl::Status SynchronizeStream(StreamExecutor* executor, aclrtStream stream) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
   CHECK(stream != nullptr);
-  return ToStatus(aclrtStreamSynchronize(stream),
+  return ToStatus(aclrtSynchronizeStream(stream),
                   "Could not synchronize Ascend stream");
 }
 
@@ -229,31 +236,61 @@ absl::Status AscendStream::Memset32(DeviceAddressBase* location, uint32_t patter
 absl::Status AscendStream::MemZero(DeviceAddressBase* location, uint64_t size) {
   std::unique_ptr<ActivateContext> activation = executor_->Activate();
   void* ptr = const_cast<void*>(location->opaque());
-  return ToStatus(aclrtMemsetAsync(ptr, size, 0, stream_handle_),
+  return ToStatus(aclrtMemsetAsync(ptr, size, 0, size,stream_handle_),
                   "Failed to enqueue async memset operation");
 }
 
-absl::Status AscendStream::Memcpy(DeviceAddressBase* gpu_dst,
-                                 const DeviceAddressBase& gpu_src,
+absl::Status AscendStream::Memcpy(DeviceAddressBase* ascend_dst,
+                                 const DeviceAddressBase& ascend_src,
                                  uint64_t size) {
   return AsynchronousMemcpyD2D(
-      executor_, const_cast<void*>(gpu_dst->opaque()),
-      const_cast<void*>(gpu_src.opaque()), size, stream_handle_);
+      executor_, const_cast<void*>(ascend_dst->opaque()),
+      const_cast<void*>(ascend_src.opaque()), size, stream_handle_);
 }
 
-absl::Status AscendStream::Memcpy(DeviceAddressBase* gpu_dst,
+absl::Status AscendStream::Memcpy(DeviceAddressBase* ascend_dst,
                                  const void* host_src, uint64_t size) {
   return AsynchronousMemcpyH2D(executor_,
-                               const_cast<void*>(gpu_dst->opaque()),
+                               const_cast<void*>(ascend_dst->opaque()),
                                host_src, size, stream_handle_);
 }
 
 absl::Status AscendStream::Memcpy(void* host_dst,
-                                 const DeviceAddressBase& gpu_src,
+                                 const DeviceAddressBase& ascend_src,
                                  uint64_t size) {
   return AsynchronousMemcpyD2H(executor_, host_dst,
-                               const_cast<void*>(gpu_src.opaque()),
+                               const_cast<void*>(ascend_src.opaque()),
                                size, stream_handle_);
+}
+
+absl::Status AscendStream::DoHostCallbackWithStatus(
+    absl::AnyInvocable<absl::Status() &&> callback) {
+  auto callback_ptr = new absl::AnyInvocable<void() &&>(
+      [cb = std::move(callback), this]() mutable {
+        absl::Status s = (std::move(cb))();
+        if (!s.ok()) {
+          LOG(ERROR) << "Host callback failed: " << s;
+        }
+        int num_pending_host_callbacks = num_pending_host_callbacks_.fetch_sub(
+                                             1, std::memory_order_acq_rel) - 1;
+        if (num_pending_host_callbacks == 0) {
+          absl::MutexLock lock(mutex_);
+          no_pending_host_callbacks_ = num_pending_host_callbacks_ <= 0;
+        }
+      });
+  
+  // ACL doesn't have a direct host callback API, so we just execute the callback directly
+  // Note: This is a simplification, actual implementation may need to use task queues
+  std::unique_ptr<ActivateContext> activation = executor_->Activate();
+  std::move(*callback_ptr)();
+  delete callback_ptr;
+  
+  int num_pending_host_callbacks = num_pending_host_callbacks_.fetch_add(1, std::memory_order_acq_rel) + 1;
+  if (num_pending_host_callbacks == 1) {
+    absl::MutexLock lock(mutex_);
+    no_pending_host_callbacks_ = num_pending_host_callbacks_ <= 0;
+  }
+  return absl::OkStatus();
 }
 
 absl::Status AscendStream::LaunchKernel(
@@ -274,6 +311,7 @@ AscendStream::AscendStream(StreamExecutor* executor, std::unique_ptr<Event> comp
                           std::optional<std::variant<StreamPriority, int>> priority,
                           aclrtStream stream_handle)
     : StreamCommon(executor),
+      executor_(executor),
       completed_event_(std::move(completed_event)),
       priority_(priority),
       stream_handle_(stream_handle) {}

@@ -52,10 +52,11 @@ class AscendStream : public StreamCommon {
   absl::Status BlockHostUntilDone() override;
   absl::Status Memset32(DeviceAddressBase* location, uint32_t pattern, uint64_t size) override;
   absl::Status MemZero(DeviceAddressBase* location, uint64_t size) override;
-  absl::Status Memcpy(DeviceAddressBase* gpu_dst, const DeviceAddressBase& gpu_src, uint64_t size) override;
-  absl::Status Memcpy(DeviceAddressBase* gpu_dst, const void* host_src, uint64_t size) override;
-  absl::Status Memcpy(void* host_dst, const DeviceAddressBase& gpu_src, uint64_t size) override;
+  absl::Status Memcpy(DeviceAddressBase* ascend_dst, const DeviceAddressBase& ascend_src, uint64_t size) override;
+  absl::Status Memcpy(DeviceAddressBase* ascend_dst, const void* host_src, uint64_t size) override;
+  absl::Status Memcpy(void* host_dst, const DeviceAddressBase& ascend_src, uint64_t size) override;
   absl::Status LaunchKernel(const ThreadDim& thread_dims, const BlockDim& block_dims, const std::optional<ClusterDim>& cluster_dims, void* function, absl::string_view name, void** args, int64_t shmem_bytes) override;
+  absl::Status DoHostCallbackWithStatus(absl::AnyInvocable<absl::Status() &&> callback) override;
   void SetName(std::string name) override;
 
  private:
@@ -66,6 +67,9 @@ class AscendStream : public StreamCommon {
   // Records the completed event for this stream.
   absl::Status RecordCompletedEvent();
 
+  // The StreamExecutor to which this object and ACL stream are bound.
+  StreamExecutor* executor_;
+
   // The underlying ACL stream handle.
   aclrtStream stream_handle_;
 
@@ -74,6 +78,11 @@ class AscendStream : public StreamCommon {
 
   // The priority of the stream.
   std::optional<std::variant<StreamPriority, int>> priority_;
+
+  // Counter for pending host callbacks.
+  std::atomic<int> num_pending_host_callbacks_{0};
+  absl::Mutex mutex_;
+  bool no_pending_host_callbacks_ = true;
 
   friend class AscendExecutor;
 };

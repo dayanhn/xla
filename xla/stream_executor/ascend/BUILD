@@ -62,8 +62,12 @@ cc_library(
     srcs = ["ascend_status.cc"],
     hdrs = ["ascend_status.h"],
     deps = [
+        "//third_party/acl:acl_headers",
         "@com_google_absl//absl/status",
     ],
+    copts = select({
+        "//conditions:default": ["-Ithird_party/acl/inc"],
+    }),
 )
 
 cc_library(
@@ -72,9 +76,14 @@ cc_library(
     hdrs = ["ascend_event.h"],
     deps = [
         ":ascend_status",
+        "//xla/stream_executor:stream_executor_h",
+        "//third_party/acl:acl_headers",
         "//xla/stream_executor:activate_context",
         "//xla/stream_executor:event",
     ],
+    copts = select({
+        "//conditions:default": ["-Ithird_party/acl/inc"],
+    }),
 )
 
 cc_library(
@@ -84,6 +93,7 @@ cc_library(
     deps = [
         ":ascend_event",
         ":ascend_status",
+        "//third_party/acl:acl_headers",
         "//xla/stream_executor:activate_context",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:launch_dim",
@@ -94,6 +104,9 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/synchronization",
     ],
+    copts = select({
+        "//conditions:default": ["-Ithird_party/acl/inc"],
+    }),
 )
 
 cc_library(
@@ -127,16 +140,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "ascend_runtime",
-    visibility = stream_executor_friends(),
-    deps = [
-        ":ascend_executor",
-        ":ascend_event",
-        ":ascend_stream",
-        ":ascend_status",
-    ],
-)
 
 cc_library(
     name = "ascend_platform",
@@ -150,7 +153,10 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":ascend_runtime",
+        ":ascend_executor",
+        ":ascend_event",
+        ":ascend_stream",
+        ":ascend_status",
         ":ascend_platform_id",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:executor_cache",

@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "third_party/acl/inc/acl/acl_base.h"
+#include "third_party/acl/inc/acl/acl_base_rt.h"
 
 namespace stream_executor {
 namespace ascend {
@@ -37,11 +38,11 @@ absl::Status ToStatus(aclError error, const char* message) {
   switch (error) {
     case ACL_ERROR_INVALID_PARAM:
       return absl::InvalidArgumentError(absl::StrCat(error_message, ": invalid parameter"));
-    case ACL_ERROR_RT_FAIL:
+    case ACL_ERROR_RT_FAILURE:
       return absl::InternalError(absl::StrCat(error_message, ": runtime failure"));
-    case ACL_ERROR_DEVICE_NOT_FOUND:
+    case ACL_ERROR_INVALID_DEVICE:
       return absl::NotFoundError(absl::StrCat(error_message, ": device not found"));
-    case ACL_ERROR_MEMORY_ALLOCATION:
+    case ACL_ERROR_BAD_ALLOC:
       return absl::ResourceExhaustedError(absl::StrCat(error_message, ": memory allocation failed"));
     default:
       return absl::InternalError(absl::StrCat(error_message, ": error code ", error));

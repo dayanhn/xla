@@ -37,23 +37,42 @@ absl::StatusOr<std::unique_ptr<AscendEvent>> AscendEvent::Create(StreamExecutor*
   return std::unique_ptr<AscendEvent>(new AscendEvent(executor, event));
 }
 
-absl::Status AscendEvent::PollForStatus() {
+Event::Status AscendEvent::PollForStatus() {
   std::unique_ptr<ActivateContext> activation = executor_->Activate();
   
-  aclrtEventStatus status;
-  aclError ret = aclrtEventQuery(event_handle_, &status);
+  aclrtEventRecordedStatus status;
+  aclError ret = aclrtQueryEventStatus(event_handle_, &status);
   if (ret != ACL_ERROR_NONE) {
-    return ToStatus(ret, "Failed to query event status");
+    LOG(ERROR) << "Failed to query event status: " << ret;
+    return Event::Status::kError;
   }
 
   switch (status) {
-    case ACL_EVENT_STATUS_COMPLETE:
-      return absl::OkStatus();
-    case ACL_EVENT_STATUS_PENDING:
-      return absl::CancelledError("Event is pending");
+    case ACL_EVENT_RECORDED_STATUS_COMPLETE:
+      return Event::Status::kComplete;
+    case ACL_EVENT_RECORDED_STATUS_NOT_READY:
+      return Event::Status::kPending;
     default:
-      return absl::UnknownError(absl::StrCat("Unknown event status: ", status));
+      return Event::Status::kError;
   }
+}
+
+absl::Status AscendEvent::WaitForEventOnExternalStream(std::intptr_t stream) {
+  std::unique_ptr<ActivateContext> activation = executor_->Activate();
+  aclError ret = aclrtStreamWaitEvent(reinterpret_cast<aclrtStream>(stream), event_handle_);
+  if (ret != ACL_ERROR_NONE) {
+    return ToStatus(ret, "Failed to wait for event on external stream");
+  }
+  return absl::OkStatus();
+}
+
+absl::Status AscendEvent::Synchronize() {
+  std::unique_ptr<ActivateContext> activation = executor_->Activate();
+  aclError ret = aclrtSynchronizeEvent(event_handle_);
+  if (ret != ACL_ERROR_NONE) {
+    return ToStatus(ret, "Failed to synchronize event");
+  }
+  return absl::OkStatus();
 }
 
 absl::StatusOr<float> AscendEvent::GetElapsedTime() const {
@@ -70,7 +89,7 @@ AscendEvent::~AscendEvent() {
 }
 
 AscendEvent::AscendEvent(StreamExecutor* executor, aclrtEvent event_handle)
-    : Event(executor), event_handle_(event_handle) {}
+    : executor_(executor), event_handle_(event_handle) {}
 
 }  // namespace ascend
 }  // namespace stream_executor

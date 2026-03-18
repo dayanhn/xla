@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_ASCEND_ASCEND_EVENT_H_ 
 #define XLA_STREAM_EXECUTOR_ASCEND_ASCEND_EVENT_H_
 
+#include "absl/status/statusor.h"
 #include "third_party/acl/inc/acl/acl_rt.h"
 #include "xla/stream_executor/event.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor {
 namespace ascend {
@@ -36,11 +38,16 @@ class AscendEvent : public Event {
   aclrtEvent event_handle() const { return event_handle_; }
 
   // Event interface implementation.
-  absl::Status PollForStatus() override;
-  absl::StatusOr<float> GetElapsedTime() const override;
+  Status PollForStatus() override;
+  absl::Status WaitForEventOnExternalStream(std::intptr_t stream) override;
+  absl::Status Synchronize() override;
+  absl::StatusOr<float> GetElapsedTime() const;
 
  private:
   AscendEvent(StreamExecutor* executor, aclrtEvent event_handle);
+
+  // The StreamExecutor to which this object and ACL event are bound.
+  StreamExecutor* executor_;
 
   // The underlying ACL event handle.
   aclrtEvent event_handle_;

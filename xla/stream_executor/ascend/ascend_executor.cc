@@ -68,14 +68,14 @@ absl::Status AscendExecutor::SynchronousMemZero(DeviceAddressBase* location,
   return absl::UnimplementedError("SynchronousMemZero not implemented");
 }
 
-absl::Status AscendExecutor::SynchronousMemcpy(DeviceAddressBase* gpu_dst,
+absl::Status AscendExecutor::SynchronousMemcpy(DeviceAddressBase* ascend_dst,
                                              const void* host_src, uint64_t size) {
   // TODO: Implement memory copy
   return absl::UnimplementedError("SynchronousMemcpy not implemented");
 }
 
 absl::Status AscendExecutor::SynchronousMemcpy(void* host_dst,
-                                             const DeviceAddressBase& gpu_src,
+                                             const DeviceAddressBase& ascend_src,
                                              uint64_t size) {
   // TODO: Implement memory copy
   return absl::UnimplementedError("SynchronousMemcpy not implemented");
@@ -83,8 +83,8 @@ absl::Status AscendExecutor::SynchronousMemcpy(void* host_dst,
 
 void AscendExecutor::DeallocateStream(Stream* stream) {
   AscendStream* ascend_stream = static_cast<AscendStream*>(stream);
-  absl::MutexLock l(&alive_gpu_streams_mu_);
-  alive_gpu_streams_.erase(ascend_stream->stream_handle());
+  absl::MutexLock l(&alive_ascend_streams_mu_);
+  alive_ascend_streams_.erase(ascend_stream->stream_handle());
 }
 
 absl::Status AscendExecutor::EnablePeerAccessTo(StreamExecutor* other) {
@@ -165,8 +165,8 @@ absl::StatusOr<std::unique_ptr<Event>> AscendExecutor::CreateEvent() {
 absl::StatusOr<std::unique_ptr<Stream>> AscendExecutor::CreateStream(
     std::optional<std::variant<StreamPriority, int>> priority) {
   TF_ASSIGN_OR_RETURN(auto stream, AscendStream::Create(this, priority));
-  absl::MutexLock l(&alive_gpu_streams_mu_);
-  alive_gpu_streams_[stream->stream_handle()] = stream.get();
+  absl::MutexLock l(&alive_ascend_streams_mu_);
+  alive_ascend_streams_[stream->stream_handle()] = stream.get();
   return std::move(stream);
 }
 
