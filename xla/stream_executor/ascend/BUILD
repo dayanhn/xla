@@ -194,6 +194,8 @@ cc_library(
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:stream_executor_common",
+        "//xla/stream_executor:generic_memory_allocation",
+        "//xla/stream_executor:generic_memory_allocator",
         "//third_party/acl:acl_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",

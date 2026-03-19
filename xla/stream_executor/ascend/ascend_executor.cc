@@ -28,8 +28,79 @@ limitations under the License.
 #include "xla/stream_executor/ascend/ascend_stream.h"
 #include "xla/stream_executor/ascend/scoped_activate_context.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/generic_memory_allocator.h"
+#include "xla/xla_data.pb.h"
+#include "xla/stream_executor/ascend/ascend_context.h"
+#include "xla/stream_executor/ascend/scoped_activate_context.h"
+#include "xla/util.h"
+#include "xla/stream_executor/generic_memory_allocation.h"
+#include "xla/stream_executor/generic_memory_allocator.h"
+
+namespace stream_executor::ascend {
 
 namespace {
+
+// Returns whether peer access is possible between two devices.
+
+// Allocates host memory that can be efficiently transferred to/from the device.
+// If numa_node is not kNUMANoAffinity, the memory is allocated on that NUMA node.
+absl::StatusOr<void*> HostAllocate(AscendContext* context, int numa_node, uint64_t size) {
+  if (numa_node != tsl::port::kNUMANoAffinity) {
+    // Allocate memory on the specified NUMA node
+    auto* buffer = tsl::port::NUMAMalloc(numa_node, size, /* minimum_alignment=*/256);
+    if (buffer == nullptr && size > 0) {
+      return absl::InternalError(absl::StrFormat(
+          "Failed to allocate host memory of size %d pinned to NUMA node %d",
+          size, numa_node));
+    }
+    // No need to register memory for Ascend, as ACL handles this automatically
+    return buffer;
+  }
+
+  ScopedActivateContext activation(context);
+  void* buffer = nullptr;
+  // Allocate pinned host memory for efficient device access
+  aclError error = aclrtMallocHost(&buffer, size);
+  if (error != ACL_ERROR_NONE) {
+    return absl::InternalError(absl::StrCat("aclrtMallocHost failed with ", error));
+  }
+  if (!buffer && size > 0) {
+    return absl::InternalError(
+        absl::StrFormat("Failed to allocate pinned host memory of size %d", size));
+  }
+  return buffer;
+}
+
+// Deallocates memory allocated via HostAllocate.
+void HostDeallocate(AscendContext* context, int numa_node, void* location, uint64_t size) {
+  if (numa_node != tsl::port::kNUMANoAffinity) {
+    tsl::port::NUMAFree(location, size);
+  } else {
+    ScopedActivateContext activation(context);
+    auto status = aclrtFreeHost(location);
+    if (status != ACL_ERROR_NONE) {
+      XLA_LOG_DEVICE(ERROR, context->device_ordinal())
+          << "failed to free host memory at " << location
+          << "; result: " << status;
+    }
+  }
+}
+
+// Allocates host memory and returns a MemoryAllocation wrapping it.
+absl::StatusOr<std::unique_ptr<MemoryAllocation>> AllocateHostMemory(
+    AscendContext* context, int numa_node, uint64_t size) {
+  TF_ASSIGN_OR_RETURN(void* ptr, HostAllocate(context, numa_node, size));
+  XLA_VLOG_DEVICE(2, context->device_ordinal())
+      << "allocated " << ptr << " for context " << context << " of "
+      << size << " bytes of host memory";
+  return std::make_unique<GenericMemoryAllocation>(
+      ptr, size, [context, numa_node](void* location, uint64_t size) {
+        HostDeallocate(context, numa_node, location, size);
+        XLA_VLOG_DEVICE(2, context->device_ordinal())
+            << "deallocated host memory at " << location
+            << " for context " << context;
+      });
+}
 
 // Returns whether peer access is possible between two devices.
 bool CanEnablePeerAccess(int from_device, int to_device) {
@@ -57,7 +128,7 @@ absl::Status EnablePeerAccess(int from_device, int to_device) {
 
 }  // namespace
 
-namespace stream_executor::ascend {
+
 
 AscendExecutor::~AscendExecutor() {
   // Context is managed by AscendContext::GetContextMap()
@@ -285,8 +356,7 @@ absl::StatusOr<std::unique_ptr<DeviceDescription>> AscendExecutor::CreateDeviceD
 
 absl::StatusOr<std::unique_ptr<MemoryAllocation>> AscendExecutor::HostMemoryAllocate(
     uint64_t size) {
-  // TODO: Implement host memory allocation
-  return absl::UnimplementedError("HostMemoryAllocate not implemented");
+  return AllocateHostMemory(context_, numa_node_, size);
 }
 
 bool AscendExecutor::HostMemoryRegister(void* location, uint64_t size) {
@@ -302,6 +372,81 @@ bool AscendExecutor::HostMemoryUnregister(void* location) {
 absl::StatusOr<MemorySpace> AscendExecutor::GetPointerMemorySpace(const void* ptr) {
   // TODO: Implement memory space detection
   return absl::UnimplementedError("GetPointerMemorySpace not implemented");
+}
+
+absl::StatusOr<std::unique_ptr<MemoryAllocator>>
+AscendExecutor::CreateMemoryAllocator(MemorySpace type) {
+  if (type == MemorySpace::kHost) {
+    return std::make_unique<GenericMemoryAllocator>([this](uint64_t size) {
+      return AllocateHostMemory(context_, numa_node_, size);
+    });
+  }
+
+  if (type == MemorySpace::kUnified) {
+    return std::make_unique<GenericMemoryAllocator>(
+        [this](uint64_t size)
+            -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
+          std::unique_ptr<ActivateContext> activation = Activate();
+          void* result = nullptr;
+          // Allocate unified memory (device memory that is accessible from host)
+          aclError error = aclrtMalloc(&result, size, ACL_MEM_MALLOC_HUGE_FIRST);
+          if (error != ACL_ERROR_NONE) {
+            return absl::InternalError(absl::StrCat("aclrtMalloc failed with ", error));
+          }
+          XLA_VLOG_DEVICE(2, device_ordinal())
+              << "allocated " << result << " for context " << context()
+              << " of " << size << " bytes in unified memory";
+          return std::make_unique<GenericMemoryAllocation>(
+              result, size, [this](void* location, uint64_t size) {
+                std::unique_ptr<ActivateContext> activation = Activate();
+                auto status = aclrtFree(location);
+                if (status != ACL_ERROR_NONE) {
+                  XLA_LOG_DEVICE(ERROR, device_ordinal())
+                      << "failed to free unified memory at " << location
+                      << "; result: " << status;
+                } else {
+                  XLA_VLOG_DEVICE(2, device_ordinal())
+                      << "deallocated unified memory at " << location
+                      << " for context " << context();
+                }
+              });
+        });
+  }
+
+  if (type == MemorySpace::kCollective) {
+    // TODO: Implement collective memory allocation for Ascend
+    return std::make_unique<GenericMemoryAllocator>(
+        [this](uint64_t size)
+            -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
+          std::unique_ptr<ActivateContext> activation = Activate();
+          void* result = nullptr;
+          // For now, use regular device memory for collective operations
+          aclError error = aclrtMalloc(&result, size, ACL_MEM_MALLOC_HUGE_FIRST);
+          if (error != ACL_ERROR_NONE) {
+            return absl::InternalError(absl::StrCat("aclrtMalloc failed with ", error));
+          }
+          XLA_VLOG_DEVICE(2, device_ordinal())
+              << "allocated " << result << " for context " << context()
+              << " of " << size << " bytes of collective memory";
+          return std::make_unique<GenericMemoryAllocation>(
+              result, size, [this](void* location, uint64_t size) {
+                std::unique_ptr<ActivateContext> activation = Activate();
+                auto status = aclrtFree(location);
+                if (status != ACL_ERROR_NONE) {
+                  XLA_LOG_DEVICE(ERROR, device_ordinal())
+                      << "failed to free collective memory at " << location
+                      << "; result: " << status;
+                } else {
+                  XLA_VLOG_DEVICE(2, device_ordinal())
+                      << "deallocated collective memory at " << location
+                      << " for context " << context();
+                }
+              });
+        });
+  }
+
+  return absl::UnimplementedError(
+      absl::StrFormat("Unsupported memory type %d", type));
 }
 
 }  // namespace stream_executor::ascend

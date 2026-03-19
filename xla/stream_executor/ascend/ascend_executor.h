@@ -101,6 +101,8 @@ class AscendExecutor : public StreamExecutorCommon {
   bool HostMemoryUnregister(void* location) override;
 
   absl::StatusOr<MemorySpace> GetPointerMemorySpace(const void* ptr) override;
+  absl::StatusOr<std::unique_ptr<MemoryAllocator>> CreateMemoryAllocator(
+      MemorySpace type) override;
 
   // Returns the underlying Ascend context.
   AscendContext* context() const { return context_; }
@@ -111,6 +113,9 @@ class AscendExecutor : public StreamExecutorCommon {
   
   // The Ascend context for this executor.
   AscendContext* context_ = nullptr;
+  
+  // NUMA node affinity for host memory allocation.
+  int numa_node_;
   
   // Mutex to protect access to alive_ascend_streams_.
   absl::Mutex alive_ascend_streams_mu_;
