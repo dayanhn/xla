@@ -390,7 +390,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorAscendClient(
                       GetStreamExecutorAscendDeviceAllocator(
                           xla_client->platform(), options.allocator_config,
                           local_device_states));
-#if 0                           
+                      
   std::unique_ptr<HostMemoryAllocator> host_memory_allocator;
   if (options.host_memory_allocator_factory != nullptr) {
     stream_executor::StreamExecutor* const stream_executor = 
@@ -417,7 +417,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorAscendClient(
     host_memory_allocator = std::make_unique<BasicHostMemoryAllocator>(
         std::move(allocator), tsl::Allocator::kAllocatorAlignment);
   }
-
+  
   auto devices = BuildLocalDevices(std::move(local_device_states), options.node_id);
 
   std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces;
@@ -432,9 +432,6 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorAscendClient(
       options.node_id, std::move(memory_spaces),
       std::move(allocator), std::move(host_memory_allocator),
       options.should_stage_host_to_device_transfers);
-#else
-    return nullptr;
-#endif
 }
 
 }  // namespace xla

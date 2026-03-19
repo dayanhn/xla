@@ -1,6 +1,8 @@
 #ifndef XLA_SERVICE_ASCEND_FFI_UTILS_TENSOR_UTILS_H_
 #define XLA_SERVICE_ASCEND_FFI_UTILS_TENSOR_UTILS_H_
 
+#include <limits>
+
 #include "third_party/acl/inc/acl/acl.h"
 #include "third_party/acl/inc/aclnn/acl_meta.h"
 #include "xla/ffi/api/ffi.h"

@@ -41,9 +41,6 @@ cc_library(
         "ascend_ffi.h",
         "utils/tensor_utils.h",
     ],
-    tags = [
-        "ascend-only",
-    ],
     visibility = ["//visibility:public"],
     deps = [
         "//xla/ffi/api:ffi",

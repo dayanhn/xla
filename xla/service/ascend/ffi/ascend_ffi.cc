@@ -18,6 +18,8 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.gelu operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.gelu operator: " + status.ToString());
+  }else {
+    LOG(INFO) << "Registered ascend.gelu operator";
   }
 
   // Register other operators here in the future
@@ -27,7 +29,7 @@ void RegisterAscendFfiHandlers() {
 
 namespace {
 // 模块初始化时注册
-bool InitModule() {
+static bool InitModule() {
   try {
     xla::ffi::RegisterAscendFfiHandlers();
     return true;
@@ -37,6 +39,6 @@ bool InitModule() {
   }
 }
 
-bool module_initialized = InitModule();
+static bool module_initialized = InitModule();
 
 }  // namespace

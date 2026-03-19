@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/service/backend.h"
 #include "xla/service/compiler.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/service/ascend/ffi/ascend_ffi.h"
 
 namespace xla {
 
@@ -126,6 +127,10 @@ int main(int argc, char** argv) {
     return 1;
   }
   std::string program_path = argv[1];
+  
+  // 显式注册Ascend FFI handlers
+  xla::ffi::RegisterAscendFfiHandlers();
+  
   // 加载HloModule
   std::unique_ptr<xla::HloModule> hlo_module = xla::Compiler_LoadHloModuleFromFile(program_path);
   if(!hlo_module){ return 1;}

@@ -41,6 +41,9 @@ template aclTensor* ConvertToAclTensor<DataType::F32, 2>(const Buffer<DataType::
 template aclTensor* ConvertToAclTensor<DataType::F32, 3>(const Buffer<DataType::F32, 3>&);
 template aclTensor* ConvertToAclTensor<DataType::F32, 4>(const Buffer<DataType::F32, 4>&);
 
+// Explicit instantiation for dynamic rank
+template aclTensor* ConvertToAclTensor<DataType::F32, std::numeric_limits<size_t>::max()>(const Buffer<DataType::F32, std::numeric_limits<size_t>::max()>&);
+
 aclDataType ConvertToAclDataType(PrimitiveType type) {
   switch (type) {
     case PrimitiveType::F32:
