@@ -74,7 +74,7 @@ std::unique_ptr<HloModule> Compiler_LoadHloModuleFromFile(
 std::unique_ptr<PjRtClient> Compiler_CreateAscendClient() {
   xla::NpuClientOptions options;
   // 可按需调整 options，例如选择特定设备集合：
-  // options.allowed_devices = std::set<int>({0});
+  options.allowed_devices = std::set<int>({6,7});
 
   absl::StatusOr<std::unique_ptr<PjRtClient>> client_or = xla::GetXlaPjrtNpuClient(options);
   if (!client_or.ok()) {

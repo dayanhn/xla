@@ -82,6 +82,83 @@ void EnableAscendPeerAccess(absl::Span<se::StreamExecutor* const> executors) {
   }
 }
 
+// Builds a BFCAllocator for all local Ascend devices.
+absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
+    se::StreamExecutor* executor, double memory_fraction, bool preallocate,
+    std::optional<int64_t> npu_system_memory_size,
+    const std::vector<tsl::SubAllocator::Visitor>& sub_allocator_alloc_visitors,
+    const std::vector<tsl::SubAllocator::Visitor>&
+        sub_allocator_free_visitors) {
+  int device_ordinal = executor->device_ordinal();
+  std::unique_ptr<tsl::SubAllocator> sub_allocator = 
+      std::make_unique<se::DeviceMemAllocator>(
+          executor, tsl::PlatformDeviceId(device_ordinal),
+          sub_allocator_alloc_visitors, sub_allocator_free_visitors);
+
+  int64_t free_memory;
+  int64_t total_memory;
+  if (!executor->DeviceMemoryUsage(&free_memory, &total_memory)) {
+    return Unavailable("Failed to query available memory from device %i",
+                       device_ordinal);
+  }
+
+  size_t allocator_memory = total_memory * memory_fraction;
+  // If npu_system_memory_size is set, use it instead of default value.
+  if (npu_system_memory_size.has_value()) {
+    allocator_memory = npu_system_memory_size.value();
+  }
+
+  if (preallocate) {
+    LOG(INFO) << "XLA backend allocating " << allocator_memory
+              << " bytes on device " << device_ordinal << " for BFCAllocator.";
+  } else {
+    LOG(INFO) << "XLA backend will use up to " << allocator_memory
+              << " bytes on device " << device_ordinal << " for BFCAllocator.";
+  }
+
+  tsl::BFCAllocator::Options opts;
+  opts.allow_growth = !preallocate;
+  return std::make_unique<tsl::BFCAllocator>(
+      std::move(sub_allocator), allocator_memory,
+      absl::StrCat("ASCEND_", device_ordinal, "_bfc"), opts);
+}
+
+// Builds a BFCAllocator for all local Ascend devices that uses collective memory.
+absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
+    se::StreamExecutor* executor, double memory_fraction,
+    size_t collective_memory_size) {
+  int device_ordinal = executor->device_ordinal();
+  std::unique_ptr<tsl::SubAllocator> sub_allocator = 
+      std::make_unique<se::DeviceMemAllocator>(
+          executor, tsl::PlatformDeviceId(device_ordinal));
+
+  int64_t free_memory;
+  int64_t total_memory;
+  if (!executor->DeviceMemoryUsage(&free_memory, &total_memory)) {
+    return Unavailable("Failed to query available memory from device %i",
+                       device_ordinal);
+  }
+  bool preallocate = collective_memory_size != 0;
+  size_t allocator_memory = 
+      preallocate ? collective_memory_size : total_memory * memory_fraction;
+
+  if (preallocate) {
+    LOG(INFO) << "XLA backend allocating " << allocator_memory
+              << " bytes on device " << device_ordinal
+              << " for CollectiveBFCAllocator.";
+  } else {
+    LOG(INFO) << "XLA backend will use up to " << allocator_memory
+              << " bytes on device " << device_ordinal
+              << " for CollectiveBFCAllocator.";
+  }
+
+  tsl::BFCAllocator::Options opts;
+  opts.allow_growth = !preallocate;
+  return std::make_unique<tsl::BFCAllocator>(
+      std::move(sub_allocator), allocator_memory,
+      absl::StrCat("ASCEND_collectivememory_", device_ordinal, "_bfc"), opts);
+}
+
 
 
 // Returns a Ascend pinned host memory allocator to use when staging host->Ascend
@@ -128,5 +205,7 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> GetAscendHostAllocator(
                                              kAscendHostMemoryLimitBytes,
                                              /*name=*/"xla_ascend_host_bfc", opts);
 }
+
+
 
 }  // namespace xla

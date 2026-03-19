@@ -61,6 +61,18 @@ absl::StatusOr<LocalClient*> GetAscendXlaClient(
 // Helper function to enable peer access between Ascend devices
 void EnableAscendPeerAccess(absl::Span<se::StreamExecutor* const> executors);
 
+// Builds a BFCAllocator for all local NPUs.
+absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
+    se::StreamExecutor* executor, double memory_fraction, bool preallocate,
+    std::optional<int64_t> npu_system_memory_size,
+    const std::vector<tsl::SubAllocator::Visitor>& sub_allocator_alloc_visitors,
+    const std::vector<tsl::SubAllocator::Visitor>& sub_allocator_free_visitors);
+
+// Builds a BFCAllocator for all local NPUs that uses collective memory.
+absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
+    se::StreamExecutor* executor, double memory_fraction,
+    size_t collective_memory_size);
+
 // Helper function to get Ascend host allocator
 absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> GetAscendHostAllocator(
     se::StreamExecutor* executor);

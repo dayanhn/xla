@@ -173,8 +173,16 @@ bool AscendExecutor::CanEnablePeerAccessTo(int other_device_ordinal) {
 }
 
 bool AscendExecutor::DeviceMemoryUsage(int64_t* free_out, int64_t* total_out) const {
-  // TODO: Implement memory usage query
-  return false;
+  size_t device_free;
+  size_t device_total;
+  aclError error = aclrtGetMemInfo(ACL_HBM_MEM, &device_free, &device_total);
+  if (error != ACL_ERROR_NONE) {
+    LOG(ERROR) << "aclrtGetMemInfo failed with " << error;
+    return false;
+  }
+  *free_out = (int64_t)device_free;
+  *total_out = (int64_t)device_total;
+  return true;
 }
 
 absl::StatusOr<std::unique_ptr<Kernel>> AscendExecutor::LoadKernel(
