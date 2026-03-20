@@ -222,9 +222,14 @@ absl::Status AscendTransferManager::TransferBufferFromDevice(
 
   VLOG(5) << "Transfer buffer from device: size="
           << tsl::strings::HumanReadableNumBytes(size);
-
+  bool first_create = false;
   TF_ASSIGN_OR_RETURN(auto staging_buffer,
-                      GetOrCreateStagingBuffer(stream->parent()));
+                      GetOrCreateStagingBuffer(stream->parent(), first_create));
+  if(first_create){
+    /*- CUDA允许在事件未被记录的情况下调用 cuStreamWaitEvent ，此时它会认为事件已经完成，不会阻塞。
+      - 但Ascend的ACL不支持这种行为，它要求事件必须先被记录，然后才能等待，否则会返回参数无效错误（107000）*/
+    stream->RecordEvent(staging_buffer->transfer_completed.get()) ;
+  }
 
   absl::MutexLock lock(staging_buffer->mutex);
   void* staging = staging_buffer->allocation->address().opaque();
@@ -263,9 +268,15 @@ absl::Status AscendTransferManager::TransferBufferToDevice(
 
   VLOG(5) << "Transfer buffer to device: size="
           << tsl::strings::HumanReadableNumBytes(size);
-
+  bool first_create = false;
   TF_ASSIGN_OR_RETURN(auto staging_buffer,
-                      GetOrCreateStagingBuffer(stream->parent()));
+                      GetOrCreateStagingBuffer(stream->parent(), first_create));
+
+  if(first_create){
+    /*- CUDA允许在事件未被记录的情况下调用 cuStreamWaitEvent ，此时它会认为事件已经完成，不会阻塞。
+      - 但Ascend的ACL不支持这种行为，它要求事件必须先被记录，然后才能等待，否则会返回参数无效错误（107000）*/
+    stream->RecordEvent(staging_buffer->transfer_completed.get()) ;
+  }
 
   absl::MutexLock lock(staging_buffer->mutex);
   void* staging = staging_buffer->allocation->address().opaque();
@@ -298,7 +309,8 @@ AscendTransferManager::StagingBuffer::StagingBuffer(
       transfer_completed(std::move(transfer_completed)) {}
 
 absl::StatusOr<AscendTransferManager::StagingBuffer*>
-AscendTransferManager::GetOrCreateStagingBuffer(se::StreamExecutor* executor) {
+AscendTransferManager::GetOrCreateStagingBuffer(se::StreamExecutor* executor,bool &first_create) {
+  first_create = false;
   absl::MutexLock lock(mutex_);
   if (auto it = staging_buffers_.find(executor); it != staging_buffers_.end()) {
     return &it->second;
@@ -312,6 +324,7 @@ AscendTransferManager::GetOrCreateStagingBuffer(se::StreamExecutor* executor) {
   TF_ASSIGN_OR_RETURN(auto staging_buffer,
                       executor->HostMemoryAllocate(kStagingBufferSize));
   TF_ASSIGN_OR_RETURN(auto transfer_completed, executor->CreateEvent());
+  first_create = true;
 
   auto emplaced = staging_buffers_.try_emplace(
       executor, std::move(staging_buffer), std::move(transfer_completed));

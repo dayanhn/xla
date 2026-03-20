@@ -50,7 +50,14 @@ namespace {
 absl::Status WaitStreamOnEvent(StreamExecutor* executor, aclrtStream stream,
                                aclrtEvent event) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
-  return ToStatus(aclrtStreamWaitEvent(stream, event));
+  
+  aclError ret = aclrtStreamWaitEvent(stream, event);
+  if (ret != ACL_ERROR_NONE) {
+    LOG(ERROR) << "Failed to wait event " << event << " on stream " << stream;
+    return ToStatus(ret, "Failed to wait event");
+  }
+  
+  return absl::OkStatus();
 }
 
 absl::Status RecordAscendEvent(StreamExecutor* executor, aclrtEvent event,
@@ -66,7 +73,7 @@ absl::StatusOr<aclrtStream> CreateStream(StreamExecutor* executor, int priority)
   
   // ACL stream creation with priority
   // Note: ACL stream priority is different from CUDA, adjust accordingly
-  aclError ret = aclrtCreateStreamWithConfig(&stream, 0, ACL_STREAM_FAST_LAUNCH | ACL_STREAM_FAST_SYNC);
+  aclError ret = aclrtCreateStream(&stream);
   if (ret != ACL_ERROR_NONE) {
     return ToStatus(ret, "Failed to create Ascend stream");
   }

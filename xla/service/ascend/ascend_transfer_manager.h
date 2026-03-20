@@ -78,7 +78,7 @@ class AscendTransferManager : public GenericTransferManager {
 
   // Returns or creates the staging buffer for the given executor.
   absl::StatusOr<StagingBuffer*> GetOrCreateStagingBuffer(
-      se::StreamExecutor* executor);
+      se::StreamExecutor* executor, bool& first_create);
 
   absl::Status TransferBufferFromDevice(se::Stream* stream,
                                         const se::DeviceAddressBase& source,

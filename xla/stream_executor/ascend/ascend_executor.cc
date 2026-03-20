@@ -45,6 +45,7 @@ namespace {
 // Allocates host memory that can be efficiently transferred to/from the device.
 // If numa_node is not kNUMANoAffinity, the memory is allocated on that NUMA node.
 absl::StatusOr<void*> HostAllocate(AscendContext* context, int numa_node, uint64_t size) {
+#if 0
   if (numa_node != tsl::port::kNUMANoAffinity) {
     // Allocate memory on the specified NUMA node
     auto* buffer = tsl::port::NUMAMalloc(numa_node, size, /* minimum_alignment=*/256);
@@ -56,11 +57,12 @@ absl::StatusOr<void*> HostAllocate(AscendContext* context, int numa_node, uint64
     // No need to register memory for Ascend, as ACL handles this automatically
     return buffer;
   }
+#endif
 
   ScopedActivateContext activation(context);
   void* buffer = nullptr;
   // Allocate pinned host memory for efficient device access
-  aclError error = aclrtMallocHost(&buffer, size);
+  aclError error = aclrtMallocHost((void**)&buffer, size);
   if (error != ACL_ERROR_NONE) {
     return absl::InternalError(absl::StrCat("aclrtMallocHost failed with ", error));
   }
@@ -163,14 +165,21 @@ std::unique_ptr<ActivateContext> AscendExecutor::Activate() {
 }
 
 bool AscendExecutor::SynchronizeAllActivity() {
-  // TODO: Implement synchronization
+  ScopedActivateContext activation(context_);
+  aclError error = aclrtSynchronizeDevice();
+  if (error != ACL_ERROR_NONE) {
+    XLA_LOG_DEVICE(ERROR, device_ordinal())
+        << "aclrtSynchronizeDevice failed with " << error;
+    return false;
+  }
   return true;
 }
 
 absl::StatusOr<DeviceAddressBase> AscendExecutor::GetMemoryRange(
     const DeviceAddressBase& location) const {
-  // TODO: Implement memory range retrieval
-  return absl::UnimplementedError("GetMemoryRange not implemented");
+  // For Ascend, we'll return the same address and size since we don't have a direct API
+  // to get the memory range. This is a simplification.
+  return DeviceAddressBase(location.opaque(), location.size());
 }
 
 absl::StatusOr<std::unique_ptr<EventBasedTimer>> AscendExecutor::CreateEventBasedTimer(
@@ -187,21 +196,37 @@ absl::StatusOr<DeviceAddressBase> AscendExecutor::GetSymbol(
 
 absl::Status AscendExecutor::SynchronousMemZero(DeviceAddressBase* location,
                                               uint64_t size) {
-  // TODO: Implement memory zeroing
-  return absl::UnimplementedError("SynchronousMemZero not implemented");
+  ScopedActivateContext activation(context_);
+  aclError error = aclrtMemset(location->opaque(), size, 0, ACL_MEMCPY_DEVICE_TO_DEVICE);
+  if (error != ACL_ERROR_NONE) {
+    return absl::InternalError(absl::StrCat("SynchronousMemZero failed with ", error));
+  }
+  return absl::OkStatus();
 }
 
 absl::Status AscendExecutor::SynchronousMemcpy(DeviceAddressBase* ascend_dst,
                                              const void* host_src, uint64_t size) {
-  // TODO: Implement memory copy
-  return absl::UnimplementedError("SynchronousMemcpy not implemented");
+  ScopedActivateContext activation(context_);
+  aclError error = aclrtMemcpy(ascend_dst->opaque(), size, host_src, size, ACL_MEMCPY_HOST_TO_DEVICE);
+  if (error != ACL_ERROR_NONE) {
+    return absl::InternalError(absl::StrCat("SynchronousMemcpy H2D failed with ", error));
+  }
+  XLA_VLOG_DEVICE(2, device_ordinal())
+      << "successfully enqueued sync memcpy h2d of " << size << " bytes";
+  return absl::OkStatus();
 }
 
 absl::Status AscendExecutor::SynchronousMemcpy(void* host_dst,
                                              const DeviceAddressBase& ascend_src,
                                              uint64_t size) {
-  // TODO: Implement memory copy
-  return absl::UnimplementedError("SynchronousMemcpy not implemented");
+  ScopedActivateContext activation(context_);
+  aclError error = aclrtMemcpy(host_dst,size, ascend_src.opaque(), size, ACL_MEMCPY_DEVICE_TO_HOST);
+  if (error != ACL_ERROR_NONE) {
+    return absl::InternalError(absl::StrCat("SynchronousMemcpy D2H failed with ", error));
+  }
+  XLA_VLOG_DEVICE(2, device_ordinal()) << "successfully sync memcpy'd d2h of "
+                                       << size << " bytes to " << host_dst;
+  return absl::OkStatus();
 }
 
 void AscendExecutor::DeallocateStream(Stream* stream) {
@@ -284,12 +309,69 @@ absl::StatusOr<std::shared_ptr<DeviceAddressBase>> AscendExecutor::CreateOrShare
 }
 
 DeviceAddressBase AscendExecutor::Allocate(uint64_t size, int64_t memory_space) {
-  // TODO: Implement memory allocation
-  return DeviceAddressBase();
+  XLA_VLOG_DEVICE(1, device_ordinal())
+      << "AscendExecutor::Allocate size: " << size
+      << " memory_space: " << memory_space;
+
+  if (memory_space == static_cast<int64_t>(MemorySpace::kCollective)) {
+    ScopedActivateContext activation(context_);
+    void* result = nullptr;
+    // For now, use regular device memory for collective operations
+    aclError error = aclrtMalloc(&result, size, ACL_MEM_MALLOC_HUGE_FIRST);
+    if (error != ACL_ERROR_NONE) {
+      XLA_LOG_DEVICE(ERROR, device_ordinal())
+          << "Failed to allocate collective memory: " << error;
+      return DeviceAddressBase(nullptr, 0);
+    }
+    XLA_VLOG_DEVICE(1, device_ordinal())
+        << "AscendExecutor::Allocate returns " << result;
+    return DeviceAddressBase(result, size);
+  }
+
+  if (memory_space == static_cast<int64_t>(MemorySpace::kHost)) {
+    auto result = HostAllocate(context_, numa_node_, size);
+    if (!result.ok()) {
+      XLA_LOG_DEVICE(ERROR, device_ordinal())
+          << "Failed to allocate host memory: " << result.status();
+      return DeviceAddressBase(nullptr, 0);
+    }
+    XLA_VLOG_DEVICE(1, device_ordinal())
+        << "AscendExecutor::Allocate returns " << result.value();
+    return DeviceAddressBase(result.value(), size);
+  }
+
+  CHECK(memory_space == static_cast<int64_t>(MemorySpace::kDevice) ||
+        memory_space == static_cast<int64_t>(MemorySpace::kP2P));
+
+  ScopedActivateContext activation(context_);
+  void* result = nullptr;
+  aclError error = aclrtMalloc(&result, size, ACL_MEM_MALLOC_HUGE_FIRST);
+  if (error != ACL_ERROR_NONE) {
+    XLA_LOG_DEVICE(ERROR, device_ordinal())
+        << "Failed to allocate device memory: " << error;
+    return DeviceAddressBase(nullptr, 0);
+  }
+  XLA_VLOG_DEVICE(1, device_ordinal())
+      << "AscendExecutor::Allocate returns " << result;
+  return DeviceAddressBase(result, size);
 }
 
 void AscendExecutor::Deallocate(DeviceAddressBase* mem) {
-  // TODO: Implement memory deallocation
+  XLA_VLOG_DEVICE(1, device_ordinal())
+      << "AscendExecutor::Deallocate mem: " << mem->opaque();
+
+  // For simplicity, we'll assume all memory is device memory for now
+  // In the future, we could add memory space detection
+  ScopedActivateContext activation(context_);
+  aclError error = aclrtFree(mem->opaque());
+  if (error != ACL_ERROR_NONE) {
+    XLA_LOG_DEVICE(ERROR, device_ordinal())
+        << "failed to free device memory at " << mem->opaque()
+        << "; result: " << error;
+  } else {
+    XLA_VLOG_DEVICE(2, device_ordinal())
+        << "deallocated " << mem->opaque() << " for context " << context_;
+  }
 }
 
 blas::BlasSupport* AscendExecutor::AsBlas() {
@@ -360,13 +442,19 @@ absl::StatusOr<std::unique_ptr<MemoryAllocation>> AscendExecutor::HostMemoryAllo
 }
 
 bool AscendExecutor::HostMemoryRegister(void* location, uint64_t size) {
-  // TODO: Implement host memory registration
-  return false;
+  XLA_VLOG_DEVICE(1, device_ordinal())
+      << "Called StreamExecutor::HostMemoryRegister(data=" << location << ")";
+  // For Ascend, we don't need to register host memory explicitly
+  // ACL handles memory registration automatically
+  return true;
 }
 
 bool AscendExecutor::HostMemoryUnregister(void* location) {
-  // TODO: Implement host memory unregistration
-  return false;
+  XLA_VLOG_DEVICE(1, device_ordinal())
+      << "Called StreamExecutor::HostUnregister(data=" << location << ")";
+  // For Ascend, we don't need to unregister host memory explicitly
+  // ACL handles memory unregistration automatically
+  return true;
 }
 
 absl::StatusOr<MemorySpace> AscendExecutor::GetPointerMemorySpace(const void* ptr) {

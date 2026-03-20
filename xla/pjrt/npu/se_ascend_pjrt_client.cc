@@ -149,12 +149,13 @@ absl::Span<int const> StreamExecutorAscendDevice::coords() const {
 }
 
 absl::StatusOr<PjRtMemorySpace*> StreamExecutorAscendDevice::default_memory_space() const {
-  // Placeholder implementation - return error for now
-  return tsl::errors::Unimplemented("default_memory_space not yet implemented for Ascend");
+  return memory_space_by_kind_id(StreamExecutorAscendHbmMemorySpace::kKindId);
 }
 
-// Implementation of StreamExecutorAscendHbmMemorySpace
-const int StreamExecutorAscendHbmMemorySpace::kKindId = 0;
+const int StreamExecutorAscendHbmMemorySpace::kKindId = []() {
+  uint32_t kind_id = tsl::Fingerprint32(StreamExecutorAscendHbmMemorySpace::kKind);
+  return static_cast<int>(kind_id);
+}();
 
 StreamExecutorAscendHbmMemorySpace::StreamExecutorAscendHbmMemorySpace(
     int id, PjRtDevice* device)
@@ -421,9 +422,11 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorAscendClient(
   auto devices = BuildLocalDevices(std::move(local_device_states), options.node_id);
 
   std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces;
-  for (const auto& device : devices) {
+  for (auto& device : devices) {
     auto memory_space = std::make_unique<StreamExecutorAscendHbmMemorySpace>(
         device->id(), device.get());
+    tensorflow::down_cast<PjRtStreamExecutorDevice*>(device.get())->AttachMemorySpace(
+        memory_space.get(), /*is_default=*/true);
     memory_spaces.push_back(std::move(memory_space));
   }
 

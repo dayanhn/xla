@@ -65,6 +65,7 @@ cc_binary(
         ":npu_client_options",
         ":xla_npu_allocator_config",
         "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/npu:se_ascend_pjrt_client",
         ":xla_npu_pjrt_client",
         "@com_google_absl//absl/status:statusor",
