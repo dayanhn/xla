@@ -75,5 +75,6 @@ cc_binary(
         "//xla/service/ascend:ascend_transfer_manager",
         "//xla/service/ascend:ascend_computation_placer",
         "//xla/service/ascend/ffi:ascend_ffi",
+        "//xla/backends/npu/collectives:collectives",
     ],
 )

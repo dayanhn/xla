@@ -294,7 +294,8 @@ void AscendExecutor::UnloadKernel(const Kernel* kernel) {
 absl::StatusOr<ModuleHandle> AscendExecutor::LoadModule(
     const MultiModuleLoaderSpec& spec) {
   // TODO: Implement module loading
-  return absl::UnimplementedError("LoadModule not implemented");
+  return ModuleHandle();  // 返回一个默认构造的ModuleHandle，其id为nullptr
+  //return absl::UnimplementedError("LoadModule not implemented");
 }
 
 bool AscendExecutor::UnloadModule(ModuleHandle module_handle) {
