@@ -758,6 +758,7 @@ cc_library(
         "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/stream_executor/rocm:rocm_platform_id",
         "//xla/stream_executor/sycl:sycl_platform_id",
+        "//xla/stream_executor/ascend:ascend_platform_id",
         "//xla/tsl/platform:env_time",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status_macros",

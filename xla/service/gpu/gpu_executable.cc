@@ -118,6 +118,7 @@ limitations under the License.
 #include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "xla/stream_executor/ascend/ascend_platform_id.h"
 
 namespace xla {
 namespace gpu {
@@ -350,6 +351,8 @@ absl::Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
         << "Compute capability mismatch; expected {" << gpu_version_.ToString()
         << "}, but was {" << cc.ToString() << "}";
   } else if (platform_id == stream_executor::sycl::kSyclPlatformId) {
+    // TODO: Add check.
+  }  else if (platform_id == stream_executor::ascend::kAscendPlatformId) {
     // TODO: Add check.
   } else {
     return Internal("Unknown platform");

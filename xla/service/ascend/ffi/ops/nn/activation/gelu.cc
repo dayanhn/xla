@@ -1,8 +1,11 @@
 #include "xla/ffi/api/ffi.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "xla/service/ascend/ffi/utils/tensor_utils.h"
 #include "third_party/acl/inc/acl/acl.h"
 #include "third_party/acl/inc/aclnnop/aclnn_gelu.h"
 #include "absl/strings/str_cat.h"
+#include "absl/status/status.h"
 
 namespace ffi = xla::ffi;
 
@@ -13,6 +16,7 @@ ffi::Error GeluHandler(aclrtStream stream, ffi::Buffer<ffi::F32> self, ffi::Resu
   // Convert XLA Buffer to Ascend Tensor using utility function
   aclTensor* self_tensor = ConvertToAclTensor(self);
   aclTensor* out_tensor = ConvertToAclTensor(*out);
+  LOG(INFO) << "Converted XLA buffers to Ascend tensors for GELU operation";
 
   // Call first stage interface to get workspace size and executor
   uint64_t workspace_size = 0;

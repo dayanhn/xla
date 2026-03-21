@@ -125,7 +125,7 @@ int execute_gelu_program(std::unique_ptr<PjRtClient> &client,std::unique_ptr<PjR
   auto x_literal = xla::LiteralUtil::CreateFromDimensions(xla::PrimitiveType::F32, {32, 32});
   for (int i = 0; i < 32; ++i) {
     for (int j = 0; j < 32; ++j) {
-      x_literal.Set({i, j}, 2.0f);
+      x_literal.Set({i, j}, -2.0f);
     }
   }
 
