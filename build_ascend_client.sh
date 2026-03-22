@@ -21,4 +21,4 @@ echo "Building Ascend PJRT client..."
 
 echo "Build completed successfully!"
 ./bazel-bin/xla/pjrt/plugin/xla_npu/xla_npu_pjrt_client_test \
-     /data3/zhongzhw/code/uni_ai/google/xla/xla/pjrt/plugin/xla_npu/test_ffi_hlo.mlir
+     /data3/zhongzhw/code/uni_ai/google/xla/xla/pjrt/plugin/xla_npu/test_ffi_matmul_gelu.mlir

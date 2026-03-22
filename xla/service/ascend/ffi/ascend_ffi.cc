@@ -22,6 +22,21 @@ void RegisterAscendFfiHandlers() {
     LOG(INFO) << "Registered ascend.gelu operator";
   }
 
+  // Register Matmul operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.matmul",
+      "ASCEND",
+      AscendMatmul);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.matmul operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.matmul operator: " + status.ToString());
+  }else {
+    LOG(INFO) << "Registered ascend.matmul operator";
+  }
+
   // Register other operators here in the future
 }
 

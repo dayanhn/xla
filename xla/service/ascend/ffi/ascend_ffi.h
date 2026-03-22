@@ -10,6 +10,7 @@ void RegisterAscendFfiHandlers();
 
 // Declare external symbols for FFI handlers
 extern "C" XLA_FFI_Error* AscendGelu(XLA_FFI_CallFrame* frame);
+extern "C" XLA_FFI_Error* AscendMatmul(XLA_FFI_CallFrame* frame);
 
 }  // namespace xla::ffi
 

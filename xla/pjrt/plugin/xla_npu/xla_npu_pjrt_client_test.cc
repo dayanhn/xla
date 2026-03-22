@@ -173,6 +173,78 @@ int execute_gelu_program(std::unique_ptr<PjRtClient> &client,std::unique_ptr<PjR
   return 0;
 }
 
+int execute_matmul_program(std::unique_ptr<PjRtClient> &client,std::unique_ptr<PjRtLoadedExecutable> &executable) { 
+  // 构造输入参数
+  std::cout << "Creating input parameters for matmul..." << std::endl;
+  
+  // 创建第一个输入：16x16的矩阵，值全为2.0
+  auto a_literal = xla::LiteralUtil::CreateFromDimensions(xla::PrimitiveType::F32, {16, 16});
+  for (int i = 0; i < 16; ++i) {
+    for (int j = 0; j < 16; ++j) {
+      a_literal.Set({i, j}, 2.0f);
+    }
+  }
+
+  // 创建第二个输入：16x16的矩阵，值全为2.0
+  auto b_literal = xla::LiteralUtil::CreateFromDimensions(xla::PrimitiveType::F32, {16, 16});
+  for (int i = 0; i < 16; ++i) {
+    for (int j = 0; j < 16; ++j) {
+      b_literal.Set({i, j}, 2.0f);
+    }
+  }
+
+  // 获取设备内存空间（使用第一个可用设备）
+  PjRtDevice* device = client->devices()[0];
+  absl::StatusOr<PjRtMemorySpace*> device_memory_space = 
+      device->default_memory_space();
+  if (!device_memory_space.ok()) {
+    std::cerr << "Failed to get device memory space: " 
+              << device_memory_space.status().ToString() << std::endl;
+    return 1;
+  }
+
+  // 将输入转换为设备缓冲区
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> a = 
+      client->BufferFromHostLiteral(a_literal, *device_memory_space);
+  if (!a.ok()) {
+    std::cerr << "Failed to create a buffer: " 
+              << a.status().ToString() << std::endl;
+    return 1;
+  }
+
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> b = 
+      client->BufferFromHostLiteral(b_literal, *device_memory_space);
+  if (!b.ok()) {
+    std::cerr << "Failed to create b buffer: " 
+              << b.status().ToString() << std::endl;
+    return 1;
+  }
+
+  // 执行计算
+  std::cout << "Executing matmul computation on Ascend..." << std::endl;
+  absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> result = 
+      executable->Execute({{a->get(), b->get()}}, {});
+  if (!result.ok()) {
+    std::cerr << "Failed to execute matmul computation: " 
+              << result.status().ToString() << std::endl;
+    return 1;
+  }
+
+  // 获取结果并转换为字面量
+  std::cout << "Getting matmul result..." << std::endl;
+  absl::StatusOr<std::shared_ptr<Literal>> result_or = result->at(0).at(0)->ToLiteralSync();
+  if (!result_or.ok()) {
+    std::cerr << "Failed to get matmul result literal: " 
+              << result_or.status().ToString() << std::endl;
+    return 1;
+  }
+  std::shared_ptr<Literal> result_literal = *result_or;
+
+  // 输出结果
+  std::cout << "Matmul computation output: " << *result_literal << std::endl;
+  return 0;
+}
+
 
 }  // namespace xla
 
@@ -219,7 +291,11 @@ int main(int argc, char** argv) {
   std::cout << "Executable created with " << executable->addressable_devices().size() 
             << " devices." << std::endl;
 
-  xla::execute_gelu_program(client, executable);
+  // 测试 GELU 算子
+  // xla::execute_gelu_program(client, executable);
+  
+  // 测试 Matmul 算子
+  xla::execute_matmul_program(client, executable);
 
   return 0;
 }
