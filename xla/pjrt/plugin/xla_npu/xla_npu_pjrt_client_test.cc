@@ -20,6 +20,13 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/DialectRegistry.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OwningOpRef.h"
+#include "mlir/Parser/Parser.h"
+#include "stablehlo/dialect/Register.h"
 #include "xla/error_spec.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -181,7 +188,7 @@ int execute_matmul_program(std::unique_ptr<PjRtClient> &client,std::unique_ptr<P
   auto a_literal = xla::LiteralUtil::CreateFromDimensions(xla::PrimitiveType::F32, {16, 16});
   for (int i = 0; i < 16; ++i) {
     for (int j = 0; j < 16; ++j) {
-      a_literal.Set({i, j}, 2.0f);
+      a_literal.Set({i, j}, 1.0f);
     }
   }
 
@@ -189,7 +196,7 @@ int execute_matmul_program(std::unique_ptr<PjRtClient> &client,std::unique_ptr<P
   auto b_literal = xla::LiteralUtil::CreateFromDimensions(xla::PrimitiveType::F32, {16, 16});
   for (int i = 0; i < 16; ++i) {
     for (int j = 0; j < 16; ++j) {
-      b_literal.Set({i, j}, 2.0f);
+      b_literal.Set({i, j}, -1.0f);
     }
   }
 
@@ -245,8 +252,51 @@ int execute_matmul_program(std::unique_ptr<PjRtClient> &client,std::unique_ptr<P
   return 0;
 }
 
+// 读取StableHLO文件并解析为MLIR模块
+mlir::OwningOpRef<mlir::ModuleOp> Compiler_LoadStableHloProgram(
+    absl::string_view program_path) {
+  // 注册必要的MLIR dialects
+  // Context 和 registry 必须在 module 使用期间保持存活。
+  // 将它们设为 static，以便在程序整个生命周期内有效，避免返回
+  // 的 ModuleOp 持有已销毁的 context 导致悬空指针和段错误。
+  static mlir::DialectRegistry registry;
+  static mlir::MLIRContext* context = nullptr;
+  static bool initialized = false;
+  if (!initialized) {
+    registry.insert<mlir::func::FuncDialect>();
+    mlir::stablehlo::registerAllDialects(registry);
+    context = new mlir::MLIRContext();
+    context->appendDialectRegistry(registry);
+    context->loadAllAvailableDialects();
+    initialized = true;
+  }
+
+  // 读取StableHLO程序到字符串
+  std::string program_string;
+  if(absl::OkStatus() != tsl::ReadFileToString(
+      tsl::Env::Default(), std::string(program_path), &program_string)){
+    std::cerr << "Failed to read StableHLO program from " << program_path << std::endl;
+    return nullptr;
+  }
+
+  //std::cout << "Loaded StableHLO program from " << program_path << ":\n"
+  //          << program_string << std::endl;
+  std::cout << "Loaded StableHLO program from " << program_path << " successfully.\n";
+
+  return mlir::parseSourceString<mlir::ModuleOp>(program_string, context);
+  // 加载StableHLO程序
+  absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> program_or = mlir::parseSourceString<mlir::ModuleOp>(program_string, context);
+  if (!program_or.ok()) {
+    std::cerr << "Failed to load StableHLO program: " 
+              << program_or.status().ToString() << std::endl;
+    return nullptr;
+  }
+  return std::move(*program_or);
+}
+
 
 }  // namespace xla
+
 
 int main(int argc, char** argv) {
   if (argc != 2) {
@@ -254,15 +304,8 @@ int main(int argc, char** argv) {
     return 1;
   }
   std::string program_path = argv[1];
-  
-  // 显式注册Ascend FFI handlers
-  xla::ffi::RegisterAscendFfiHandlers();
-  
-  // 加载HloModule
-  std::unique_ptr<xla::HloModule> hlo_module = xla::Compiler_LoadHloModuleFromFile(program_path);
-  if(!hlo_module){ return 1;}
 
-  // 创建Ascend客户端
+    // 创建Ascend客户端
   absl::StatusOr<std::unique_ptr<xla::PjRtClient>> client_or = xla::Compiler_CreateAscendClient();
   if (!client_or.ok()) {
     std::cerr << "Failed to create Ascend client: " 
@@ -271,22 +314,45 @@ int main(int argc, char** argv) {
   }else{
     std::cout << "Ascend client created successfully.\n";
   }
-
   std::unique_ptr<xla::PjRtClient> client = std::move(*client_or);
+  
+  // 显式注册Ascend FFI handlers
+  xla::ffi::RegisterAscendFfiHandlers();
 
-  // 使用HloModule进行编译
-  std::cout << "Compiling HloModule for GPU..." << std::endl;
-  xla::XlaComputation computation(hlo_module->ToProto());
-  xla::CompileOptions compile_options;
-  compile_options.executable_build_options.set_run_backend_only(true);
-  absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> executable_or = 
-      client->CompileAndLoad(computation, compile_options);
-  if (!executable_or.ok()) {
-    std::cerr << "Failed to compile HloModule: " 
-              << executable_or.status().ToString() << std::endl;
-    return 1;
+  std::unique_ptr<xla::PjRtLoadedExecutable> executable = nullptr;
+  bool load_stablehlo = true;
+  if(load_stablehlo){
+    // 加载StableHLO程序
+    mlir::OwningOpRef<mlir::ModuleOp> program = xla::Compiler_LoadStableHloProgram(program_path);
+    // 编译StableHLO程序
+    std::cout << "Compiling StableHLO program for Ascend..." << std::endl;
+    absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> executable_or = 
+        client->CompileAndLoad(*program, xla::CompileOptions{});
+    if (!executable_or.ok()) {
+      std::cerr << "Failed to compile StableHLO program: " 
+                << executable_or.status().ToString() << std::endl;
+      return 1;
+    }
+    executable = std::move(*executable_or);
+  }else{
+    // 加载HloModule
+    std::unique_ptr<xla::HloModule> hlo_module = xla::Compiler_LoadHloModuleFromFile(program_path);
+    if(!hlo_module){ return 1;}
+
+    // 使用HloModule进行编译
+    std::cout << "Compiling HloModule for Ascend..." << std::endl;
+    xla::XlaComputation computation(hlo_module->ToProto());
+    xla::CompileOptions compile_options;
+    compile_options.executable_build_options.set_run_backend_only(true);
+    absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> executable_or = 
+        client->CompileAndLoad(computation, compile_options);
+    if (!executable_or.ok()) {
+      std::cerr << "Failed to compile HloModule: " 
+                << executable_or.status().ToString() << std::endl;
+      return 1;
+    }
+    executable = std::move(*executable_or);
   }
-  std::unique_ptr<xla::PjRtLoadedExecutable> executable = std::move(*executable_or);
 
   std::cout << "Executable created with " << executable->addressable_devices().size() 
             << " devices." << std::endl;
