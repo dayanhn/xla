@@ -1612,8 +1612,26 @@ PjRtStreamExecutorClient::RunAsync(
 
   TF_ASSIGN_OR_RETURN(
       ExecutionOutput output,
-      exec.RunAsync(std::move(xla_arguments), std::move(run_options)));
+      exec.RunAsync(std::move(xla_arguments), std::move(run_options))); 
   ScopedShapedBuffer ssb = output.ConsumeResult();
+#if 0  
+  // Print device addresses from output
+  LOG(INFO) << "ExecutionOutput result device addresses:";
+  
+  ShapedBuffer& ssb_ref = ssb;
+  if (ssb_ref.on_device_shape().IsTuple()) {
+    int tuple_count = ssb_ref.on_device_shape().tuple_shapes().size();
+    for (int i = 0; i < tuple_count; ++i) {
+      se::DeviceAddressBase addr = ssb_ref.buffer({i});
+      LOG(INFO) << "Tuple element " << i << " address: " << addr.opaque() 
+                << ", size: " << addr.size();
+    }
+  } else {
+    se::DeviceAddressBase addr = ssb_ref.buffer({});
+    LOG(INFO) << "Result address: " << addr.opaque() 
+              << ", size: " << addr.size();
+  }
+#endif
   std::vector<se::ScopedDeviceAddress<uint8_t>> se_to_be_released =
       output.ConsumeToBeReleased();
   absl::flat_hash_set<RawSEDeviceMemory*> output_args;

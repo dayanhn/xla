@@ -975,7 +975,17 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
                                              memory_allocator, device_ordinal));
   VLOG(3) << buffer_allocations.ToString();
   absl::Span<const BufferAllocation* const> allocations = GetAllocations();
-
+#if 0
+  // Print device addresses for all allocations
+  LOG(INFO) << "Buffer allocations device addresses:";
+  for (int i = 0; i < allocations.size(); ++i) {
+    if (allocations[i]) {
+      se::DeviceAddressBase addr = buffer_allocations.GetDeviceAddress(i);
+      LOG(INFO) << "Allocation " << i << " (size: " << allocations[i]->size() 
+                << "): " << addr.opaque();
+    }
+  }
+#endif
   std::set<se::DeviceAddressBase> buffers_in_result;
 
   const bool is_entire_tuple_contents_aliased = [&] {

@@ -286,13 +286,22 @@ absl::Status AscendStream::DoHostCallbackWithStatus(
         }
       });
   
-  // ACL doesn't have a direct host callback API, so we just execute the callback directly
-  // Note: This is a simplification, actual implementation may need to use task queues
-  std::unique_ptr<ActivateContext> activation = executor_->Activate();
-  std::move(*callback_ptr)();
-  delete callback_ptr;
+  // 使用 aclrtLaunchHostFunc 异步执行回调
+  aclError acl_status = aclrtLaunchHostFunc(stream_handle_, [](void* user_data) {
+    auto* callback = static_cast<absl::AnyInvocable<void() &&>*>(user_data);
+    std::move(*callback)();
+    delete callback;
+  }, callback_ptr);
   
-  int num_pending_host_callbacks = num_pending_host_callbacks_.fetch_add(1, std::memory_order_acq_rel) + 1;
+  if (acl_status != ACL_SUCCESS) {
+    delete callback_ptr;
+    return absl::InternalError(
+        absl::StrCat("aclrtLaunchHostFunc failed: ", acl_status));
+  }
+  
+  // 增加待处理回调计数
+  int num_pending_host_callbacks =
+      num_pending_host_callbacks_.fetch_add(1, std::memory_order_acq_rel) + 1;
   if (num_pending_host_callbacks == 1) {
     absl::MutexLock lock(mutex_);
     no_pending_host_callbacks_ = num_pending_host_callbacks_ <= 0;

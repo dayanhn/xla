@@ -58,6 +58,9 @@ class AscendStream : public StreamCommon {
   absl::Status LaunchKernel(const ThreadDim& thread_dims, const BlockDim& block_dims, const std::optional<ClusterDim>& cluster_dims, void* function, absl::string_view name, void** args, int64_t shmem_bytes) override;
   absl::Status DoHostCallbackWithStatus(absl::AnyInvocable<absl::Status() &&> callback) override;
   void SetName(std::string name) override;
+  Stream::PlatformSpecificHandle platform_specific_handle() const override {
+    return {stream_handle_};
+  }
 
  private:
   AscendStream(StreamExecutor* executor, std::unique_ptr<Event> completed_event,

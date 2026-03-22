@@ -15,6 +15,12 @@ namespace xla::ffi {
   
   // Convert XLA PrimitiveType to Ascend aclDataType
   aclDataType ConvertToAclDataType(PrimitiveType type);
+  
+  // Print first N elements of a float tensor for debugging
+  absl::Status PrintTensorFirstNElements(aclTensor* tensor, int num_elements, const std::string& tensor_name);
+  
+  // Test function to copy device memory to host and print values
+  absl::Status TestDeviceMemoryCopy(void* device_addr, int64_t size_in_bytes);
 }
 
 #endif  // XLA_SERVICE_ASCEND_FFI_UTILS_TENSOR_UTILS_H_

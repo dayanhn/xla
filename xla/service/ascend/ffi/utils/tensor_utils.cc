@@ -65,4 +65,97 @@ aclDataType ConvertToAclDataType(PrimitiveType type) {
   }
 }
 
+absl::Status PrintTensorFirstNElements(aclTensor* tensor, int num_elements, const std::string& tensor_name) {
+  if (tensor == nullptr) {
+    return absl::InvalidArgumentError("tensor is nullptr");
+  }
+
+  // Get tensor data address
+  void* tensor_data = nullptr;
+  aclError acl_status = aclGetRawTensorAddr(tensor, &tensor_data);
+  if (acl_status != ACL_SUCCESS) {
+    return absl::InternalError(
+        absl::StrCat("aclGetRawTensorAddr failed: ", acl_status));
+  }
+
+  // Allocate host memory for data
+  float* host_data = nullptr;
+  acl_status = aclrtMallocHost((void**)&host_data, num_elements * sizeof(float));
+  if (acl_status != ACL_SUCCESS) {
+    return absl::InternalError(
+        absl::StrCat("aclrtMallocHost failed: ", acl_status));
+  }
+
+  // Copy data from device to host
+  acl_status = aclrtMemcpy(host_data, num_elements * sizeof(float),
+                          tensor_data, num_elements * sizeof(float),
+                          ACL_MEMCPY_DEVICE_TO_HOST);
+  if (acl_status != ACL_SUCCESS) {
+    aclrtFreeHost(host_data);
+    return absl::InternalError(
+        absl::StrCat("aclrtMemcpy failed: ", acl_status));
+  }
+
+  // Print data
+  LOG(INFO) << tensor_name << " (first " << num_elements << " elements):";
+  for (int i = 0; i < num_elements; i++) {
+    LOG(INFO) << "  " << tensor_name << "[" << i << "] = " << host_data[i];
+  }
+
+  // Free host memory
+  aclrtFreeHost(host_data);
+
+  return absl::OkStatus();
+}
+
+// Test function to copy device memory to host and print values
+absl::Status TestDeviceMemoryCopy(void* device_addr, int64_t size_in_bytes) {
+  if (device_addr == nullptr) {
+    return absl::InvalidArgumentError("device_addr is nullptr");
+  }
+  
+  if (size_in_bytes <= 0) {
+    return absl::InvalidArgumentError("size_in_bytes must be positive");
+  }
+  
+  // Calculate number of float elements
+  int num_elements = size_in_bytes / sizeof(float);
+  if (size_in_bytes % sizeof(float) != 0) {
+    LOG(WARNING) << "size_in_bytes is not a multiple of float size, truncating";
+  }
+  
+  if (num_elements == 0) {
+    return absl::InvalidArgumentError("size_in_bytes is too small to hold any float elements");
+  }
+  
+  // Allocate host memory for data
+  float* host_data = nullptr;
+  aclError acl_status = aclrtMallocHost((void**)&host_data, size_in_bytes);
+  if (acl_status != ACL_SUCCESS) {
+    return absl::InternalError(
+        absl::StrCat("aclrtMallocHost failed: ", acl_status));
+  }
+  
+  // Copy data from device to host
+  acl_status = aclrtMemcpy(host_data, size_in_bytes,
+                          device_addr, size_in_bytes,
+                          ACL_MEMCPY_DEVICE_TO_HOST);
+  if (acl_status != ACL_SUCCESS) {
+    aclrtFreeHost(host_data);
+    return absl::InternalError(
+        absl::StrCat("aclrtMemcpy failed: ", acl_status));
+  }
+  
+  // Print data
+  LOG(INFO) << "Device memory contents (" << num_elements << " elements):";
+  for (int i = 0; i < num_elements; i++) {
+    LOG(INFO) << "  data[" << i << "] = " << host_data[i];
+  }
+  
+  // Free host memory
+  aclrtFreeHost(host_data);
+  
+  return absl::OkStatus();
+}
+
 }  // namespace xla::ffi

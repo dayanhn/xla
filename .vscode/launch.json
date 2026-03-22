@@ -8,11 +8,10 @@
             "type": "lldb",
             "request": "launch",
             "name": "ascend",
-            "program": "${workspaceFolder}/bazel-bin/xla/stream_executor/ascend/test_ascend_platform",
-            "args": [],
+            "program": "${workspaceFolder}/bazel-bin/xla/pjrt/plugin/xla_npu/xla_npu_pjrt_client_test",
+            "args": ["/data3/zhongzhw/code/uni_ai/google/xla/xla/pjrt/plugin/xla_npu/test_ffi_hlo.mlir"],
             "cwd": "${workspaceFolder}",
-            "env": {
-             },
+            "envFile": "${workspaceFolder}/.vscode/cann_env",
             "sourceMap": {
                 "/proc/self/cwd": "${workspaceFolder}",
                 "/proc/self/cwd/external":"${workspaceFolder}/bazel-xla/external"

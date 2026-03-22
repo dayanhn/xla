@@ -1800,6 +1800,13 @@ Future<> CommonPjRtBufferImpl::ToLiteralImpl(
           -> absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> {
         src_definition_events_avs = std::move(definition_events);
         if (buf_raw_buffer) {
+#if 0          
+          // Print device memory address
+          void* device_ptr = buf_raw_buffer->OpaqueDeviceMemoryDataPointer();
+          int64_t size = buf_raw_buffer->GetOnDeviceSizeInBytes();
+          LOG(INFO) << "CommonPjRtBuffer::ToLiteralImpl - Device memory address: " << device_ptr 
+                    << ", size: " << size;
+#endif
           raw_buffer = std::move(buf_raw_buffer);
           tsl::RCReference<PjRtDeviceEvent> device_event;
           TF_ASSIGN_OR_RETURN(std::tie(device_promise, device_event),
