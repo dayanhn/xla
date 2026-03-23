@@ -73,6 +73,7 @@ limitations under the License.
 #include "xla/pjrt/host_to_device_transfer_manager.h"
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/npu/ascend_helpers.h"
+#include "xla/pjrt/npu/se_ascend_topology_description.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -176,6 +177,13 @@ StreamExecutorAscendClient::StreamExecutorAscendClient(
           std::move(host_memory_allocator),
           should_stage_host_to_device_transfers,
           nullptr) {
+  // Initialize topology description
+  int number_of_devices = addressable_devices().size();
+  int num_devices_per_host = number_of_devices;
+  int number_of_hosts = 1;
+  
+  topology_.emplace(tsl::Fingerprint64(platform_name), platform_name,
+                    number_of_devices, num_devices_per_host, number_of_hosts);
 }
 
 absl::string_view StreamExecutorAscendClient::platform_version() const {
@@ -222,8 +230,17 @@ StreamExecutorAscendClient::GetDefaultDeviceAssignment(
 
 absl::StatusOr<Layout> StreamExecutorAscendClient::GetDefaultLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dims) {
-  // Placeholder implementation
-  return LayoutUtil::MakeLayout(dims);
+  if (!topology_.has_value()) {
+    return absl::FailedPreconditionError("Ascend Topology is missing");
+  }
+  return topology_->GetDefaultLayout(element_type, dims);
+}
+
+absl::StatusOr<const xla::PjRtTopologyDescription*> StreamExecutorAscendClient::GetTopologyDescription() const {
+  if (!topology_.has_value()) {
+    return absl::FailedPreconditionError("Ascend Topology is missing");
+  }
+  return &*topology_;
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> StreamExecutorAscendClient::LoadSerialized(

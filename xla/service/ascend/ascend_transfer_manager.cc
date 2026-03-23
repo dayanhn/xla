@@ -225,9 +225,11 @@ absl::Status AscendTransferManager::TransferBufferFromDevice(
   bool first_create = false;
   TF_ASSIGN_OR_RETURN(auto staging_buffer,
                       GetOrCreateStagingBuffer(stream->parent(), first_create));
-  if(first_create){
+  //if(first_create)
+  {
     /*- CUDA允许在事件未被记录的情况下调用 cuStreamWaitEvent ，此时它会认为事件已经完成，不会阻塞。
       - 但Ascend的ACL不支持这种行为，它要求事件必须先被记录，然后才能等待，否则会返回参数无效错误（107000）*/
+    //不管是否第一次创建，都先记录一个事件，确保后续的 WaitFor 不会失败,ascend允许重复记录同一个事件
     stream->RecordEvent(staging_buffer->transfer_completed.get()) ;
   }
 
@@ -272,9 +274,11 @@ absl::Status AscendTransferManager::TransferBufferToDevice(
   TF_ASSIGN_OR_RETURN(auto staging_buffer,
                       GetOrCreateStagingBuffer(stream->parent(), first_create));
 
-  if(first_create){
+  //if(first_create)
+  {
     /*- CUDA允许在事件未被记录的情况下调用 cuStreamWaitEvent ，此时它会认为事件已经完成，不会阻塞。
       - 但Ascend的ACL不支持这种行为，它要求事件必须先被记录，然后才能等待，否则会返回参数无效错误（107000）*/
+    //不管是否第一次创建，都先记录一个事件，确保后续的 WaitFor 不会失败,ascend允许重复记录同一个事件
     stream->RecordEvent(staging_buffer->transfer_completed.get()) ;
   }
 

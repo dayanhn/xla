@@ -32,6 +32,10 @@ class AscendCompiler : public gpu::GpuCompiler {
 
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override;
 
+  absl::StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
+        std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
+        const CompileOptions& options) override;
+
   std::vector<std::string> GetLLVMCommandLineOptions(
       const DebugOptions& debug_options) const override;
 

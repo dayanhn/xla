@@ -41,6 +41,37 @@ cc_library(
 )
 
 cc_library(
+    name = "se_ascend_topology_description",
+    srcs = ["se_ascend_topology_description.cc"],
+    hdrs = ["se_ascend_topology_description.h"],
+    visibility = internal_visibility([
+        "//xla/pjrt/npu:__subpackages__",
+    ]),
+    deps = [
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/pjrt:pjrt_common",
+        "//xla/pjrt:pjrt_compiler",
+        "//xla/pjrt:pjrt_device_description",
+        "//xla/pjrt:pjrt_device_dimensions",
+        "//xla/pjrt:pjrt_stream_executor_device_description",
+        "//xla/pjrt/proto:topology_description_proto_cc",
+        "//xla/stream_executor:device_description_proto_cc",
+        "//xla/tsl/lib/strings:proto_serialization",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform:casts",
+        "@tsl//tsl/platform:platform_port",
+    ],
+)
+
+cc_library(
     name = "se_ascend_pjrt_client",
     srcs = [
         "se_ascend_pjrt_client.cc",
@@ -48,6 +79,7 @@ cc_library(
     hdrs = ["se_ascend_pjrt_client.h"],
     deps = [
         ":ascend_helpers",
+        ":se_ascend_topology_description",
 
         "//xla:executable_run_options",
         "//xla:future",

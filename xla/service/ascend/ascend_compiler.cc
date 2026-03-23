@@ -57,6 +57,14 @@ absl::StatusOr<std::unique_ptr<Executable>> AscendCompiler::RunBackend(
   return result;
 }
 
+absl::StatusOr<std::unique_ptr<HloModule>> AscendCompiler::RunHloPasses(
+    std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
+    const CompileOptions& options) {
+    // TODO: Add Ascend-specific HLO passes
+    // For now, we'll just return the module as-is
+    return std::move(module);
+}
+
 absl::Status AscendCompiler::OptimizeHloConvolutionCanonicalization(
     HloModule* hlo_module, const se::GpuComputeCapability& gpu_version,
     se::dnn::VersionInfo dnn_version,

@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/numa.h"
 #include "xla/pjrt/plugin/xla_npu/npu_client_options.h"
+#include "xla/pjrt/npu/se_ascend_topology_description.h"
 
 namespace xla {
 
@@ -148,6 +149,11 @@ class StreamExecutorAscendClient : public xla::PjRtStreamExecutorClient {
   absl::Status UpdateCompileOptionsInternal(
       CompileOptions* options, ExecutableExtras* returned_extras,
       bool lookup_addressable_devices) override;
+
+  absl::StatusOr<const xla::PjRtTopologyDescription*> GetTopologyDescription() const override;
+
+ private:
+  std::optional<StreamExecutorAscendTopologyDescription> topology_;
 };
 
 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
