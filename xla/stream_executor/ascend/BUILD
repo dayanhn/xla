@@ -12,15 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla:xla.default.bzl", "xla_cc_test")
 load(
     "//xla/stream_executor:build_defs.bzl",
     "stream_executor_friends",
 )
 load(
     "//xla/tsl:tsl.bzl",
+    "if_oss",
     "internal_visibility",
 )
+load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = internal_visibility([":friends"]),
@@ -38,24 +41,6 @@ cc_library(
     hdrs = ["ascend_platform_id.h"],
     deps = ["//xla/stream_executor:platform"],
 )
-
-cc_binary(
-    name = "test_ascend_platform",
-    srcs = ["test_ascend_platform.cc"],
-    deps = [
-        ":ascend_platform",
-        "//xla/stream_executor:platform",
-        "//xla/stream_executor:platform_manager",
-        "@com_google_absl//absl/status",
-    ],
-)
-
-load("//xla:xla.default.bzl", "xla_cc_test")
-load("//xla/stream_executor:build_defs.bzl", "stream_executor_friends")
-load("//xla/tsl:tsl.bzl", "if_oss")
-load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
-load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
-
 
 cc_library(
     name = "ascend_status",
@@ -243,4 +228,15 @@ cc_library(
         "@tsl//tsl/platform:statusor",
     ],
     alwayslink = 1,  # Registers itself with the PlatformManager.
+)
+
+cc_binary(
+    name = "test_ascend_platform",
+    srcs = ["test_ascend_platform.cc"],
+    deps = [
+        ":ascend_platform",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "@com_google_absl//absl/status",
+    ],
 )

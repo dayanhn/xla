@@ -119,3 +119,14 @@ cc_library(
     ],
     alwayslink = 1,  # Registers itself with the ComputationPlacer registry.
 )
+
+cc_binary(
+    name = "ascend_plugin",
+    srcs = [],
+    deps = [
+        ":ascend_executable",
+        ":ascend_transfer_manager",
+        ":ascend_compiler",
+        ":ascend_computation_placer",
+    ],
+)

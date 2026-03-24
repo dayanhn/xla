@@ -60,13 +60,9 @@ const PJRT_Api* GetAscendPjrtApi() {
     // Register Ascend FFI handlers
     xla::ffi::RegisterAscendFfiHandlers();
     
-    // Create the PJRT API wrapper
-    auto* api = new PJRT_Api();
-    pjrt::InitializePjrtApi(api);
-    
-    // Override the Client_Create function
-    api->PJRT_Client_Create = [](PJRT_Client_Create_Args* args) -> PJRT_Error* {
-      PJRT_RETURN_IF_ERROR(pjrt::ValidateStructSize(
+    // Define the client create function
+    auto client_create_fn = [](PJRT_Client_Create_Args* args) -> PJRT_Error* {
+      PJRT_RETURN_IF_ERROR(pjrt::ActualStructSizeIsGreaterOrEqual(
           "PJRT_Client_Create_Args", PJRT_Client_Create_Args_STRUCT_SIZE,
           args->struct_size));
       
@@ -81,12 +77,18 @@ const PJRT_Api* GetAscendPjrtApi() {
       }
       
       // Create the PJRT client wrapper
-      auto* client = new pjrt::CApiClient(args->client);
-      client->SetPjrtClient(std::move(*client_or));
+      args->client = pjrt::CreateWrapperClient(std::move(*client_or));
       return nullptr;
     };
     
-    return api;
+    // Create the PJRT API
+    static PJRT_Api api = pjrt::CreatePjrtApi(
+        client_create_fn,
+        /*execute_context_create_fn=*/nullptr,
+        /*topology_create_fn=*/nullptr,
+        pjrt::PJRT_Plugin_Initialize_NoOp);
+    
+    return &api;
   }();
   
   return api;
@@ -94,3 +96,10 @@ const PJRT_Api* GetAscendPjrtApi() {
 
 }  // namespace ascend_plugin
 }  // namespace pjrt
+
+// PJRT plugin entry point
+extern "C" {
+  const PJRT_Api* PJRT_Plugin_GetPjrtApi() {
+    return pjrt::ascend_plugin::GetAscendPjrtApi();
+  }
+}
