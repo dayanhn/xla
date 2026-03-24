@@ -693,3 +693,42 @@ cc_library(
     hdrs = ["pjrt_c_api_tpu_internal.h"],
     deps = [":pjrt_c_api_hdrs"],
 )
+
+# ==============================================================================
+# Ascend PJRT C API Implementation
+# ==============================================================================
+
+cc_library(
+    name = "pjrt_c_api_ascend_internal",
+    srcs = ["pjrt_c_api_ascend_internal.cc"],
+    hdrs = ["pjrt_c_api_ascend_internal.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+        ":pjrt_c_api_helpers",
+        ":pjrt_c_api_wrapper_impl",
+        "//xla/pjrt/c:pjrt_c_api_ffi_extension_hdrs",
+        "//xla/pjrt/npu:se_ascend_pjrt_client",
+        "//xla/pjrt/plugin/xla_npu:npu_client_options",
+        "//xla/pjrt/plugin/xla_npu:xla_npu_pjrt_client",
+        "//xla/service/ascend/ffi:ascend_ffi",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status:statusor",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "pjrt_c_api_ascend",
+    srcs = ["pjrt_c_api_ascend.cc"],
+    hdrs = ["pjrt_c_api_ascend.h"],
+    deps = [
+        ":pjrt_c_api_ascend_internal",
+        ":pjrt_c_api_hdrs",
+        ":pjrt_c_api_macros",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log:initialize",
+        "@tsl//tsl/platform",
+    ],
+    alwayslink = 1,
+)
