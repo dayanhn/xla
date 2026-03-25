@@ -110,6 +110,7 @@ cc_library(
     name = "collectives",
     deps = [
         ":hccl_collectives",
+        ":hccl_communicator",
     ],
     visibility = ["//xla:internal"],
 )
