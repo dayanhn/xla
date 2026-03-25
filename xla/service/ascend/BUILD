@@ -120,7 +120,7 @@ cc_library(
     alwayslink = 1,  # Registers itself with the ComputationPlacer registry.
 )
 
-cc_binary(
+cc_library(
     name = "ascend_plugin",
     srcs = [],
     deps = [
@@ -129,4 +129,5 @@ cc_binary(
         ":ascend_compiler",
         ":ascend_computation_placer",
     ],
+    alwayslink = 1,  # Ensure all components are linked in
 )
