@@ -98,6 +98,7 @@ cc_library(
         "//xla/service/gpu:gpu_compiler",
         "//xla/service/gpu:ptx_custom_kernel_emitter_sycl",
         "//xla/stream_executor/ascend:ascend_platform_id",
+        "//xla/backends/ascend/autotuner:ascend_dnn",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
     ],

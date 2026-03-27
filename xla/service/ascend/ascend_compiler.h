@@ -19,6 +19,10 @@ limitations under the License.
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/executable.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/service/hlo_alias_analysis.h"
+#include "xla/debug_options.pb.h"
+#include "mlir/IR/MLIRContext.h"
 
 namespace xla {
 
@@ -53,6 +57,11 @@ class AscendCompiler : public gpu::GpuCompiler {
       const stream_executor::DeviceDescription& device_description,
       bool relocatable, const HloModule* debug_module,
       const CompileOptions& options, std::optional<int> shard_number) override;
+
+  absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>> GetCodegenBackends(
+      se::StreamExecutor* stream_exec,
+      const Compiler::GpuTargetConfig* target_config, const AliasInfo* alias_info,
+      const DebugOptions& debug_options, mlir::MLIRContext* mlir_context) override;
 };
 
 }  // namespace xla

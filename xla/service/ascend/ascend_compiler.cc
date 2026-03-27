@@ -20,6 +20,7 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/stream_executor/ascend/ascend_platform_id.h"
+#include "xla/backends/ascend/autotuner/ascend_dnn.h"
 
 namespace xla {
 
@@ -94,6 +95,40 @@ absl::StatusOr<gpu::GpuCompiler::BackendCompileResult> AscendCompiler::CompileTa
       /*dnn_compiled_graphs=*/{},
       /*module_stats=*/{}
   };
+}
+
+absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>> 
+AscendCompiler::GetCodegenBackends(
+    se::StreamExecutor* stream_exec,
+    const Compiler::GpuTargetConfig* target_config, const AliasInfo* alias_info,
+    const DebugOptions& debug_options, mlir::MLIRContext* mlir_context) {
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  const auto& enabled_backends =
+      debug_options.xla_gpu_experimental_autotune_backends();
+
+  auto is_backend_enabled = [&](DebugOptions::AutotuneBackend backend) {
+    if (enabled_backends.empty()) {
+      return true;
+    }
+    for (const auto& enabled_backend : enabled_backends) {
+      if (enabled_backend == DebugOptions::AUTOTUNE_BACKEND_ALL) {
+        return true;
+      }
+      if (enabled_backend == backend) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Add Ascend DNN backend
+  if (!debug_options.xla_gpu_experimental_disable_binary_libraries() &&
+      is_backend_enabled(DebugOptions::AUTOTUNE_BACKEND_CUDNN)) {
+    backends.push_back(std::make_unique<ascend::AscendDnnBackend>(
+        stream_exec, &debug_options, this, target_config));
+  }
+
+  return backends;
 }
 
 }  // namespace xla
