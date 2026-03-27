@@ -20,8 +20,6 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/backends/autotuner/codegen_backend.h"
-#include "xla/service/hlo_alias_analysis.h"
-#include "xla/debug_options.pb.h"
 #include "mlir/IR/MLIRContext.h"
 
 namespace xla {

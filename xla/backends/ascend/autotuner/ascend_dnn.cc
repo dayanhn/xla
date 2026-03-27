@@ -15,19 +15,41 @@ limitations under the License.
 
 #include "xla/backends/ascend/autotuner/ascend_dnn.h"
 
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/compiler.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace ascend {
 
-AscendDnnBackend::AscendDnnBackend(stream_executor::StreamExecutor* stream_exec, 
-                                   const DebugOptions* debug_options, 
-                                   gpu::GpuCompiler* compiler, 
-                                   const gpu::GpuTargetConfig* target_config)
-    : CodegenBackend(stream_exec, debug_options, compiler, target_config) {
+AscendDnnBackend::AscendDnnBackend(stream_executor::StreamExecutor* stream_executor,
+                                   const DebugOptions* debug_options,
+                                   Compiler* compiler,
+                                   const Compiler::GpuTargetConfig* target_config)
+    : stream_executor_(stream_executor),
+      debug_options_(debug_options),
+      compiler_(compiler),
+      target_config_(target_config) {
+}
+
+absl::string_view AscendDnnBackend::name() const {
+  return "AscendDnnBackend";
+}
+
+autotuner::Backend AscendDnnBackend::backend() const {
+  return autotuner::Backend::ASCEND_DNN;
+}
+
+bool AscendDnnBackend::CanProduceWrongResults() const {
+  return false;
 }
 
 bool AscendDnnBackend::IsSupported(const HloInstruction& instr) {
@@ -44,10 +66,24 @@ absl::StatusOr<std::unique_ptr<BackendConfig>> AscendDnnBackend::GetDefaultConfi
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> AscendDnnBackend::GetSupportedConfigs(
     const HloInstruction& instr) {
   // TODO: Implement supported configs retrieval
-  return std::vector<std::unique_ptr<BackendConfig>>();
+  std::vector<std::unique_ptr<BackendConfig>> configs;
+  if (!IsSupported(instr)) {
+    return configs;
+  }
+  auto config = GetDefaultConfig(instr);
+  if (config.ok()) {
+    configs.push_back(std::move(config.value()));
+  }
+  return configs;
 }
 
-absl::Status AscendDnnBackend::ApplyConfig(HloInstruction& instr, 
+absl::StatusOr<std::unique_ptr<Executable>> AscendDnnBackend::Compile(
+    const HloInstruction& instr, const BackendConfig& config) {
+  // TODO: Implement compilation logic for Ascend DNN
+  return absl::UnimplementedError("AscendDnnBackend::Compile not implemented");
+}
+
+absl::Status AscendDnnBackend::ApplyConfig(HloInstruction& instr,
                                          const BackendConfig& config) {
   // TODO: Implement config application
   return absl::UnimplementedError("AscendDnnBackend::ApplyConfig not implemented");

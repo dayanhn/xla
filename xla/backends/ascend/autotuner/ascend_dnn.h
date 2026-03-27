@@ -16,28 +16,40 @@ limitations under the License.
 #ifndef XLA_BACKENDS_ASCEND_AUTOTUNER_ASCEND_DNN_H_
 #define XLA_BACKENDS_ASCEND_AUTOTUNER_ASCEND_DNN_H_
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/compiler.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace ascend {
 
 class AscendDnnBackend : public CodegenBackend {
  public:
-  AscendDnnBackend(stream_executor::StreamExecutor* stream_exec, 
-                   const DebugOptions* debug_options, 
-                   gpu::GpuCompiler* compiler, 
-                   const gpu::GpuTargetConfig* target_config);
+  explicit AscendDnnBackend(stream_executor::StreamExecutor* stream_executor,
+                           const DebugOptions* debug_options, Compiler* compiler,
+                           const Compiler::GpuTargetConfig* target_config);
 
-  bool IsSupported(const HloInstruction& instr) override;
-  absl::StatusOr<std::unique_ptr<BackendConfig>> GetDefaultConfig(
-      const HloInstruction& instr) override;
+  absl::string_view name() const override;
+  autotuner::Backend backend() const override;
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> GetSupportedConfigs(
       const HloInstruction& instr) override;
-  absl::Status ApplyConfig(HloInstruction& instr, 
-                          const BackendConfig& config) override;
+  absl::StatusOr<std::unique_ptr<BackendConfig>> GetDefaultConfig(
+      const HloInstruction& instr) override;
+  absl::StatusOr<std::unique_ptr<Executable>> Compile(
+      const HloInstruction& instr, const BackendConfig& config) override;
+  absl::Status ApplyConfig(HloInstruction& instr,
+                           const BackendConfig& config) override;
+  bool CanProduceWrongResults() const override;
+
+ private:
+  bool IsSupported(const HloInstruction& instr);
+
+  stream_executor::StreamExecutor* stream_executor_;
+  const DebugOptions* debug_options_;
+  Compiler* compiler_;
+  const Compiler::GpuTargetConfig* target_config_;
 };
 
 }  // namespace ascend

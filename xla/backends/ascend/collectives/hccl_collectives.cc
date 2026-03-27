@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/npu/collectives/hccl_collectives.h"
+#include "xla/backends/ascend/collectives/hccl_collectives.h"
 
 #include <cstdint>
 #include <cstdlib>
@@ -43,7 +43,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
-#include "xla/backends/npu/collectives/hccl_communicator.h"
+#include "xla/backends/ascend/collectives/hccl_communicator.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/collectives.h"

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/npu/collectives/hccl_communicator.h"
+#include "xla/backends/ascend/collectives/hccl_communicator.h"
 
 #include <cstddef>
 #include <cstdint>
