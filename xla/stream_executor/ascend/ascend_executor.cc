@@ -433,7 +433,7 @@ absl::StatusOr<std::unique_ptr<DeviceDescription>> AscendExecutor::CreateDeviceD
   desc.set_device_address_bits(64);
 
   std::string socName = aclrtGetSocName();
-  desc.set_name(absl::StrCat(socName+"-", device_ordinal()));
+  desc.set_name(socName);
 
   int64_t total_memory = 0;
   aclrtGetDeviceInfo(device_ordinal(), ACL_DEV_ATTR_TOTAL_GLOBAL_MEM_SIZE, &total_memory);

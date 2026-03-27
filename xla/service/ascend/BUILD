@@ -129,7 +129,7 @@ cc_library(
         ":ascend_transfer_manager",
         ":ascend_compiler",
         ":ascend_computation_placer",
-        "//xla/backends/npu/collectives:collectives",
+        "//xla/backends/ascend/collectives:collectives",
     ],
     alwayslink = 1,  # Ensure all components are linked in
 )
