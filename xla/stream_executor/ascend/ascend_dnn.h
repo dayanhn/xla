@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_ASCEND_ASCEND_DNN_H_ 
-#define XLA_SERVICE_ASCEND_ASCEND_DNN_H_
+#ifndef XLA_STREAM_EXECUTOR_ASCEND_ASCEND_DNN_H_ 
+#define XLA_STREAM_EXECUTOR_ASCEND_ASCEND_DNN_H_
 
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -40,191 +40,233 @@ class AscendSupport : public dnn::DnnSupport {
   // Get version info
   absl::StatusOr<dnn::VersionInfo> GetVersion() override;
 
-  // Convolution operations
-  absl::Status DoConvolveForward(Stream* stream,
-                                 const dnn::BatchDescriptor& input_descriptor,
-                                 const DeviceAddressBase& input_data,
-                                 const dnn::FilterDescriptor& filter_descriptor,
-                                 const DeviceAddressBase& filter_data,
-                                 const dnn::ConvolutionDescriptor& convolution_descriptor,
-                                 const dnn::BatchDescriptor& output_descriptor,
-                                 DeviceAddressBase* output_data,
-                                 const dnn::AlgorithmConfig& algorithm_config,
-                                 ScratchAllocator* workspace_allocator,
-                                 dnn::ProfileResult* output_profile_result) override;
-
-  absl::Status DoConvolveBackwardData(Stream* stream,
-                                      const dnn::FilterDescriptor& filter_descriptor,
-                                      const DeviceAddressBase& filter_data,
-                                      const dnn::BatchDescriptor& output_backprop_descriptor,
-                                      const DeviceAddressBase& output_backprop_data,
-                                      const dnn::ConvolutionDescriptor& convolution_descriptor,
-                                      const dnn::BatchDescriptor& input_backprop_descriptor,
-                                      DeviceAddressBase* input_backprop_data,
-                                      const dnn::AlgorithmConfig& algorithm_config,
-                                      ScratchAllocator* workspace_allocator,
-                                      dnn::ProfileResult* output_profile_result) override;
-
-  absl::Status DoConvolveBackwardFilter(Stream* stream,
-                                        const dnn::BatchDescriptor& input_descriptor,
-                                        const DeviceAddressBase& input_data,
-                                        const dnn::BatchDescriptor& output_backprop_descriptor,
-                                        const DeviceAddressBase& output_backprop_data,
-                                        const dnn::ConvolutionDescriptor& convolution_descriptor,
-                                        const dnn::FilterDescriptor& filter_backprop_descriptor,
-                                        DeviceAddressBase* filter_backprop_data,
-                                        const dnn::AlgorithmConfig& algorithm_config,
-                                        ScratchAllocator* workspace_allocator,
-                                        dnn::ProfileResult* output_profile_result) override;
-
   // Pooling operations
-  absl::Status DoPoolForward(Stream* stream,
-                            const dnn::BatchDescriptor& input_descriptor,
-                            const DeviceAddressBase& input_data,
-                            const dnn::PoolingDescriptor& pooling_descriptor,
-                            const dnn::BatchDescriptor& output_descriptor,
-                            DeviceAddressBase* output_data,
-                            ScratchAllocator* workspace_allocator,
-                            dnn::ProfileResult* output_profile_result) override;
+  absl::Status DoPoolForward(
+      dnn::DataType element_type, Stream* stream,
+      const dnn::PoolingDescriptor& pooling_dimensions,
+      const dnn::BatchDescriptor& input_dimensions, DeviceAddressBase input_data,
+      const dnn::BatchDescriptor& output_dimensions, DeviceAddressBase output_data,
+      ScratchAllocator* workspace_allocator) override;
 
-  absl::Status DoPoolBackward(Stream* stream,
-                             const dnn::BatchDescriptor& input_descriptor,
-                             const DeviceAddressBase& input_data,
-                             const dnn::BatchDescriptor& output_descriptor,
-                             const DeviceAddressBase& output_data,
-                             const dnn::BatchDescriptor& output_backprop_descriptor,
-                             const DeviceAddressBase& output_backprop_data,
-                             const dnn::PoolingDescriptor& pooling_descriptor,
-                             const dnn::BatchDescriptor& input_backprop_descriptor,
-                             DeviceAddressBase* input_backprop_data,
-                             ScratchAllocator* workspace_allocator,
-                             dnn::ProfileResult* output_profile_result) override;
+  absl::Status DoPoolForward(
+      dnn::DataType element_type, Stream* stream,
+      const dnn::PoolingDescriptor& pooling_dimensions,
+      const EngineOptions& engine_options,
+      const dnn::BatchDescriptor& input_dimensions, DeviceAddressBase input_data,
+      const dnn::BatchDescriptor& output_dimensions, DeviceAddressBase output_data,
+      ScratchAllocator* workspace_allocator) override;
+
+  absl::Status DoPoolBackward(
+      dnn::DataType element_type, Stream* stream,
+      const dnn::PoolingDescriptor& pooling_dimensions,
+      const dnn::BatchDescriptor& input_dimensions, DeviceAddressBase input_data,
+      const dnn::BatchDescriptor& output_dimensions, DeviceAddressBase output_data,
+      DeviceAddressBase input_diff_data, DeviceAddressBase output_diff_data,
+      ScratchAllocator* workspace_allocator) override;
+
+  absl::Status DoPoolBackward(
+      dnn::DataType element_type, Stream* stream,
+      const dnn::PoolingDescriptor& pooling_dimensions,
+      const EngineOptions& engine_options,
+      const dnn::BatchDescriptor& input_dimensions, DeviceAddressBase input_data,
+      const dnn::BatchDescriptor& output_dimensions, DeviceAddressBase output_data,
+      DeviceAddressBase input_diff_data, DeviceAddressBase output_diff_data,
+      ScratchAllocator* workspace_allocator) override;
 
   // Batch normalization operations
-  absl::Status DoBatchNormForwardTraining(Stream* stream,
-                                         dnn::BatchNormMode mode,
-                                         const dnn::BatchDescriptor& input_descriptor,
-                                         const DeviceAddressBase& input_data,
-                                         const dnn::BatchDescriptor& scale_offset_descriptor,
-                                         const DeviceAddressBase& scale_data,
-                                         const DeviceAddressBase& offset_data,
-                                         const dnn::BatchDescriptor& output_descriptor,
-                                         DeviceAddressBase* output_data,
-                                         const dnn::BatchDescriptor& mean_descriptor,
-                                         DeviceAddressBase* mean_data,
-                                         const dnn::BatchDescriptor& variance_descriptor,
-                                         DeviceAddressBase* variance_data,
-                                         double epsilon,
-                                         dnn::ActivationMode activation_mode,
-                                         double activation_max_value,
-                                         ScratchAllocator* workspace_allocator,
-                                         dnn::ProfileResult* output_profile_result) override;
+  bool DoBatchNormalizationForward(
+      Stream* stream, const DeviceAddress<float>& x,
+      const DeviceAddress<float>& scale, const DeviceAddress<float>& offset,
+      const DeviceAddress<float>& estimated_mean,
+      const DeviceAddress<float>& estimated_variance,
+      const DeviceAddress<float>& side_input, const dnn::BatchDescriptor& x_desc,
+      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      const double exponential_average_factor, dnn::ActivationMode activation_mode,
+      DeviceAddress<float>* y, DeviceAddress<float>* batch_mean,
+      DeviceAddress<float>* batch_var, DeviceAddress<float>* reserve_space_1,
+      DeviceAddress<float>* reserve_space_2, bool is_training,
+      ScratchAllocator* reserve_space_allocator,
+      ScratchAllocator* workspace_allocator) override;
 
-  absl::Status DoBatchNormBackward(Stream* stream,
-                                  dnn::BatchNormMode mode,
-                                  const dnn::BatchDescriptor& input_descriptor,
-                                  const DeviceAddressBase& input_data,
-                                  const dnn::BatchDescriptor& output_backprop_descriptor,
-                                  const DeviceAddressBase& output_backprop_data,
-                                  const dnn::BatchDescriptor& scale_offset_descriptor,
-                                  const DeviceAddressBase& scale_data,
-                                  const DeviceAddressBase& mean_data,
-                                  const DeviceAddressBase& variance_data,
-                                  double epsilon,
-                                  dnn::ActivationMode activation_mode,
-                                  double activation_max_value,
-                                  const dnn::BatchDescriptor& input_backprop_descriptor,
-                                  DeviceAddressBase* input_backprop_data,
-                                  const dnn::BatchDescriptor& scale_offset_backprop_descriptor,
-                                  DeviceAddressBase* scale_backprop_data,
-                                  DeviceAddressBase* offset_backprop_data,
-                                  ScratchAllocator* workspace_allocator,
-                                  dnn::ProfileResult* output_profile_result) override;
+  bool DoBatchNormalizationForward(
+      Stream* stream, const DeviceAddress<Eigen::half>& x,
+      const DeviceAddress<float>& scale, const DeviceAddress<float>& offset,
+      const DeviceAddress<float>& estimated_mean,
+      const DeviceAddress<float>& estimated_variance,
+      const DeviceAddress<Eigen::half>& side_input,
+      const dnn::BatchDescriptor& x_desc, const dnn::BatchDescriptor& scale_offset_desc,
+      const double epsilon, const double exponential_average_factor,
+      dnn::ActivationMode activation_mode, DeviceAddress<Eigen::half>* y,
+      DeviceAddress<float>* batch_mean, DeviceAddress<float>* batch_var,
+      DeviceAddress<float>* reserve_space_1, DeviceAddress<float>* reserve_space_2,
+      bool is_training, ScratchAllocator* reserve_space_allocator,
+      ScratchAllocator* workspace_allocator) override;
 
-  // LRN operations
-  absl::Status DoLrnForward(Stream* stream,
-                            const dnn::BatchDescriptor& input_descriptor,
-                            const DeviceAddressBase& input_data,
-                            const dnn::NormalizeDescriptor& normalize_descriptor,
-                            const dnn::BatchDescriptor& output_descriptor,
-                            DeviceAddressBase* output_data,
-                            ScratchAllocator* workspace_allocator,
-                            dnn::ProfileResult* output_profile_result) override;
+  bool DoBatchNormalizationBackward(
+      Stream* stream, const DeviceAddress<float>& y_backprop,
+      const DeviceAddress<float>& x, const DeviceAddress<float>& scale,
+      const DeviceAddress<float>& offset, const DeviceAddress<float>& mean,
+      const DeviceAddress<float>& inv_var, const DeviceAddress<float>& y,
+      const dnn::BatchDescriptor& x_desc, const dnn::BatchDescriptor& scale_offset_desc,
+      const double epsilon, dnn::ActivationMode activation_mode,
+      DeviceAddress<float>* x_backprop, DeviceAddress<float>* scale_backprop,
+      DeviceAddress<float>* offset_backprop,
+      DeviceAddress<float>* side_input_backprop,
+      DeviceAddress<uint8_t>* reserve_space_data,
+      ScratchAllocator* workspace_allocator) override;
 
-  absl::Status DoLrnBackward(Stream* stream,
-                             const dnn::BatchDescriptor& input_descriptor,
-                             const DeviceAddressBase& input_data,
-                             const dnn::BatchDescriptor& output_descriptor,
-                             const DeviceAddressBase& output_data,
-                             const dnn::BatchDescriptor& output_backprop_descriptor,
-                             const DeviceAddressBase& output_backprop_data,
-                             const dnn::NormalizeDescriptor& normalize_descriptor,
-                             const dnn::BatchDescriptor& input_backprop_descriptor,
-                             DeviceAddressBase* input_backprop_data,
-                             ScratchAllocator* workspace_allocator,
-                             dnn::ProfileResult* output_profile_result) override;
+  bool DoBatchNormalizationBackward(
+      Stream* stream, const DeviceAddress<Eigen::half>& y_backprop,
+      const DeviceAddress<Eigen::half>& x, const DeviceAddress<float>& scale,
+      const DeviceAddress<float>& offset, const DeviceAddress<float>& mean,
+      const DeviceAddress<float>& inv_var, const DeviceAddress<Eigen::half>& y,
+      const dnn::BatchDescriptor& x_desc, const dnn::BatchDescriptor& scale_offset_desc,
+      const double epsilon, dnn::ActivationMode activation_mode,
+      DeviceAddress<Eigen::half>* x_backprop,
+      DeviceAddress<float>* scale_backprop, DeviceAddress<float>* offset_backprop,
+      DeviceAddress<Eigen::half>* side_input_backprop,
+      DeviceAddress<uint8_t>* reserve_space_data,
+      ScratchAllocator* workspace_allocator) override;
 
   // RNN operations
-  absl::Status DoRnnForward(Stream* stream,
-                           const dnn::RnnDescriptor& rnn_desc,
-                           const dnn::RnnSequenceTensorDescriptor& input_desc,
-                           const DeviceAddressBase& input_data,
-                           const DeviceAddress<int>& seq_lengths_data,
-                           const dnn::RnnStateTensorDescriptor& input_h_desc,
-                           const DeviceAddressBase& input_h_data,
-                           const dnn::RnnStateTensorDescriptor& input_c_desc,
-                           const DeviceAddressBase& input_c_data,
-                           const DeviceAddressBase& params,
-                           const dnn::RnnSequenceTensorDescriptor& output_desc,
-                           DeviceAddressBase* output_data,
-                           const dnn::RnnStateTensorDescriptor& output_h_desc,
-                           DeviceAddressBase* output_h_data,
-                           const dnn::RnnStateTensorDescriptor& output_c_desc,
-                           DeviceAddressBase* output_c_data,
-                           bool is_training,
-                           ScratchAllocator* reserve_space_allocator,
-                           ScratchAllocator* workspace_allocator,
-                           dnn::ProfileResult* output_profile_result) override;
+  bool DoRnnForward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
+                    const dnn::RnnSequenceTensorDescriptor& input_desc,
+                    const DeviceAddress<Eigen::half>& input_data,
+                    const DeviceAddress<int>& seq_lengths_data,
+                    const dnn::RnnStateTensorDescriptor& input_h_desc,
+                    const DeviceAddress<Eigen::half>& input_h_data,
+                    const dnn::RnnStateTensorDescriptor& input_c_desc,
+                    const DeviceAddress<Eigen::half>& input_c_data,
+                    const DeviceAddress<Eigen::half>& params,
+                    const dnn::RnnSequenceTensorDescriptor& output_desc,
+                    DeviceAddress<Eigen::half>* output_data,
+                    const dnn::RnnStateTensorDescriptor& output_h_desc,
+                    DeviceAddress<Eigen::half>* output_h_data,
+                    const dnn::RnnStateTensorDescriptor& output_c_desc,
+                    DeviceAddress<Eigen::half>* output_c_data,
+                    bool is_training,
+                    ScratchAllocator* reserve_space_allocator,
+                    ScratchAllocator* workspace_allocator,
+                    dnn::ProfileResult* output_profile_result) override;
 
-  absl::Status DoRnnBackward(Stream* stream,
-                            const dnn::RnnDescriptor& rnn_desc,
-                            const dnn::RnnSequenceTensorDescriptor& input_desc,
-                            const DeviceAddressBase& input_data,
-                            const DeviceAddress<int>& seq_lengths_data,
-                            const dnn::RnnStateTensorDescriptor& input_h_desc,
-                            const DeviceAddressBase& input_h_data,
-                            const dnn::RnnStateTensorDescriptor& input_c_desc,
-                            const DeviceAddressBase& input_c_data,
-                            const DeviceAddressBase& params,
-                            const dnn::RnnSequenceTensorDescriptor& output_desc,
-                            const DeviceAddressBase& output_data,
-                            const dnn::RnnStateTensorDescriptor& output_h_desc,
-                            const DeviceAddressBase& output_h_data,
-                            const dnn::RnnStateTensorDescriptor& output_c_desc,
-                            const DeviceAddressBase& output_c_data,
-                            const DeviceAddressBase& output_backprop_data,
-                            const DeviceAddressBase& output_h_backprop_data,
-                            const DeviceAddressBase& output_c_backprop_data,
-                            DeviceAddressBase* input_backprop_data,
-                            DeviceAddressBase* input_h_backprop_data,
-                            DeviceAddressBase* input_c_backprop_data,
-                            DeviceAddressBase* params_backprop_data,
-                            DeviceAddress<uint8_t>* reserve_space_data,
-                            ScratchAllocator* workspace_allocator,
-                            dnn::ProfileResult* output_profile_result) override;
+  bool DoRnnForward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
+                    const dnn::RnnSequenceTensorDescriptor& input_desc,
+                    const DeviceAddress<float>& input_data,
+                    const DeviceAddress<int>& seq_lengths_data,
+                    const dnn::RnnStateTensorDescriptor& input_h_desc,
+                    const DeviceAddress<float>& input_h_data,
+                    const dnn::RnnStateTensorDescriptor& input_c_desc,
+                    const DeviceAddress<float>& input_c_data,
+                    const DeviceAddress<float>& params,
+                    const dnn::RnnSequenceTensorDescriptor& output_desc,
+                    DeviceAddress<float>* output_data,
+                    const dnn::RnnStateTensorDescriptor& output_h_desc,
+                    DeviceAddress<float>* output_h_data,
+                    const dnn::RnnStateTensorDescriptor& output_c_desc,
+                    DeviceAddress<float>* output_c_data,
+                    bool is_training,
+                    ScratchAllocator* reserve_space_allocator,
+                    ScratchAllocator* workspace_allocator,
+                    dnn::ProfileResult* output_profile_result) override;
 
-  // CTC loss operations
-  absl::Status DoCtcLoss(Stream* stream,
-                        const dnn::BatchDescriptor& probs_descriptor,
-                        const DeviceAddressBase& probs_data,
-                        absl::Span<const int> labels_data,
-                        absl::Span<const int> labels_lengths_data,
-                        absl::Span<const int> input_lengths_data,
-                        DeviceAddressBase& costs_data,
-                        const dnn::BatchDescriptor& grads_descriptor,
-                        DeviceAddressBase* grads_data,
-                        int ctc_loss_algo_id,
-                        ScratchAllocator* workspace_allocator) override;
+  bool DoRnnForward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
+                    const dnn::RnnSequenceTensorDescriptor& input_desc,
+                    const DeviceAddress<double>& input_data,
+                    const DeviceAddress<int>& seq_lengths_data,
+                    const dnn::RnnStateTensorDescriptor& input_h_desc,
+                    const DeviceAddress<double>& input_h_data,
+                    const dnn::RnnStateTensorDescriptor& input_c_desc,
+                    const DeviceAddress<double>& input_c_data,
+                    const DeviceAddress<double>& params,
+                    const dnn::RnnSequenceTensorDescriptor& output_desc,
+                    DeviceAddress<double>* output_data,
+                    const dnn::RnnStateTensorDescriptor& output_h_desc,
+                    DeviceAddress<double>* output_h_data,
+                    const dnn::RnnStateTensorDescriptor& output_c_desc,
+                    DeviceAddress<double>* output_c_data,
+                    bool is_training,
+                    ScratchAllocator* reserve_space_allocator,
+                    ScratchAllocator* workspace_allocator,
+                    dnn::ProfileResult* output_profile_result) override;
+
+  bool DoRnnBackward(
+      Stream* stream, const dnn::RnnDescriptor& rnn_desc,
+      const dnn::RnnSequenceTensorDescriptor& input_desc,
+      const DeviceAddress<Eigen::half>& input_data,
+      const DeviceAddress<int>& seq_lengths_data,
+      const dnn::RnnStateTensorDescriptor& input_h_desc,
+      const DeviceAddress<Eigen::half>& input_h_data,
+      const dnn::RnnStateTensorDescriptor& input_c_desc,
+      const DeviceAddress<Eigen::half>& input_c_data,
+      const DeviceAddress<Eigen::half>& params,
+      const dnn::RnnSequenceTensorDescriptor& output_desc,
+      const DeviceAddress<Eigen::half>& output_data,
+      const dnn::RnnStateTensorDescriptor& output_h_desc,
+      const DeviceAddress<Eigen::half>& output_h_data,
+      const dnn::RnnStateTensorDescriptor& output_c_desc,
+      const DeviceAddress<Eigen::half>& output_c_data,
+      const DeviceAddress<Eigen::half>& output_backprop_data,
+      const DeviceAddress<Eigen::half>& output_h_backprop_data,
+      const DeviceAddress<Eigen::half>& output_c_backprop_data,
+      DeviceAddress<Eigen::half>* input_backprop_data,
+      DeviceAddress<Eigen::half>* input_h_backprop_data,
+      DeviceAddress<Eigen::half>* input_c_backprop_data,
+      DeviceAddress<Eigen::half>* params_backprop_data,
+      DeviceAddress<uint8_t>* reserve_space_data,
+      ScratchAllocator* workspace_allocator,
+      dnn::ProfileResult* output_profile_result) override;
+
+  bool DoRnnBackward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
+                     const dnn::RnnSequenceTensorDescriptor& input_desc,
+                     const DeviceAddress<float>& input_data,
+                     const DeviceAddress<int>& seq_lengths_data,
+                     const dnn::RnnStateTensorDescriptor& input_h_desc,
+                     const DeviceAddress<float>& input_h_data,
+                     const dnn::RnnStateTensorDescriptor& input_c_desc,
+                     const DeviceAddress<float>& input_c_data,
+                     const DeviceAddress<float>& params,
+                     const dnn::RnnSequenceTensorDescriptor& output_desc,
+                     const DeviceAddress<float>& output_data,
+                     const dnn::RnnStateTensorDescriptor& output_h_desc,
+                     const DeviceAddress<float>& output_h_data,
+                     const dnn::RnnStateTensorDescriptor& output_c_desc,
+                     const DeviceAddress<float>& output_c_data,
+                     const DeviceAddress<float>& output_backprop_data,
+                     const DeviceAddress<float>& output_h_backprop_data,
+                     const DeviceAddress<float>& output_c_backprop_data,
+                     DeviceAddress<float>* input_backprop_data,
+                     DeviceAddress<float>* input_h_backprop_data,
+                     DeviceAddress<float>* input_c_backprop_data,
+                     DeviceAddress<float>* params_backprop_data,
+                     DeviceAddress<uint8_t>* reserve_space_data,
+                     ScratchAllocator* workspace_allocator,
+                     dnn::ProfileResult* output_profile_result) override;
+
+  bool DoRnnBackward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
+                     const dnn::RnnSequenceTensorDescriptor& input_desc,
+                     const DeviceAddress<double>& input_data,
+                     const DeviceAddress<int>& seq_lengths_data,
+                     const dnn::RnnStateTensorDescriptor& input_h_desc,
+                     const DeviceAddress<double>& input_h_data,
+                     const dnn::RnnStateTensorDescriptor& input_c_desc,
+                     const DeviceAddress<double>& input_c_data,
+                     const DeviceAddress<double>& params,
+                     const dnn::RnnSequenceTensorDescriptor& output_desc,
+                     const DeviceAddress<double>& output_data,
+                     const dnn::RnnStateTensorDescriptor& output_h_desc,
+                     const DeviceAddress<double>& output_h_data,
+                     const dnn::RnnStateTensorDescriptor& output_c_desc,
+                     const DeviceAddress<double>& output_c_data,
+                     const DeviceAddress<double>& output_backprop_data,
+                     const DeviceAddress<double>& output_h_backprop_data,
+                     const DeviceAddress<double>& output_c_backprop_data,
+                     DeviceAddress<double>* input_backprop_data,
+                     DeviceAddress<double>* input_h_backprop_data,
+                     DeviceAddress<double>* input_c_backprop_data,
+                     DeviceAddress<double>* params_backprop_data,
+                     DeviceAddress<uint8_t>* reserve_space_data,
+                     ScratchAllocator* workspace_allocator,
+                     dnn::ProfileResult* output_profile_result) override;
 
   // Descriptor creation
   absl::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> CreateRnnDescriptor(
@@ -251,97 +293,59 @@ class AscendSupport : public dnn::DnnSupport {
   CreateRnnStateTensorDescriptor(int num_layer, int batch_size, int data_size,
                                 dnn::DataType data_type) override;
 
-  // Algorithm retrieval
+  // Get convolution algorithms
   absl::StatusOr<std::vector<dnn::AlgorithmDesc>> GetConvolveAlgorithms(
-      ConvolutionKind kind,
+      dnn::ConvolutionKind kind,
       const dnn::BatchDescriptor& input_descriptor,
       const dnn::FilterDescriptor& filter_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& output_descriptor) override;
+      const dnn::BatchDescriptor& output_descriptor);
 
-  // Workspace size calculation
+  // Get convolution workspace size
   absl::StatusOr<size_t> GetConvolveWorkspaceSize(
-      ConvolutionKind kind,
+      dnn::ConvolutionKind kind,
       const dnn::BatchDescriptor& input_descriptor,
       const dnn::FilterDescriptor& filter_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
-      const dnn::AlgorithmDesc& algorithm) override;
+      const dnn::AlgorithmDesc& algorithm);
 
+  // Get pooling workspace size
   absl::StatusOr<size_t> GetPoolingWorkspaceSize(
       const dnn::BatchDescriptor& input_descriptor,
       const dnn::PoolingDescriptor& pooling_descriptor,
-      const dnn::BatchDescriptor& output_descriptor) override;
+      const dnn::BatchDescriptor& output_descriptor);
 
-  absl::StatusOr<size_t> GetBatchNormWorkspaceSize(
-      dnn::BatchNormMode mode,
-      const dnn::BatchDescriptor& input_descriptor,
-      const dnn::BatchDescriptor& scale_offset_descriptor,
-      dnn::ActivationMode activation_mode) override;
-
+  // Get LRN workspace size
   absl::StatusOr<size_t> GetLrnWorkspaceSize(
       const dnn::BatchDescriptor& input_descriptor,
-      const dnn::NormalizeDescriptor& normalize_descriptor) override;
+      const dnn::NormalizeDescriptor& normalize_descriptor);
 
+  // Get RNN workspace size
   absl::StatusOr<size_t> GetRnnWorkspaceSize(
       const dnn::RnnDescriptor& rnn_desc,
       const dnn::RnnSequenceTensorDescriptor& input_desc,
-      bool is_training) override;
+      bool is_training);
 
+  // Get RNN reserve space size
   absl::StatusOr<size_t> GetRnnReserveSpaceSize(
       const dnn::RnnDescriptor& rnn_desc,
-      const dnn::RnnSequenceTensorDescriptor& input_desc) override;
+      const dnn::RnnSequenceTensorDescriptor& input_desc);
 
+  // Get CTC loss workspace size
   absl::StatusOr<size_t> GetCtcLossWorkspaceSize(
       const dnn::BatchDescriptor& probs_descriptor,
-      int ctc_loss_algo_id) override;
+      int ctc_loss_algo_id);
 
  private:
   // Internal implementations
-  absl::Status DoConvolveForwardImpl(
-      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-      const DeviceAddressBase& input_data,
-      const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceAddressBase& filter_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceAddressBase* output_data,
-      const dnn::AlgorithmConfig& algorithm_config,
-      ScratchAllocator* workspace_allocator,
-      dnn::ProfileResult* output_profile_result);
-
-  absl::Status DoConvolveBackwardDataImpl(
-      Stream* stream, const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceAddressBase& filter_data,
-      const dnn::BatchDescriptor& output_backprop_descriptor,
-      const DeviceAddressBase& output_backprop_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& input_backprop_descriptor,
-      DeviceAddressBase* input_backprop_data,
-      const dnn::AlgorithmConfig& algorithm_config,
-      ScratchAllocator* workspace_allocator,
-      dnn::ProfileResult* output_profile_result);
-
-  absl::Status DoConvolveBackwardFilterImpl(
-      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-      const DeviceAddressBase& input_data,
-      const dnn::BatchDescriptor& output_backprop_descriptor,
-      const DeviceAddressBase& output_backprop_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::FilterDescriptor& filter_backprop_descriptor,
-      DeviceAddressBase* filter_backprop_data,
-      const dnn::AlgorithmConfig& algorithm_config,
-      ScratchAllocator* workspace_allocator,
-      dnn::ProfileResult* output_profile_result);
-
   absl::Status DoPoolForwardImpl(
       Stream* stream, const dnn::BatchDescriptor& input_descriptor,
       const DeviceAddressBase& input_data,
       const dnn::PoolingDescriptor& pooling_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
       DeviceAddressBase* output_data,
-      ScratchAllocator* workspace_allocator,
-      dnn::ProfileResult* output_profile_result);
+      ScratchAllocator* workspace_allocator);
 
   absl::Status DoPoolBackwardImpl(
       Stream* stream, const dnn::BatchDescriptor& input_descriptor,
@@ -353,129 +357,6 @@ class AscendSupport : public dnn::DnnSupport {
       const dnn::PoolingDescriptor& pooling_descriptor,
       const dnn::BatchDescriptor& input_backprop_descriptor,
       DeviceAddressBase* input_backprop_data,
-      ScratchAllocator* workspace_allocator,
-      dnn::ProfileResult* output_profile_result);
-
-  absl::Status DoBatchNormForwardTrainingImpl(
-      Stream* stream, dnn::BatchNormMode mode,
-      const dnn::BatchDescriptor& input_descriptor,
-      const DeviceAddressBase& input_data,
-      const dnn::BatchDescriptor& scale_offset_descriptor,
-      const DeviceAddressBase& scale_data,
-      const DeviceAddressBase& offset_data,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceAddressBase* output_data,
-      const dnn::BatchDescriptor& mean_descriptor,
-      DeviceAddressBase* mean_data,
-      const dnn::BatchDescriptor& variance_descriptor,
-      DeviceAddressBase* variance_data,
-      double epsilon,
-      dnn::ActivationMode activation_mode,
-      double activation_max_value,
-      ScratchAllocator* workspace_allocator,
-      dnn::ProfileResult* output_profile_result);
-
-  absl::Status DoBatchNormBackwardImpl(
-      Stream* stream, dnn::BatchNormMode mode,
-      const dnn::BatchDescriptor& input_descriptor,
-      const DeviceAddressBase& input_data,
-      const dnn::BatchDescriptor& output_backprop_descriptor,
-      const DeviceAddressBase& output_backprop_data,
-      const dnn::BatchDescriptor& scale_offset_descriptor,
-      const DeviceAddressBase& scale_data,
-      const DeviceAddressBase& mean_data,
-      const DeviceAddressBase& variance_data,
-      double epsilon,
-      dnn::ActivationMode activation_mode,
-      double activation_max_value,
-      const dnn::BatchDescriptor& input_backprop_descriptor,
-      DeviceAddressBase* input_backprop_data,
-      const dnn::BatchDescriptor& scale_offset_backprop_descriptor,
-      DeviceAddressBase* scale_backprop_data,
-      DeviceAddressBase* offset_backprop_data,
-      ScratchAllocator* workspace_allocator,
-      dnn::ProfileResult* output_profile_result);
-
-  absl::Status DoLrnForwardImpl(
-      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-      const DeviceAddressBase& input_data,
-      const dnn::NormalizeDescriptor& normalize_descriptor,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceAddressBase* output_data,
-      ScratchAllocator* workspace_allocator,
-      dnn::ProfileResult* output_profile_result);
-
-  absl::Status DoLrnBackwardImpl(
-      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-      const DeviceAddressBase& input_data,
-      const dnn::BatchDescriptor& output_descriptor,
-      const DeviceAddressBase& output_data,
-      const dnn::BatchDescriptor& output_backprop_descriptor,
-      const DeviceAddressBase& output_backprop_data,
-      const dnn::NormalizeDescriptor& normalize_descriptor,
-      const dnn::BatchDescriptor& input_backprop_descriptor,
-      DeviceAddressBase* input_backprop_data,
-      ScratchAllocator* workspace_allocator,
-      dnn::ProfileResult* output_profile_result);
-
-  absl::Status DoRnnForwardImpl(
-      Stream* stream, const dnn::RnnDescriptor& rnn_desc,
-      const dnn::RnnSequenceTensorDescriptor& input_desc,
-      const DeviceAddressBase& input_data,
-      const DeviceAddress<int>& seq_lengths_data,
-      const dnn::RnnStateTensorDescriptor& input_h_desc,
-      const DeviceAddressBase& input_h_data,
-      const dnn::RnnStateTensorDescriptor& input_c_desc,
-      const DeviceAddressBase& input_c_data,
-      const DeviceAddressBase& params,
-      const dnn::RnnSequenceTensorDescriptor& output_desc,
-      DeviceAddressBase* output_data,
-      const dnn::RnnStateTensorDescriptor& output_h_desc,
-      DeviceAddressBase* output_h_data,
-      const dnn::RnnStateTensorDescriptor& output_c_desc,
-      DeviceAddressBase* output_c_data,
-      bool is_training,
-      ScratchAllocator* reserve_space_allocator,
-      ScratchAllocator* workspace_allocator,
-      dnn::ProfileResult* output_profile_result);
-
-  absl::Status DoRnnBackwardImpl(
-      Stream* stream, const dnn::RnnDescriptor& rnn_desc,
-      const dnn::RnnSequenceTensorDescriptor& input_desc,
-      const DeviceAddressBase& input_data,
-      const DeviceAddress<int>& seq_lengths_data,
-      const dnn::RnnStateTensorDescriptor& input_h_desc,
-      const DeviceAddressBase& input_h_data,
-      const dnn::RnnStateTensorDescriptor& input_c_desc,
-      const DeviceAddressBase& input_c_data,
-      const DeviceAddressBase& params,
-      const dnn::RnnSequenceTensorDescriptor& output_desc,
-      const DeviceAddressBase& output_data,
-      const dnn::RnnStateTensorDescriptor& output_h_desc,
-      const DeviceAddressBase& output_h_data,
-      const dnn::RnnStateTensorDescriptor& output_c_desc,
-      const DeviceAddressBase& output_c_data,
-      const DeviceAddressBase& output_backprop_data,
-      const DeviceAddressBase& output_h_backprop_data,
-      const DeviceAddressBase& output_c_backprop_data,
-      DeviceAddressBase* input_backprop_data,
-      DeviceAddressBase* input_h_backprop_data,
-      DeviceAddressBase* input_c_backprop_data,
-      DeviceAddressBase* params_backprop_data,
-      DeviceAddress<uint8_t>* reserve_space_data,
-      ScratchAllocator* workspace_allocator,
-      dnn::ProfileResult* output_profile_result);
-
-  absl::Status DoCtcLossImpl(
-      Stream* stream, const dnn::BatchDescriptor& probs_descriptor,
-      const DeviceAddressBase& probs_data,
-      absl::Span<const int> labels_data,
-      absl::Span<const int> labels_lengths_data,
-      absl::Span<const int> input_lengths_data,
-      DeviceAddressBase& costs_data,
-      const dnn::BatchDescriptor& grads_descriptor,
-      DeviceAddressBase* grads_data,
-      int ctc_loss_algo_id,
       ScratchAllocator* workspace_allocator);
 
   // StreamExecutor parent
@@ -488,4 +369,4 @@ class AscendSupport : public dnn::DnnSupport {
 }  // namespace ascend
 }  // namespace stream_executor
 
-#endif  // XLA_SERVICE_ASCEND_ASCEND_DNN_H_
+#endif  // XLA_STREAM_EXECUTOR_ASCEND_ASCEND_DNN_H_

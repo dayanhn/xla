@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "xla/stream_executor/ascend/ascend_dnn.h"
+#include "xla/stream_executor/ascend/ascend_platform_id.h"
+#include "xla/stream_executor/platform/default/initialize.h"
 
 #include <algorithm>
 #include <array>
@@ -167,6 +169,8 @@ class AscendAccess {
 
 AscendSupport::AscendSupport(StreamExecutor* parent) : parent_(parent) {}
 
+AscendSupport::~AscendSupport() {}
+
 absl::Status AscendSupport::Init() {
   std::unique_ptr<ActivateContext> context = parent_->Activate();
 
@@ -181,31 +185,9 @@ void AscendSupport::NotifyStreamDestroyed(Stream* stream) /* override */ {
 }
 
 absl::StatusOr<stream_executor::dnn::VersionInfo> AscendSupport::GetVersion() {
-  // Get ACL version
-  const char* version_str = aclGetVersion();
-  if (version_str == nullptr) {
-    return absl::InternalError("Failed to get ACL version");
-  }
-  
-  // Parse version string (format: "x.y.z")
-  std::string version(version_str);
-  std::vector<std::string> parts;
-  size_t pos = 0;
-  while ((pos = version.find('.')) != std::string::npos) {
-    parts.push_back(version.substr(0, pos));
-    version.erase(0, pos + 1);
-  }
-  parts.push_back(version);
-  
-  if (parts.size() != 3) {
-    return absl::InternalError("Invalid ACL version format");
-  }
-  
-  int major = std::stoi(parts[0]);
-  int minor = std::stoi(parts[1]);
-  int patch = std::stoi(parts[2]);
-  
-  return stream_executor::dnn::VersionInfo(major, minor, patch);
+  // Return a placeholder version for now
+  // TODO: Implement proper ACL version retrieval
+  return stream_executor::dnn::VersionInfo(1, 0, 0);
 }
 
 // Tensor descriptor wrapper for Ascend
@@ -386,329 +368,299 @@ class AscendCtcLossDescriptor {
   }
 };
 
-// Implementation of convolution forward
-absl::Status AscendSupport::DoConvolveForwardImpl(
-    Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-    const DeviceAddressBase& input_data, 
-    const dnn::FilterDescriptor& filter_descriptor,
-    const DeviceAddressBase& filter_data, 
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const dnn::BatchDescriptor& output_descriptor,
-    DeviceAddressBase* output_data, 
-    const dnn::AlgorithmConfig& algorithm_config,
-    ScratchAllocator* workspace_allocator,
-    dnn::ProfileResult* output_profile_result) {
-  // Get ACL stream from StreamExecutor stream
-  aclrtStream acl_stream = reinterpret_cast<aclrtStream>(stream->platform_specific_handle().stream);
-  if (acl_stream == nullptr) {
-    return absl::InternalError("Failed to get ACL stream");
-  }
-
-  // Convert descriptors to ACL tensors
-  aclTensor* input_tensor = nullptr;
-  aclTensor* filter_tensor = nullptr;
-  aclTensor* output_tensor = nullptr;
-
-  // TODO: Implement proper conversion from dnn::BatchDescriptor to aclTensor
-  // This is a placeholder implementation
-  aclError status = aclCreateTensor(&input_tensor, input_descriptor.dims().data(), input_descriptor.ndims(), ACL_FLOAT);
-  if (status != ACL_SUCCESS) {
-    return absl::InternalError(absl::StrCat("Failed to create input tensor: ", status));
-  }
-
-  status = aclCreateTensor(&filter_tensor, filter_descriptor.dims().data(), filter_descriptor.ndims(), ACL_FLOAT);
-  if (status != ACL_SUCCESS) {
-    aclDestroyTensor(input_tensor);
-    return absl::InternalError(absl::StrCat("Failed to create filter tensor: ", status));
-  }
-
-  status = aclCreateTensor(&output_tensor, output_descriptor.dims().data(), output_descriptor.ndims(), ACL_FLOAT);
-  if (status != ACL_SUCCESS) {
-    aclDestroyTensor(input_tensor);
-    aclDestroyTensor(filter_tensor);
-    return absl::InternalError(absl::StrCat("Failed to create output tensor: ", status));
-  }
-
-  // Set tensor data
-  status = aclSetTensorAddr(input_tensor, const_cast<void*>(input_data.opaque()));
-  if (status != ACL_SUCCESS) {
-    aclDestroyTensor(input_tensor);
-    aclDestroyTensor(filter_tensor);
-    aclDestroyTensor(output_tensor);
-    return absl::InternalError(absl::StrCat("Failed to set input tensor address: ", status));
-  }
-
-  status = aclSetTensorAddr(filter_tensor, const_cast<void*>(filter_data.opaque()));
-  if (status != ACL_SUCCESS) {
-    aclDestroyTensor(input_tensor);
-    aclDestroyTensor(filter_tensor);
-    aclDestroyTensor(output_tensor);
-    return absl::InternalError(absl::StrCat("Failed to set filter tensor address: ", status));
-  }
-
-  status = aclSetTensorAddr(output_tensor, output_data->opaque());
-  if (status != ACL_SUCCESS) {
-    aclDestroyTensor(input_tensor);
-    aclDestroyTensor(filter_tensor);
-    aclDestroyTensor(output_tensor);
-    return absl::InternalError(absl::StrCat("Failed to set output tensor address: ", status));
-  }
-
-  // Call first stage interface to get workspace size and executor
-  uint64_t workspace_size = 0;
-  aclOpExecutor* executor = nullptr;
-  status = aclnnConvolutionGetWorkspaceSize(
-      input_tensor, filter_tensor, output_tensor,
-      convolution_descriptor.strides().data(),
-      convolution_descriptor.padding().data(),
-      convolution_descriptor.dilations().data(),
-      convolution_descriptor.group_count(),
-      &workspace_size, &executor);
-  if (status != ACL_SUCCESS) {
-    aclDestroyTensor(input_tensor);
-    aclDestroyTensor(filter_tensor);
-    aclDestroyTensor(output_tensor);
-    return absl::InternalError(absl::StrCat("aclnnConvolutionGetWorkspaceSize failed: ", status));
-  }
-
-  // Allocate workspace if needed
-  void* workspace = nullptr;
-  if (workspace_size > 0 && workspace_allocator) {
-    TF_ASSIGN_OR_RETURN(auto workspace_addr, workspace_allocator->AllocateBytes(workspace_size));
-    workspace = workspace_addr.opaque();
-  }
-
-  // Call second stage interface to execute computation
-  status = aclnnConvolution(
-      workspace,
-      workspace_size,
-      executor,
-      acl_stream);
-  if (status != ACL_SUCCESS) {
-    aclDestroyTensor(input_tensor);
-    aclDestroyTensor(filter_tensor);
-    aclDestroyTensor(output_tensor);
-    return absl::InternalError(absl::StrCat("aclnnConvolution failed: ", status));
-  }
-
-  // Release resources
-  aclDestroyTensor(input_tensor);
-  aclDestroyTensor(filter_tensor);
-  aclDestroyTensor(output_tensor);
-
-  return absl::OkStatus();
-}
-
-// Implementation of convolution backward data
-absl::Status AscendSupport::DoConvolveBackwardDataImpl(
-    Stream* stream, const dnn::FilterDescriptor& filter_descriptor,
-    const DeviceAddressBase& filter_data, 
-    const dnn::BatchDescriptor& output_backprop_descriptor,
-    const DeviceAddressBase& output_backprop_data, 
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const dnn::BatchDescriptor& input_backprop_descriptor,
-    DeviceAddressBase* input_backprop_data, 
-    const dnn::AlgorithmConfig& algorithm_config,
-    ScratchAllocator* workspace_allocator,
-    dnn::ProfileResult* output_profile_result) {
-  // TODO: Implement convolution backward data using Ascend APIs
-  return absl::OkStatus();
-}
-
-// Implementation of convolution backward filter
-absl::Status AscendSupport::DoConvolveBackwardFilterImpl(
-    Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-    const DeviceAddressBase& input_data, 
-    const dnn::BatchDescriptor& output_backprop_descriptor,
-    const DeviceAddressBase& output_backprop_data, 
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const dnn::FilterDescriptor& filter_backprop_descriptor,
-    DeviceAddressBase* filter_backprop_data, 
-    const dnn::AlgorithmConfig& algorithm_config,
-    ScratchAllocator* workspace_allocator,
-    dnn::ProfileResult* output_profile_result) {
-  // TODO: Implement convolution backward filter using Ascend APIs
-  return absl::OkStatus();
-}
-
 // Implementation of pooling forward
-absl::Status AscendSupport::DoPoolForwardImpl(
-    Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-    const DeviceAddressBase& input_data, 
-    const dnn::PoolingDescriptor& pooling_descriptor,
-    const dnn::BatchDescriptor& output_descriptor,
-    DeviceAddressBase* output_data, 
-    ScratchAllocator* workspace_allocator,
-    dnn::ProfileResult* output_profile_result) {
+absl::Status AscendSupport::DoPoolForward(
+    dnn::DataType element_type, Stream* stream,
+    const dnn::PoolingDescriptor& pooling_dimensions,
+    const dnn::BatchDescriptor& input_dimensions, DeviceAddressBase input_data,
+    const dnn::BatchDescriptor& output_dimensions, DeviceAddressBase output_data,
+    ScratchAllocator* workspace_allocator) {
   // TODO: Implement pooling forward using Ascend APIs
+  LOG(INFO) << "DoPoolForward called with element_type: " << element_type;
+  return absl::OkStatus();
+}
+
+// Implementation of pooling forward with engine options
+absl::Status AscendSupport::DoPoolForward(
+    dnn::DataType element_type, Stream* stream,
+    const dnn::PoolingDescriptor& pooling_dimensions,
+    const EngineOptions& engine_options,
+    const dnn::BatchDescriptor& input_dimensions, DeviceAddressBase input_data,
+    const dnn::BatchDescriptor& output_dimensions, DeviceAddressBase output_data,
+    ScratchAllocator* workspace_allocator) {
+  // TODO: Implement pooling forward with engine options using Ascend APIs
+  LOG(INFO) << "DoPoolForward called with element_type: " << element_type << " and engine options";
   return absl::OkStatus();
 }
 
 // Implementation of pooling backward
-absl::Status AscendSupport::DoPoolBackwardImpl(
-    Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-    const DeviceAddressBase& input_data, 
-    const dnn::BatchDescriptor& output_descriptor,
-    const DeviceAddressBase& output_data, 
-    const dnn::BatchDescriptor& output_backprop_descriptor,
-    const DeviceAddressBase& output_backprop_data, 
-    const dnn::PoolingDescriptor& pooling_descriptor,
-    const dnn::BatchDescriptor& input_backprop_descriptor,
-    DeviceAddressBase* input_backprop_data, 
-    ScratchAllocator* workspace_allocator,
-    dnn::ProfileResult* output_profile_result) {
+absl::Status AscendSupport::DoPoolBackward(
+    dnn::DataType element_type, Stream* stream,
+    const dnn::PoolingDescriptor& pooling_dimensions,
+    const dnn::BatchDescriptor& input_dimensions, DeviceAddressBase input_data,
+    const dnn::BatchDescriptor& output_dimensions, DeviceAddressBase output_data,
+    DeviceAddressBase input_diff_data, DeviceAddressBase output_diff_data,
+    ScratchAllocator* workspace_allocator) {
   // TODO: Implement pooling backward using Ascend APIs
+  LOG(INFO) << "DoPoolBackward called with element_type: " << element_type;
   return absl::OkStatus();
 }
 
-// Implementation of batch normalization forward
-absl::Status AscendSupport::DoBatchNormForwardTrainingImpl(
-    Stream* stream, dnn::BatchNormMode mode,
-    const dnn::BatchDescriptor& input_descriptor,
-    const DeviceAddressBase& input_data, 
-    const dnn::BatchDescriptor& scale_offset_descriptor,
-    const DeviceAddressBase& scale_data, 
-    const DeviceAddressBase& offset_data, 
-    const dnn::BatchDescriptor& output_descriptor,
-    DeviceAddressBase* output_data, 
-    const dnn::BatchDescriptor& mean_descriptor,
-    DeviceAddressBase* mean_data, 
-    const dnn::BatchDescriptor& variance_descriptor,
-    DeviceAddressBase* variance_data, 
-    double epsilon, 
-    dnn::ActivationMode activation_mode,
-    double activation_max_value, 
-    ScratchAllocator* workspace_allocator,
-    dnn::ProfileResult* output_profile_result) {
-  // TODO: Implement batch normalization forward using Ascend APIs
+// Implementation of pooling backward with engine options
+absl::Status AscendSupport::DoPoolBackward(
+    dnn::DataType element_type, Stream* stream,
+    const dnn::PoolingDescriptor& pooling_dimensions,
+    const EngineOptions& engine_options,
+    const dnn::BatchDescriptor& input_dimensions, DeviceAddressBase input_data,
+    const dnn::BatchDescriptor& output_dimensions, DeviceAddressBase output_data,
+    DeviceAddressBase input_diff_data, DeviceAddressBase output_diff_data,
+    ScratchAllocator* workspace_allocator) {
+  // TODO: Implement pooling backward with engine options using Ascend APIs
+  LOG(INFO) << "DoPoolBackward called with element_type: " << element_type << " and engine options";
   return absl::OkStatus();
 }
 
-// Implementation of batch normalization backward
-absl::Status AscendSupport::DoBatchNormBackwardImpl(
-    Stream* stream, dnn::BatchNormMode mode,
-    const dnn::BatchDescriptor& input_descriptor,
-    const DeviceAddressBase& input_data, 
-    const dnn::BatchDescriptor& output_backprop_descriptor,
-    const DeviceAddressBase& output_backprop_data, 
-    const dnn::BatchDescriptor& scale_offset_descriptor,
-    const DeviceAddressBase& scale_data, 
-    const DeviceAddressBase& mean_data, 
-    const DeviceAddressBase& variance_data, 
-    double epsilon, 
-    dnn::ActivationMode activation_mode,
-    double activation_max_value, 
-    const dnn::BatchDescriptor& input_backprop_descriptor,
-    DeviceAddressBase* input_backprop_data, 
-    const dnn::BatchDescriptor& scale_offset_backprop_descriptor,
-    DeviceAddressBase* scale_backprop_data, 
-    DeviceAddressBase* offset_backprop_data, 
-    ScratchAllocator* workspace_allocator,
-    dnn::ProfileResult* output_profile_result) {
-  // TODO: Implement batch normalization backward using Ascend APIs
-  return absl::OkStatus();
-}
-
-// Implementation of LRN forward
-absl::Status AscendSupport::DoLrnForwardImpl(
-    Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-    const DeviceAddressBase& input_data, 
-    const dnn::NormalizeDescriptor& normalize_descriptor,
-    const dnn::BatchDescriptor& output_descriptor,
-    DeviceAddressBase* output_data, 
-    ScratchAllocator* workspace_allocator,
-    dnn::ProfileResult* output_profile_result) {
-  // TODO: Implement LRN forward using Ascend APIs
-  return absl::OkStatus();
-}
-
-// Implementation of LRN backward
-absl::Status AscendSupport::DoLrnBackwardImpl(
-    Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-    const DeviceAddressBase& input_data, 
-    const dnn::BatchDescriptor& output_descriptor,
-    const DeviceAddressBase& output_data, 
-    const dnn::BatchDescriptor& output_backprop_descriptor,
-    const DeviceAddressBase& output_backprop_data, 
-    const dnn::NormalizeDescriptor& normalize_descriptor,
-    const dnn::BatchDescriptor& input_backprop_descriptor,
-    DeviceAddressBase* input_backprop_data, 
-    ScratchAllocator* workspace_allocator,
-    dnn::ProfileResult* output_profile_result) {
-  // TODO: Implement LRN backward using Ascend APIs
-  return absl::OkStatus();
-}
-
-// Implementation of RNN forward
-absl::Status AscendSupport::DoRnnForwardImpl(
-    Stream* stream, const dnn::RnnDescriptor& rnn_desc,
-    const dnn::RnnSequenceTensorDescriptor& input_desc,
-    const DeviceAddressBase& input_data, 
-    const DeviceAddress<int>& seq_lengths_data, 
-    const dnn::RnnStateTensorDescriptor& input_h_desc,
-    const DeviceAddressBase& input_h_data, 
-    const dnn::RnnStateTensorDescriptor& input_c_desc,
-    const DeviceAddressBase& input_c_data, 
-    const DeviceAddressBase& params, 
-    const dnn::RnnSequenceTensorDescriptor& output_desc,
-    DeviceAddressBase* output_data, 
-    const dnn::RnnStateTensorDescriptor& output_h_desc,
-    DeviceAddressBase* output_h_data, 
-    const dnn::RnnStateTensorDescriptor& output_c_desc,
-    DeviceAddressBase* output_c_data, 
-    bool is_training, 
+// Batch normalization forward implementation (float)
+bool AscendSupport::DoBatchNormalizationForward(
+    Stream* stream, const DeviceAddress<float>& x,
+    const DeviceAddress<float>& scale, const DeviceAddress<float>& offset,
+    const DeviceAddress<float>& estimated_mean,
+    const DeviceAddress<float>& estimated_variance,
+    const DeviceAddress<float>& side_input, const dnn::BatchDescriptor& x_desc,
+    const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+    const double exponential_average_factor, dnn::ActivationMode activation_mode,
+    DeviceAddress<float>* y, DeviceAddress<float>* batch_mean,
+    DeviceAddress<float>* batch_var, DeviceAddress<float>* reserve_space_1,
+    DeviceAddress<float>* reserve_space_2, bool is_training,
     ScratchAllocator* reserve_space_allocator,
-    ScratchAllocator* workspace_allocator,
-    dnn::ProfileResult* output_profile_result) {
-  // TODO: Implement RNN forward using Ascend APIs
-  return absl::OkStatus();
+    ScratchAllocator* workspace_allocator) {
+  // TODO: Implement batch normalization forward using Ascend APIs
+  LOG(INFO) << "DoBatchNormalizationForward called (float)";
+  return false;
 }
 
-// Implementation of RNN backward
-absl::Status AscendSupport::DoRnnBackwardImpl(
+// Batch normalization forward implementation (half)
+bool AscendSupport::DoBatchNormalizationForward(
+    Stream* stream, const DeviceAddress<Eigen::half>& x,
+    const DeviceAddress<float>& scale, const DeviceAddress<float>& offset,
+    const DeviceAddress<float>& estimated_mean,
+    const DeviceAddress<float>& estimated_variance,
+    const DeviceAddress<Eigen::half>& side_input,
+    const dnn::BatchDescriptor& x_desc, const dnn::BatchDescriptor& scale_offset_desc,
+    const double epsilon, const double exponential_average_factor,
+    dnn::ActivationMode activation_mode, DeviceAddress<Eigen::half>* y,
+    DeviceAddress<float>* batch_mean, DeviceAddress<float>* batch_var,
+    DeviceAddress<float>* reserve_space_1, DeviceAddress<float>* reserve_space_2,
+    bool is_training, ScratchAllocator* reserve_space_allocator,
+    ScratchAllocator* workspace_allocator) {
+  // TODO: Implement batch normalization forward using Ascend APIs
+  LOG(INFO) << "DoBatchNormalizationForward called (half)";
+  return false;
+}
+
+// Batch normalization backward implementation (float)
+bool AscendSupport::DoBatchNormalizationBackward(
+    Stream* stream, const DeviceAddress<float>& y_backprop,
+    const DeviceAddress<float>& x, const DeviceAddress<float>& scale,
+    const DeviceAddress<float>& offset, const DeviceAddress<float>& mean,
+    const DeviceAddress<float>& inv_var, const DeviceAddress<float>& y,
+    const dnn::BatchDescriptor& x_desc, const dnn::BatchDescriptor& scale_offset_desc,
+    const double epsilon, dnn::ActivationMode activation_mode,
+    DeviceAddress<float>* x_backprop, DeviceAddress<float>* scale_backprop,
+    DeviceAddress<float>* offset_backprop,
+    DeviceAddress<float>* side_input_backprop,
+    DeviceAddress<uint8_t>* reserve_space_data,
+    ScratchAllocator* workspace_allocator) {
+  // TODO: Implement batch normalization backward using Ascend APIs
+  LOG(INFO) << "DoBatchNormalizationBackward called (float)";
+  return false;
+}
+
+// Batch normalization backward implementation (half)
+bool AscendSupport::DoBatchNormalizationBackward(
+    Stream* stream, const DeviceAddress<Eigen::half>& y_backprop,
+    const DeviceAddress<Eigen::half>& x, const DeviceAddress<float>& scale,
+    const DeviceAddress<float>& offset, const DeviceAddress<float>& mean,
+    const DeviceAddress<float>& inv_var, const DeviceAddress<Eigen::half>& y,
+    const dnn::BatchDescriptor& x_desc, const dnn::BatchDescriptor& scale_offset_desc,
+    const double epsilon, dnn::ActivationMode activation_mode,
+    DeviceAddress<Eigen::half>* x_backprop,
+    DeviceAddress<float>* scale_backprop, DeviceAddress<float>* offset_backprop,
+    DeviceAddress<Eigen::half>* side_input_backprop,
+    DeviceAddress<uint8_t>* reserve_space_data,
+    ScratchAllocator* workspace_allocator) {
+  // TODO: Implement batch normalization backward using Ascend APIs
+  LOG(INFO) << "DoBatchNormalizationBackward called (half)";
+  return false;
+}
+
+// RNN forward implementation (half)
+bool AscendSupport::DoRnnForward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
+                                const dnn::RnnSequenceTensorDescriptor& input_desc,
+                                const DeviceAddress<Eigen::half>& input_data,
+                                const DeviceAddress<int>& seq_lengths_data,
+                                const dnn::RnnStateTensorDescriptor& input_h_desc,
+                                const DeviceAddress<Eigen::half>& input_h_data,
+                                const dnn::RnnStateTensorDescriptor& input_c_desc,
+                                const DeviceAddress<Eigen::half>& input_c_data,
+                                const DeviceAddress<Eigen::half>& params,
+                                const dnn::RnnSequenceTensorDescriptor& output_desc,
+                                DeviceAddress<Eigen::half>* output_data,
+                                const dnn::RnnStateTensorDescriptor& output_h_desc,
+                                DeviceAddress<Eigen::half>* output_h_data,
+                                const dnn::RnnStateTensorDescriptor& output_c_desc,
+                                DeviceAddress<Eigen::half>* output_c_data,
+                                bool is_training,
+                                ScratchAllocator* reserve_space_allocator,
+                                ScratchAllocator* workspace_allocator,
+                                dnn::ProfileResult* output_profile_result) {
+  // TODO: Implement RNN forward using Ascend APIs
+  LOG(INFO) << "DoRnnForward called (half)";
+  return false;
+}
+
+// RNN forward implementation (float)
+bool AscendSupport::DoRnnForward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
+                                const dnn::RnnSequenceTensorDescriptor& input_desc,
+                                const DeviceAddress<float>& input_data,
+                                const DeviceAddress<int>& seq_lengths_data,
+                                const dnn::RnnStateTensorDescriptor& input_h_desc,
+                                const DeviceAddress<float>& input_h_data,
+                                const dnn::RnnStateTensorDescriptor& input_c_desc,
+                                const DeviceAddress<float>& input_c_data,
+                                const DeviceAddress<float>& params,
+                                const dnn::RnnSequenceTensorDescriptor& output_desc,
+                                DeviceAddress<float>* output_data,
+                                const dnn::RnnStateTensorDescriptor& output_h_desc,
+                                DeviceAddress<float>* output_h_data,
+                                const dnn::RnnStateTensorDescriptor& output_c_desc,
+                                DeviceAddress<float>* output_c_data,
+                                bool is_training,
+                                ScratchAllocator* reserve_space_allocator,
+                                ScratchAllocator* workspace_allocator,
+                                dnn::ProfileResult* output_profile_result) {
+  // TODO: Implement RNN forward using Ascend APIs
+  LOG(INFO) << "DoRnnForward called (float)";
+  return false;
+}
+
+// RNN forward implementation (double)
+bool AscendSupport::DoRnnForward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
+                                const dnn::RnnSequenceTensorDescriptor& input_desc,
+                                const DeviceAddress<double>& input_data,
+                                const DeviceAddress<int>& seq_lengths_data,
+                                const dnn::RnnStateTensorDescriptor& input_h_desc,
+                                const DeviceAddress<double>& input_h_data,
+                                const dnn::RnnStateTensorDescriptor& input_c_desc,
+                                const DeviceAddress<double>& input_c_data,
+                                const DeviceAddress<double>& params,
+                                const dnn::RnnSequenceTensorDescriptor& output_desc,
+                                DeviceAddress<double>* output_data,
+                                const dnn::RnnStateTensorDescriptor& output_h_desc,
+                                DeviceAddress<double>* output_h_data,
+                                const dnn::RnnStateTensorDescriptor& output_c_desc,
+                                DeviceAddress<double>* output_c_data,
+                                bool is_training,
+                                ScratchAllocator* reserve_space_allocator,
+                                ScratchAllocator* workspace_allocator,
+                                dnn::ProfileResult* output_profile_result) {
+  // TODO: Implement RNN forward using Ascend APIs
+  LOG(INFO) << "DoRnnForward called (double)";
+  return false;
+}
+
+// RNN backward implementation (half)
+bool AscendSupport::DoRnnBackward(
     Stream* stream, const dnn::RnnDescriptor& rnn_desc,
     const dnn::RnnSequenceTensorDescriptor& input_desc,
-    const DeviceAddressBase& input_data, 
-    const DeviceAddress<int>& seq_lengths_data, 
+    const DeviceAddress<Eigen::half>& input_data,
+    const DeviceAddress<int>& seq_lengths_data,
     const dnn::RnnStateTensorDescriptor& input_h_desc,
-    const DeviceAddressBase& input_h_data, 
+    const DeviceAddress<Eigen::half>& input_h_data,
     const dnn::RnnStateTensorDescriptor& input_c_desc,
-    const DeviceAddressBase& input_c_data, 
-    const DeviceAddressBase& params, 
+    const DeviceAddress<Eigen::half>& input_c_data,
+    const DeviceAddress<Eigen::half>& params,
     const dnn::RnnSequenceTensorDescriptor& output_desc,
-    const DeviceAddressBase& output_data, 
+    const DeviceAddress<Eigen::half>& output_data,
     const dnn::RnnStateTensorDescriptor& output_h_desc,
-    const DeviceAddressBase& output_h_data, 
+    const DeviceAddress<Eigen::half>& output_h_data,
     const dnn::RnnStateTensorDescriptor& output_c_desc,
-    const DeviceAddressBase& output_c_data, 
-    const DeviceAddressBase& output_backprop_data, 
-    const DeviceAddressBase& output_h_backprop_data, 
-    const DeviceAddressBase& output_c_backprop_data, 
-    DeviceAddressBase* input_backprop_data, 
-    DeviceAddressBase* input_h_backprop_data, 
-    DeviceAddressBase* input_c_backprop_data, 
-    DeviceAddressBase* params_backprop_data, 
-    DeviceAddress<uint8_t>* reserve_space_data, 
+    const DeviceAddress<Eigen::half>& output_c_data,
+    const DeviceAddress<Eigen::half>& output_backprop_data,
+    const DeviceAddress<Eigen::half>& output_h_backprop_data,
+    const DeviceAddress<Eigen::half>& output_c_backprop_data,
+    DeviceAddress<Eigen::half>* input_backprop_data,
+    DeviceAddress<Eigen::half>* input_h_backprop_data,
+    DeviceAddress<Eigen::half>* input_c_backprop_data,
+    DeviceAddress<Eigen::half>* params_backprop_data,
+    DeviceAddress<uint8_t>* reserve_space_data,
     ScratchAllocator* workspace_allocator,
     dnn::ProfileResult* output_profile_result) {
   // TODO: Implement RNN backward using Ascend APIs
-  return absl::OkStatus();
+  LOG(INFO) << "DoRnnBackward called (half)";
+  return false;
 }
 
-// Implementation of CTC loss
-absl::Status AscendSupport::DoCtcLossImpl(
-    Stream* stream, const dnn::BatchDescriptor& probs_descriptor,
-    const DeviceAddressBase& probs_data, 
-    absl::Span<const int> labels_data, 
-    absl::Span<const int> labels_lengths_data, 
-    absl::Span<const int> input_lengths_data, 
-    DeviceAddressBase& costs_data, 
-    const dnn::BatchDescriptor& grads_descriptor,
-    DeviceAddressBase* grads_data, 
-    int ctc_loss_algo_id, 
-    ScratchAllocator* workspace_allocator) {
-  // TODO: Implement CTC loss using Ascend APIs
-  return absl::OkStatus();
+// RNN backward implementation (float)
+bool AscendSupport::DoRnnBackward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
+                                 const dnn::RnnSequenceTensorDescriptor& input_desc,
+                                 const DeviceAddress<float>& input_data,
+                                 const DeviceAddress<int>& seq_lengths_data,
+                                 const dnn::RnnStateTensorDescriptor& input_h_desc,
+                                 const DeviceAddress<float>& input_h_data,
+                                 const dnn::RnnStateTensorDescriptor& input_c_desc,
+                                 const DeviceAddress<float>& input_c_data,
+                                 const DeviceAddress<float>& params,
+                                 const dnn::RnnSequenceTensorDescriptor& output_desc,
+                                 const DeviceAddress<float>& output_data,
+                                 const dnn::RnnStateTensorDescriptor& output_h_desc,
+                                 const DeviceAddress<float>& output_h_data,
+                                 const dnn::RnnStateTensorDescriptor& output_c_desc,
+                                 const DeviceAddress<float>& output_c_data,
+                                 const DeviceAddress<float>& output_backprop_data,
+                                 const DeviceAddress<float>& output_h_backprop_data,
+                                 const DeviceAddress<float>& output_c_backprop_data,
+                                 DeviceAddress<float>* input_backprop_data,
+                                 DeviceAddress<float>* input_h_backprop_data,
+                                 DeviceAddress<float>* input_c_backprop_data,
+                                 DeviceAddress<float>* params_backprop_data,
+                                 DeviceAddress<uint8_t>* reserve_space_data,
+                                 ScratchAllocator* workspace_allocator,
+                                 dnn::ProfileResult* output_profile_result) {
+  // TODO: Implement RNN backward using Ascend APIs
+  LOG(INFO) << "DoRnnBackward called (float)";
+  return false;
+}
+
+// RNN backward implementation (double)
+bool AscendSupport::DoRnnBackward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
+                                 const dnn::RnnSequenceTensorDescriptor& input_desc,
+                                 const DeviceAddress<double>& input_data,
+                                 const DeviceAddress<int>& seq_lengths_data,
+                                 const dnn::RnnStateTensorDescriptor& input_h_desc,
+                                 const DeviceAddress<double>& input_h_data,
+                                 const dnn::RnnStateTensorDescriptor& input_c_desc,
+                                 const DeviceAddress<double>& input_c_data,
+                                 const DeviceAddress<double>& params,
+                                 const dnn::RnnSequenceTensorDescriptor& output_desc,
+                                 const DeviceAddress<double>& output_data,
+                                 const dnn::RnnStateTensorDescriptor& output_h_desc,
+                                 const DeviceAddress<double>& output_h_data,
+                                 const dnn::RnnStateTensorDescriptor& output_c_desc,
+                                 const DeviceAddress<double>& output_c_data,
+                                 const DeviceAddress<double>& output_backprop_data,
+                                 const DeviceAddress<double>& output_h_backprop_data,
+                                 const DeviceAddress<double>& output_c_backprop_data,
+                                 DeviceAddress<double>* input_backprop_data,
+                                 DeviceAddress<double>* input_h_backprop_data,
+                                 DeviceAddress<double>* input_c_backprop_data,
+                                 DeviceAddress<double>* params_backprop_data,
+                                 DeviceAddress<uint8_t>* reserve_space_data,
+                                 ScratchAllocator* workspace_allocator,
+                                 dnn::ProfileResult* output_profile_result) {
+  // TODO: Implement RNN backward using Ascend APIs
+  LOG(INFO) << "DoRnnBackward called (double)";
+  return false;
 }
 
 // Create RNN descriptor
@@ -760,7 +712,7 @@ AscendSupport::CreateRnnStateTensorDescriptor(int num_layer, int batch_size,
 
 // Get convolution algorithms
 absl::StatusOr<std::vector<dnn::AlgorithmDesc>>
-AscendSupport::GetConvolveAlgorithms(ConvolutionKind kind,
+AscendSupport::GetConvolveAlgorithms(dnn::ConvolutionKind kind,
                                     const dnn::BatchDescriptor& input_descriptor,
                                     const dnn::FilterDescriptor& filter_descriptor,
                                     const dnn::ConvolutionDescriptor& convolution_descriptor,
@@ -771,7 +723,7 @@ AscendSupport::GetConvolveAlgorithms(ConvolutionKind kind,
 
 // Get convolution workspace size
 absl::StatusOr<size_t>
-AscendSupport::GetConvolveWorkspaceSize(ConvolutionKind kind,
+AscendSupport::GetConvolveWorkspaceSize(dnn::ConvolutionKind kind,
                                       const dnn::BatchDescriptor& input_descriptor,
                                       const dnn::FilterDescriptor& filter_descriptor,
                                       const dnn::ConvolutionDescriptor& convolution_descriptor,
@@ -791,16 +743,7 @@ AscendSupport::GetPoolingWorkspaceSize(
   return 0;
 }
 
-// Get batch normalization workspace size
-absl::StatusOr<size_t>
-AscendSupport::GetBatchNormWorkspaceSize(
-    dnn::BatchNormMode mode,
-    const dnn::BatchDescriptor& input_descriptor,
-    const dnn::BatchDescriptor& scale_offset_descriptor,
-    dnn::ActivationMode activation_mode) {
-  // TODO: Implement workspace size calculation
-  return 0;
-}
+
 
 // Get LRN workspace size
 absl::StatusOr<size_t>
@@ -840,14 +783,30 @@ AscendSupport::GetCtcLossWorkspaceSize(
 }
 
 }  // namespace ascend
+
+void initialize_ascend_dnn() {
+  absl::Status status = 
+      stream_executor::PluginRegistry::Instance()->RegisterFactory<stream_executor::PluginRegistry::DnnFactory>(
+          stream_executor::ascend::kAscendPlatformId, "AscendDNN",
+          [](stream_executor::StreamExecutor* parent) -> stream_executor::dnn::DnnSupport* {
+            stream_executor::ascend::AscendSupport* dnn = new stream_executor::ascend::AscendSupport(parent);
+            if (!dnn->Init().ok()) {
+              // Note: Init() will log a more specific error.
+              delete dnn;
+              return nullptr;
+            }
+            return dnn;
+          });
+
+  if (!status.ok()) {
+    LOG(INFO) << "Unable to register Ascend DNN factory: " << status.message();
+  }
+}
+
 }  // namespace stream_executor
 
-// Register Ascend DNN support
-REGISTER_MODULE_INITIALIZER(ascend_dnn, {
-  stream_executor::PluginRegistry::RegisterFactory<
-      stream_executor::dnn::DnnSupportFactory>(
-      stream_executor::ascend::kAscendPlatformId,
-      [](stream_executor::StreamExecutor* executor) {
-        return std::make_unique<stream_executor::ascend::AscendSupport>(executor);
-      });
+
+
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(register_ascend_dnn, {
+  stream_executor::initialize_ascend_dnn();
 });

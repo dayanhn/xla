@@ -35,6 +35,8 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/stream_executor/generic_memory_allocation.h"
 #include "xla/stream_executor/generic_memory_allocator.h"
+#include "xla/stream_executor/plugin_registry.h"
+#include "xla/stream_executor/ascend/ascend_platform_id.h"
 
 namespace stream_executor::ascend {
 
@@ -386,8 +388,24 @@ fft::FftSupport* AscendExecutor::AsFft() {
 }
 
 dnn::DnnSupport* AscendExecutor::AsDnn() {
-  // TODO: Implement DNN support
-  return nullptr;
+  absl::MutexLock lock(&mu_);
+  if (dnn_ != nullptr) {
+    return dnn_.get();
+  }
+  PluginRegistry* registry = PluginRegistry::Instance();
+  absl::StatusOr<PluginRegistry::DnnFactory> status =
+      registry->GetFactory<PluginRegistry::DnnFactory>(ascend::kAscendPlatformId);
+  if (!status.ok()) {
+    LOG(ERROR) << "Unable to retrieve DNN factory: "
+               << status.status().message();
+    return nullptr;
+  }
+
+  auto dnn = status.value()(this);
+
+  dnn_.reset(dnn);
+
+  return dnn_.get();
 }
 
 absl::StatusOr<std::unique_ptr<Event>> AscendExecutor::CreateEvent() {

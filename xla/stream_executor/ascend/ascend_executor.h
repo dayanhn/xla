@@ -125,6 +125,12 @@ class AscendExecutor : public StreamExecutorCommon {
   
   // Cache of peer access capabilities between this device and others.
   absl::flat_hash_map<int, bool> peer_access_cache_;
+  
+  // DNN support for this executor.
+  std::unique_ptr<dnn::DnnSupport> dnn_;
+  
+  // Mutex to protect access to dnn_.
+  absl::Mutex mu_;
 };
 
 }  // namespace stream_executor::ascend
