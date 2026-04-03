@@ -74,6 +74,7 @@ absl::Status HcclStatusToAbslStatus(HcclResult result, const std::string& messag
   }
   
   const char* error_str = HcclGetErrorString(result);
+  std::cerr << "HCCL error: " << error_str << ": " << message << "\n";
   return absl::InternalError(
       absl::StrCat(message, ": HCCL error: ", 
                    error_str ? error_str : "unknown error"));

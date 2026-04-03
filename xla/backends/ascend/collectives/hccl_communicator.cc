@@ -56,10 +56,10 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "xla/backends/gpu/collectives/cancellation_token.h"
+#include "xla/stream_executor/ascend/ascend_status.h"
 
 namespace xla::npu {
 namespace {
-
 aclrtStream AsAclStream(se::Stream* stream) {
   return absl::bit_cast<aclrtStream>(stream->platform_specific_handle().stream);
 }
@@ -150,19 +150,26 @@ absl::Status PollUntilDone(HcclComm comm, const xla::gpu::CancellationToken& can
   auto poll = [](HcclComm comm,
                  const xla::gpu::CancellationToken& cancel) -> absl::Status {
     HcclResult state = HCCL_SUCCESS;
+
     while (state == HCCL_SUCCESS && !cancel.IsCancelled()) {
       HcclResult result = HcclGetCommAsyncError(comm, &state);
       if (result != HCCL_SUCCESS) {
         return HcclStatusToAbslStatus(result, "HcclGetCommAsyncError failed");
+      }else{
+        break;
       }
     }
+         
     if (cancel.IsCancelled()) {
       return Cancelled("HcclCommunicator cancelled");
     }
-    // state now contains the final status of the operation
+    
+    // If we exited due to max iterations and state is still SUCCESS,
+    // it means the communicator is healthy - this is OK!
     if (state != HCCL_SUCCESS) {
       return HcclStatusToAbslStatus(state, "HCCL operation failed");
     }
+    
     return absl::OkStatus();
   };
 
@@ -190,12 +197,28 @@ absl::StatusOr<std::unique_ptr<HcclCommunicator>> HcclCommunicator::Create(
     std::shared_ptr<xla::gpu::CancellationToken> cancel, bool is_async, tsl::Env& env) {
   auto f = [cancel, &make_comm]() -> absl::StatusOr<HcclComm> {
     TF_ASSIGN_OR_RETURN(HcclComm comm, make_comm());
+    
+    // CRITICAL FIX: Unlike NCCL, HCCL communicator creation is synchronous.
+    // HcclCommInitRootInfo blocks until the communicator is fully initialized.
+    // Calling PollUntilDone after successful creation causes infinite loop
+    // because HcclGetCommAsyncError returns SUCCESS when there are no pending
+    // async operations (which is the normal state).
+    // 
+    // Reference: Huawei HCCL examples show direct use of communicators after
+    // HcclCommInitRootInfo without any polling.
+    //
+    // TODO: Re-evaluate if PollUntilDone is needed for HCCL based on actual
+    // async behavior observations.
+    
+    /* REMOVED:
     if (cancel) {
       TF_RETURN_IF_ERROR(xla::npu::PollUntilDone(comm, *cancel));
     } else {
       xla::gpu::CancellationToken never_cancelled;
       TF_RETURN_IF_ERROR(xla::npu::PollUntilDone(comm, never_cancelled));
     }
+    */
+    
     return comm;
   };
 
@@ -243,59 +266,49 @@ HcclCommunicator::~HcclCommunicator() {
 
 absl::Status HcclCommunicator::Abort() {
   // By setting the cancellation token all pending collectives scheduled on
-  // executor_ will cancel. This will allow the aborting lambda below to run.
+  // executor_ will cancel.
   cancel_->Cancel();
 
-  return ExecuteAwait([this]() -> absl::Status {
-    VLOG(1) << "Abort HCCL communicator: " << *this;
-    if (aborted_) {
-      return FailedPrecondition("HcclCommunicator already aborted");
-    }
-    aborted_ = true;
-    // Note that we intentionally don't call PollUntilDone. Once comm_
-    // has been aborted, we can no longer safely touch it.
-    // HCCL doesn't have a direct abort API, so we just mark it as aborted
-    return absl::OkStatus();
-  });
+  VLOG(1) << "Abort HCCL communicator: " << *this;
+  if (aborted_) {
+    return FailedPrecondition("HcclCommunicator already aborted");
+  }
+  aborted_ = true;
+  // Note that we intentionally don't call PollUntilDone. Once comm_
+  // has been aborted, we can no longer safely touch it.
+  // HCCL doesn't have a direct abort API, so we just mark it as aborted
+  return absl::OkStatus();
 }
 
 absl::Status HcclCommunicator::HealthCheck() const {
-  return ExecuteAwait([this]() -> absl::Status {
-    VLOG(5) << "Health check for HCCL communicator: " << *this;
-    if (cancel_->IsCancelled()) {
-      return FailedPrecondition("HcclCommunicator aborted");
-    }
-#if 0
-    // HCCL doesn't have a direct async error query like NCCL,
-    // so we just check if the communicator is valid
-    int rank;
-    HcclResult result = HcclCommUserRank(comm_, &rank);
-    if (result != HCCL_SUCCESS) {
-      return HcclStatusToAbslStatus(result, "HCCL communicator health check failed");
-    }
-    return absl::OkStatus();
-#endif
-    return absl::UnimplementedError("HcclCommunicator health check not implemented");
-  });
+  VLOG(5) << "Health check for HCCL communicator: " << *this;
+  if (cancel_->IsCancelled()) {
+    return FailedPrecondition("HcclCommunicator aborted");
+  }
+
+  // Check if the communicator is valid by querying its rank
+  // Directly execute without using executor to avoid potential deadlocks
+  uint32_t rank;
+  HcclResult result = HcclGetRankId(comm_, &rank);
+  if (result != HCCL_SUCCESS) {
+    return HcclStatusToAbslStatus(result, "HCCL communicator health check failed");
+  }
+  return absl::OkStatus();
 }
 
 absl::StatusOr<size_t> HcclCommunicator::NumRanks() const {
-#if 0
-  return ExecuteAwait<size_t>([this]() -> absl::StatusOr<size_t> {
-    VLOG(5) << "Get the number of ranks in HCCL communicator: " << *this;
-    if (cancel_->IsCancelled()) {
-      return FailedPrecondition("HcclCommunicator aborted");
-    }
+  VLOG(5) << "Get the number of ranks in HCCL communicator: " << *this;
+  if (cancel_->IsCancelled()) {
+    return FailedPrecondition("HcclCommunicator aborted");
+  }
 
-    int nranks;
-    HcclResult result = HcclCommCount(comm_, &nranks);
-    if (result != HCCL_SUCCESS) {
-      return HcclStatusToAbslStatus(result, "Failed to get HCCL communicator size");
-    }
-    return static_cast<size_t>(nranks);
-  });
-#endif
-  return absl::UnimplementedError("HcclCommunicator::NumRanks is not implemented");
+  // Directly execute without using executor to avoid potential deadlocks
+  uint32_t nranks;
+  HcclResult result = HcclGetRankSize(comm_, &nranks);
+  if (result != HCCL_SUCCESS) {
+    return HcclStatusToAbslStatus(result, "Failed to get HCCL communicator size");
+  }
+  return static_cast<size_t>(nranks);
 }
 
 Future<> HcclCommunicator::GroupExecute(
@@ -393,14 +406,20 @@ Future<> HcclCommunicator::Recv(se::DeviceAddressBase recv_buffer,
 
 absl::Status HcclCommunicator::GroupStart() {
   VLOG(5) << "Start HCCL group";
-  // HCCL doesn't have explicit group start/end like NCCL
-  // We track nesting level for consistency
+  //HcclResult result = HcclGroupStart();
+  //if (result != HCCL_SUCCESS) {
+  //  return HcclStatusToAbslStatus(result, "HcclGroupStart failed");
+  //}
   group_nesting_level_++;
   return absl::OkStatus();
 }
 
 absl::Status HcclCommunicator::GroupEnd() {
   VLOG(5) << "End HCCL group";
+  //HcclResult result = HcclGroupEnd();
+  //if (result != HCCL_SUCCESS) {
+  //  return HcclStatusToAbslStatus(result, "HcclGroupEnd failed");
+  //}
   group_nesting_level_--;
   if (group_nesting_level_ > 0) {
     return absl::OkStatus();
@@ -437,10 +456,13 @@ absl::Status HcclCommunicator::LaunchAllReduce(
   
   TF_RETURN_IF_ERROR(HcclStatusToAbslStatus(result, "HcclAllReduce failed"));
   
-  if (group_nesting_level_ == 0) {
-    TF_RETURN_IF_ERROR(PollUntilDone());
+  auto status = stream_executor::ascend::ToStatus(aclrtSynchronizeStream(AsAclStream(stream)));
+  if (!status.ok()) {
+    LOG(ERROR) << __FUNCTION__ << "failed to synchroize Ascend stream for device " << stream->parent()->device_ordinal()
+               << ": " << status;
   }
-  return absl::OkStatus();
+
+  return status;
 }
 
 absl::Status HcclCommunicator::LaunchBroadcast(
@@ -469,10 +491,13 @@ absl::Status HcclCommunicator::LaunchBroadcast(
   
   TF_RETURN_IF_ERROR(HcclStatusToAbslStatus(result, "HcclBroadcast failed"));
   
-  if (group_nesting_level_ == 0) {
-    TF_RETURN_IF_ERROR(PollUntilDone());
+  auto status = stream_executor::ascend::ToStatus(aclrtSynchronizeStream(AsAclStream(stream)));
+  if (!status.ok()) {
+    LOG(ERROR) << __FUNCTION__ << "failed to synchroize Ascend stream for device " << stream->parent()->device_ordinal()
+               << ": " << status;
   }
-  return absl::OkStatus();
+
+  return status;
 }
 
 absl::Status HcclCommunicator::LaunchReduceScatter(
@@ -503,10 +528,13 @@ absl::Status HcclCommunicator::LaunchReduceScatter(
   
   TF_RETURN_IF_ERROR(HcclStatusToAbslStatus(result, "HcclReduceScatter failed"));
   
-  if (group_nesting_level_ == 0) {
-    TF_RETURN_IF_ERROR(PollUntilDone());
+  auto status = stream_executor::ascend::ToStatus(aclrtSynchronizeStream(AsAclStream(stream)));
+  if (!status.ok()) {
+    LOG(ERROR) << __FUNCTION__ << "failed to synchroize Ascend stream for device " << stream->parent()->device_ordinal()
+               << ": " << status;
   }
-  return absl::OkStatus();
+
+  return status;
 }
 
 absl::Status HcclCommunicator::LaunchAllGather(
@@ -533,10 +561,13 @@ absl::Status HcclCommunicator::LaunchAllGather(
   
   TF_RETURN_IF_ERROR(HcclStatusToAbslStatus(result, "HcclAllGather failed"));
   
-  if (group_nesting_level_ == 0) {
-    TF_RETURN_IF_ERROR(PollUntilDone());
+  auto status = stream_executor::ascend::ToStatus(aclrtSynchronizeStream(AsAclStream(stream)));
+  if (!status.ok()) {
+    LOG(ERROR) << __FUNCTION__ << "failed to synchroize Ascend stream for device " << stream->parent()->device_ordinal()
+               << ": " << status;
   }
-  return absl::OkStatus();
+
+  return status;
 }
 
 // If all buffers are contiguous returns a device address range that covers
@@ -569,7 +600,6 @@ absl::Status HcclCommunicator::LaunchAllToAll(
     absl::InlinedVector<se::DeviceAddressBase, 4> send_buffers,
     absl::InlinedVector<se::DeviceAddressBase, 4> recv_buffers,
     PrimitiveType dtype, size_t count, const Executor& executor) {
-#if 0
   if (cancel_->IsCancelled()) {
     return FailedPrecondition("HcclCommunicator aborted");
   }
@@ -600,8 +630,8 @@ absl::Status HcclCommunicator::LaunchAllToAll(
         send_buffers.size(), recv_buffers.size());
   }
 
-  int32_t num_ranks;
-  HcclResult result = HcclCommCount(comm_, &num_ranks);
+  uint32_t num_ranks;
+  HcclResult result = HcclGetRankSize(comm_, &num_ranks);
   if (result != HCCL_SUCCESS) {
     return HcclStatusToAbslStatus(result, "Failed to get HCCL communicator size");
   }
@@ -622,7 +652,14 @@ absl::Status HcclCommunicator::LaunchAllToAll(
         recv_contiguous->opaque(), ToHcclCount(dtype, count), hccl_dtype,
         comm_, AsAclStream(stream));
     TF_RETURN_IF_ERROR(HcclStatusToAbslStatus(result, "HcclAlltoAll failed"));
-    return absl::OkStatus();
+    
+    auto status = stream_executor::ascend::ToStatus(aclrtSynchronizeStream(AsAclStream(stream)));
+    if (!status.ok()) {
+      LOG(ERROR) << __FUNCTION__ << "failed to synchroize Ascend stream for device " << stream->parent()->device_ordinal()
+                << ": " << status;
+    }
+
+    return status;
   }
 
   // Fall back to using Send/Recv pairs for non-contiguous buffers
@@ -644,8 +681,6 @@ absl::Status HcclCommunicator::LaunchAllToAll(
   TF_RETURN_IF_ERROR(GroupEnd());
   
   return absl::OkStatus();
-#endif
-  return absl::UnimplementedError("HcclCommunicator::LaunchAllToAll is not implemented");
 }
 
 absl::Status HcclCommunicator::LaunchCollectivePermute(

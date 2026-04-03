@@ -22,7 +22,7 @@ ffi::Error MatmulHandlerImpl(aclrtStream stream, ffi::Buffer<DType> self, ffi::B
 
   // Set cubeMathType (default to 0 for now)
   int8_t cubeMathType = 0;
-
+#if 1
   // Call first stage interface to get workspace size and executor
   uint64_t workspace_size = 0;
   aclOpExecutor* executor = nullptr;
@@ -49,7 +49,7 @@ ffi::Error MatmulHandlerImpl(aclrtStream stream, ffi::Buffer<DType> self, ffi::B
     return ffi::Error::Internal(
         absl::StrCat("aclnnMatmul failed: ", status));
   }
-
+#endif
   // Release resources
   aclDestroyTensor(self_tensor);
   aclDestroyTensor(mat2_tensor);

@@ -118,15 +118,13 @@ bool CanEnablePeerAccess(int from_device, int to_device) {
 
 // Enables peer access between two contexts.
 absl::Status EnablePeerAccess(int from_device, int to_device) {
-  aclError error = aclrtSetDevice(from_device);
+#if 1  
+  aclError error = aclrtDeviceEnablePeerAccess(to_device, 0);
   if (error != ACL_ERROR_NONE) {
-    LOG(ERROR) << "aclrtSetDevice failed with " << error << ",set device is " << from_device;
+    return absl::InternalError(absl::StrCat("aclrtDeviceEnablePeerAccess failed with ",error ,", from device " \
+               ,from_device ," to device " , to_device));
   }
-  error = aclrtDeviceEnablePeerAccess(to_device, 0);
-  if (error != ACL_ERROR_NONE) {
-    LOG(ERROR) << "aclrtDeviceEnablePeerAccess failed with " << error << ", from device " \
-               << from_device << " to device " << to_device;
-  }
+#endif
   return absl::OkStatus();
 }
 
@@ -238,6 +236,7 @@ void AscendExecutor::DeallocateStream(Stream* stream) {
 }
 
 absl::Status AscendExecutor::EnablePeerAccessTo(StreamExecutor* other) {
+  std::unique_ptr<ActivateContext> activation = Activate();
   AscendExecutor* other_ascend_executor = static_cast<AscendExecutor*>(other);
   int other_device_ordinal = other_ascend_executor->device_ordinal();
 

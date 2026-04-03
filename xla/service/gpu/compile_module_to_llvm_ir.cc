@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/IR/DiagnosticInfo.h"
@@ -52,6 +53,7 @@ limitations under the License.
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/dump.h"
@@ -275,6 +277,39 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
       "GpuCompiler::RunBackend - IR emission for ", hlo_module->name()));
 
+#if 0      
+  // === TEMPORARY DEBUG: Dump HLO module details ===
+  {
+    std::cerr << "\n\n=== DUMPING HLO MODULE DETAILS (TEMPORARY DEBUG) ===" << std::endl;
+    std::cerr << "Module name: " << hlo_module->name() << std::endl;
+    std::cerr << "Module unique_id: " << hlo_module->unique_id() << std::endl;
+    
+    // 使用详细的打印选项
+    HloPrintOptions detailed_options;
+    detailed_options.set_print_large_constants(true)
+                    .set_print_metadata(true)
+                    .set_include_layout_in_shapes(true)
+                    .set_print_backend_config(true)
+                    .set_print_control_dependencies(true)
+                    .set_print_subcomputation_mode(HloPrintOptions::PrintSubcomputationMode::kFullBodies);
+    
+    std::string hlo_text = hlo_module->ToString(detailed_options);
+    std::cerr << "=== HLO Module Text (detailed) ===" << std::endl;
+    std::cerr << hlo_text << std::endl;
+    
+    // 也可以尝试调用 DumpHloModuleIfEnabled (如果配置了 xla_dump_to 会输出到文件)
+    auto dump_paths = DumpHloModuleIfEnabled(*hlo_module, "before_thunk_emission");
+    if (!dump_paths.empty()) {
+      std::cerr << "HLO module dumped to files: " 
+                << absl::StrJoin(dump_paths, ", ") << std::endl;
+    } else {
+      std::cerr << "Dumping not enabled (set --xla_dump_to=/path to enable file dumping)" << std::endl;
+    }
+    
+    std::cerr << "=== END HLO MODULE DUMP ===\n\n" << std::endl;
+  }
+  // === END TEMPORARY DEBUG ===
+#endif
   TF_ASSIGN_OR_RETURN(auto sequential_thunk,
                       thunk_emitter.EmitHloEntryComputation(hlo_module));
   results.executable = std::move(sequential_thunk);
