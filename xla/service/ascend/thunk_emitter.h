@@ -104,13 +104,13 @@ class ThunkEmitter {
   std::vector<std::unique_ptr<llvm::Module>> kernel_modules_;
 };
 
-}  // namespace xla::ascend
-
 // Helper function to try emitting HLO instruction with Ascend backend.
 // This function is called from GPU's ThunkEmitter to delegate to Ascend when appropriate.
 absl::StatusOr<std::optional<xla::gpu::ThunkSequence>> TryEmitHloInstructionAscend(
     const xla::HloInstruction* hlo,
     xla::gpu::IrEmitterContext* ir_emitter_context,
     xla::llvm_ir::LLVMCommandLineOptionsReleasableLock* llvm_options_lock);
+
+}  // namespace xla::ascend
 
 #endif  // XLA_SERVICE_ASCEND_THUNK_EMITTER_H_

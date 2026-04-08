@@ -160,9 +160,11 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitHloComputation(
     
     // If the instruction was handled, append its thunks
     if (result.has_value()) {
+      // Move the entire ThunkSequence from the optional
+      xla::gpu::ThunkSequence& seq = result.value();
       thunk_sequence.insert(thunk_sequence.end(),
-                           std::make_move_iterator(result->begin()),
-                           std::make_move_iterator(result->end()));
+                           std::make_move_iterator(seq.begin()),
+                           std::make_move_iterator(seq.end()));
     }
     // If not handled (nullopt), skip it (it will be handled by GPU emitter)
   }
@@ -215,8 +217,6 @@ absl::StatusOr<std::optional<xla::gpu::ThunkSequence>> ThunkEmitter::EmitHloInst
   }
 }
 
-}  // namespace xla::ascend
-
 // Helper function implementation
 absl::StatusOr<std::optional<xla::gpu::ThunkSequence>> TryEmitHloInstructionAscend(
     const xla::HloInstruction* hlo,
@@ -230,6 +230,8 @@ absl::StatusOr<std::optional<xla::gpu::ThunkSequence>> TryEmitHloInstructionAsce
   }
   
   // Create an Ascend ThunkEmitter and try to emit
-  xla::ascend::ThunkEmitter emitter(ir_emitter_context, llvm_options_lock);
+  ThunkEmitter emitter(ir_emitter_context, llvm_options_lock);
   return emitter.EmitHloInstruction(hlo);
 }
+
+}  // namespace xla::ascend

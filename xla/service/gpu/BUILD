@@ -627,6 +627,9 @@ cc_library(
     ]) + if_ascend_is_configured([
         "//xla/service/ascend:thunk_emitter",
     ]),
+    defines = if_ascend_is_configured([
+        "XLA_ENABLE_ASCEND",
+    ]),
 )
 
 cc_library(

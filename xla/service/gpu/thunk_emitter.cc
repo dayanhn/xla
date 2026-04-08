@@ -2561,7 +2561,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
         hlo, ir_emitter_context_, llvm_options_lock_);
     if (ascend_result.ok() && ascend_result->has_value()) {
       // Ascend backend handled this instruction
-      return std::move(ascend_result.value());
+      return std::move(ascend_result.value().value());
     }
     // If Ascend returned nullopt, continue with GPU implementation
   }
