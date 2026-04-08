@@ -27,4 +27,24 @@ jax-cuda-pjrt的编译命令为：
     ```
 首先请你结合代码深入分析下jax-cuda-pjrt是如何编译的
 
-请你帮我完成缺失的
+我在为jax,xla增加ascend后端,目前完成了部分工作，为了尽可能的复用原来的代码，我选择将ascend相关的组件都继承了gpu的实现，
+
+我计划从ThunkEmitter::EmitHloInstruction函数入口开始，根据hlo指令的opcode值来转换为通过ffi机制来调用ascend的接口。
+首先实现以下Hlo指令的转换，打通整个执行路径：
+ENTRY %main.1 () -> f32[128,128] {
+  ROOT %loop_broadcast_fusion = f32[128,128]{1,0} fusion(), kind=kLoop, calls=
+  () -> f32[128,128] {
+    %constant_1_1 = f32[] constant(2)
+    ROOT %broadcast_in_dim.1.1 = f32[128,128]{1,0} broadcast(%constant_1_1), dimensions={}, metadata={op_name="jit(create_full_matrix)/broadcast_in_dim" stack_frame_id=8}
+  }, metadata={op_name="jit(create_full_matrix)/broadcast_in_dim" stack_frame_id=8}
+}
+在实现这个功能，需要你帮我完成以下代码框架的搭建（接口的实现细节可以分多次迭代完成，本次主要完成整体框架的搭建）：
+1、参考xla/xla/service/gpu/thunk_emitter.cc，xla/xla/service/gpu/thunk_emitter.h，在xla/xla/service/ascend目录下创建类似的文件。
+2、也实现ThunkEmitter::EmitHloInstruction这样的接口，然后进行模式匹配，匹配出其实是一个广播操作后，需要参考case HloOpcode::kCustomCall: {
+      auto* custom_call = Cast<HloCustomCallInstruction>(hlo);
+      ...
+      return EmitCustomCallThunk(custom_call);
+}
+的处理以及ThunkEmitter::EmitCustomCallThunk函数的处理，返回一个ffi类型的CustomCallThunk。对于匹配的指令，返回一个已处理标志，否则返回未处理标志。
+3、在gpu/thunk_emitter.cc的EmitHloInstruction函数入口处，判断instr->custom_call_target()是否为ascend后端，如果是则调用ascend/thunk_emitter.cc的EmitHloInstructionb函数，如果返回未处理标志，则继续调用gpu/thunk_emitter.cc的EmitHloInstruction函数，否则直接返回获取到的thunk。
+4、修改相应的BUILD文件。

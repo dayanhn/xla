@@ -28,6 +28,11 @@ load(
     "//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
+load(
+    ":build_defs.bzl",
+    "if_ascend_is_configured",
+)
+
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -619,6 +624,8 @@ cc_library(
         "@tsl//tsl/platform:human_readable_json",
     ] + if_cuda_is_configured([
         "//xla/backends/gpu/codegen/kernels:ptx_custom_kernel",
+    ]) + if_ascend_is_configured([
+        "//xla/service/ascend:thunk_emitter",
     ]),
 )
 

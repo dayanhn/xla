@@ -163,3 +163,21 @@ def gen_gpu_hlo_compile_tests(
                 tags = backend_tags[backend] + ["requires-mem:16g", "nozapfhahn"] + tags,
                 timeout = "long",
             )
+
+
+def if_ascend_is_configured(x):
+    """Returns x if Ascend is configured, otherwise returns an empty list.
+    
+    This function checks if the Ascend backend is enabled in the build configuration.
+    It should be used to conditionally include Ascend-specific dependencies.
+    
+    Args:
+      x: A list of items to include if Ascend is configured.
+      
+    Returns:
+      A select statement that returns x when Ascend is enabled, or an empty list otherwise.
+    """
+    return select({
+        "@local_config_ascend//ascend:enable_ascend": x,
+        "//conditions:default": [],
+    })

@@ -134,6 +134,9 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/collective_ops_utils.h"
+#ifdef XLA_ENABLE_ASCEND
+#include "xla/service/ascend/thunk_emitter.h"
+#endif
 #include "xla/service/collective_opt_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
@@ -2551,6 +2554,19 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitAsyncStart(
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     const HloInstruction* hlo, bool emit_group_thunks) {
+  // Check if this is an Ascend backend and try to handle it with Ascend ThunkEmitter
+#ifdef XLA_ENABLE_ASCEND
+  {
+    auto ascend_result = xla::ascend::TryEmitHloInstructionAscend(
+        hlo, ir_emitter_context_, llvm_options_lock_);
+    if (ascend_result.ok() && ascend_result->has_value()) {
+      // Ascend backend handled this instruction
+      return std::move(ascend_result.value());
+    }
+    // If Ascend returned nullopt, continue with GPU implementation
+  }
+#endif
+
   switch (hlo->opcode()) {
     case HloOpcode::kAllGatherDone:
       return EmitCollectiveAsyncDone(Thunk::kAllGatherDone, hlo);
