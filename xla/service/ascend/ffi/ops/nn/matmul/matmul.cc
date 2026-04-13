@@ -35,10 +35,15 @@ ffi::Error MatmulHandlerImpl(aclrtStream stream, ffi::Buffer<DType> self, ffi::B
     return ffi::Error::Internal(
         absl::StrCat("aclnnMatmulGetWorkspaceSize failed: ", status));
   }
+  // 根据第一段接口计算出的workspaceSize申请device内存
+  void* workspaceAddr = nullptr;
+  if (workspace_size > 0) {
+    aclrtMalloc(&workspaceAddr, workspace_size, ACL_MEM_MALLOC_HUGE_FIRST);
+  }
 
   // Call second stage interface to execute computation
   status = aclnnMatmul(
-      nullptr,  // workspace is managed by XLA
+      workspaceAddr, 
       workspace_size,
       executor,
       stream);
@@ -54,6 +59,9 @@ ffi::Error MatmulHandlerImpl(aclrtStream stream, ffi::Buffer<DType> self, ffi::B
   aclDestroyTensor(self_tensor);
   aclDestroyTensor(mat2_tensor);
   aclDestroyTensor(out_tensor);
+  if (workspace_size > 0) {
+    aclrtFree(workspaceAddr);
+  }
 
   return ffi::Error::Success();
 }

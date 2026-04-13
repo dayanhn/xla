@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/ffi/api/c_api.h"  // For CustomCallApiVersion
 
 namespace xla::ascend {
 namespace {
@@ -53,6 +55,89 @@ bool ShouldHandleByAscend(const HloInstruction* hlo) {
   // For now, we handle all instructions for Ascend backend
   // This can be refined based on specific requirements
   return true;
+}
+
+// Helper function to check if a fusion matches the broadcast-constant pattern
+// Pattern: fusion { constant -> broadcast }
+bool IsBroadcastConstantFusion(const HloFusionInstruction* fusion) {
+  auto* computation = fusion->fused_instructions_computation();
+  
+  // Must have exactly 2 instructions: constant + broadcast
+  const auto& instructions = computation->instructions();
+  int64_t instruction_count = std::distance(instructions.begin(), instructions.end());
+  if (instruction_count != 2) {
+    VLOG(4) << "BroadcastConstantFusion: expected 2 instructions, got " 
+            << instruction_count;
+    return false;
+  }
+  
+  // Find the constant and broadcast instructions
+  const HloInstruction* constant_instr = nullptr;
+  const HloInstruction* broadcast_instr = nullptr;
+  
+  for (const auto* instr : instructions) {
+    if (instr->opcode() == HloOpcode::kConstant) {
+      constant_instr = instr;
+    } else if (instr->opcode() == HloOpcode::kBroadcast) {
+      broadcast_instr = instr;
+    } else {
+      VLOG(4) << "BroadcastConstantFusion: unexpected opcode " 
+              << HloOpcodeString(instr->opcode());
+      return false;
+    }
+  }
+  
+  // Both instructions must be present
+  if (!constant_instr || !broadcast_instr) {
+    VLOG(4) << "BroadcastConstantFusion: missing constant or broadcast instruction";
+    return false;
+  }
+  
+  // Broadcast must take constant as its only operand
+  if (broadcast_instr->operand_count() != 1 || 
+      broadcast_instr->operand(0) != constant_instr) {
+    VLOG(4) << "BroadcastConstantFusion: broadcast does not take constant as operand";
+    return false;
+  }
+  
+  // Fusion's root must be the broadcast instruction
+  if (computation->root_instruction() != broadcast_instr) {
+    VLOG(4) << "BroadcastConstantFusion: fusion root is not broadcast";
+    return false;
+  }
+  
+  return true;
+}
+
+// Helper function to serialize broadcast-constant fusion metadata
+std::string SerializeBroadcastConstantMetadata(
+    const HloFusionInstruction* fusion,
+    const HloInstruction* broadcast_instr,
+    const HloInstruction* constant_instr) {
+  // Serialize metadata needed for aclnnBroadcast:
+  // - Constant value
+  // - Broadcast dimensions
+  // - Output shape
+  
+  std::string metadata;
+  
+  // Get the constant literal value
+  const auto& literal = constant_instr->literal();
+  absl::StrAppend(&metadata, "constant_value:", literal.ToString(), ";");
+  
+  // Get broadcast dimensions
+  const auto& broadcast_dims = broadcast_instr->dimensions();
+  absl::StrAppend(&metadata, "broadcast_dims:[");
+  for (size_t i = 0; i < broadcast_dims.size(); ++i) {
+    if (i > 0) absl::StrAppend(&metadata, ",");
+    absl::StrAppend(&metadata, broadcast_dims[i]);
+  }
+  absl::StrAppend(&metadata, "];");
+  
+  // Output shape
+  absl::StrAppend(&metadata, "output_shape:", fusion->shape().ToString(), ";");
+  
+  return metadata;
 }
 
 }  // namespace
@@ -87,89 +172,107 @@ absl::StatusOr<xla::ShapedSlice> ThunkEmitter::GetShapedSliceForHlo(
 
 absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitConstant(
     const HloConstantInstruction* instr) {
-  // TODO: Implement constant emission using FFI
-  // For now, return empty sequence as placeholder
-  VLOG(2) << "EmitConstant not yet implemented for Ascend: " << instr->name();
+  // For constants inside fusions, they are handled as part of the fusion's CustomCall
+  // For top-level constants, we may need special handling
+  VLOG(2) << "EmitConstant for Ascend: " << instr->name();
+  
+  // Constants are typically embedded in the fusion metadata
+  // Return empty sequence - constants will be serialized in fusion metadata
   return xla::gpu::ThunkSequence{};
-}
-
-absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitBroadcast(
-    const xla::HloInstruction* hlo) {
-  // TODO: Implement broadcast emission using FFI
-  // This will create a CustomCallThunk that calls Ascend's broadcast kernel via FFI
-  
-  VLOG(2) << "EmitBroadcast for Ascend: " << hlo->name();
-  
-  // For the initial framework, we'll create a placeholder custom call thunk
-  // In the future, this will be replaced with actual Ascend FFI calls
-  
-  // Get input and output slices
-  TF_ASSIGN_OR_RETURN(xla::ShapedSlice input_slice, 
-                      GetShapedSliceForHlo(hlo->operand(0)));
-  TF_ASSIGN_OR_RETURN(xla::ShapedSlice output_slice, 
-                      GetShapedSliceForHlo(hlo));
-  
-  // Create operands and results vectors for CustomCallThunk
-  std::vector<xla::NullableShapedSlice> operands;
-  std::vector<xla::NullableShapedSlice> results;
-  
-  operands.push_back(input_slice);
-  results.push_back(output_slice);
-  
-  // Create a custom call thunk with FFI
-  // The target name will be used to look up the FFI handler
-  auto thunk = xla::gpu::CustomCallThunk::Create(
-      xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(
-          hlo, ir_emitter_context_->GetNextThunkId()),
-      "ascend_broadcast",  // Custom call target name for FFI lookup
-      std::move(operands),
-      std::move(results),
-      "",  // opaque data (empty for FFI)
-      xla::CustomCallApiVersion::API_VERSION_TYPED_FFI,
-      ir_emitter_context_->platform_name());
-  
-  TF_RETURN_IF_ERROR(thunk.status());
-  
-  xla::gpu::ThunkSequence sequence;
-  sequence.push_back(std::move(*thunk));
-  return sequence;
 }
 
 absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitFusion(
     const HloFusionInstruction* fusion) {
-  // Handle fusion operations
-  // For kLoop fusion containing broadcast, we need to process the fused computation
-  if (fusion->fusion_kind() == HloInstruction::FusionKind::kLoop) {
-    VLOG(2) << "EmitFusion (kLoop) for Ascend: " << fusion->name();
-    // Process the fused computation
-    return EmitHloComputation(fusion->fused_instructions_computation());
+  // Only handle kLoop fusion for now
+  if (fusion->fusion_kind() != HloInstruction::FusionKind::kLoop) {
+    VLOG(3) << "Ascend ThunkEmitter: fusion kind not handled: " 
+            << static_cast<int>(fusion->fusion_kind());
+    return xla::gpu::ThunkSequence{};
   }
   
-  // For other fusion types, let GPU emitter handle them
-  VLOG(3) << "Ascend ThunkEmitter: fusion kind not handled: " 
-          << static_cast<int>(fusion->fusion_kind());
+  VLOG(2) << "EmitFusion (kLoop) for Ascend: " << fusion->name();
+  
+  // Try to match and emit specific FFI patterns
+  // Pattern 1: broadcast-constant -> ascend.inplace_index_fill_tensor (for memset-like operation)
+  if (IsBroadcastConstantFusion(fusion)) {
+    TF_ASSIGN_OR_RETURN(auto thunks, EmitBroadcastConstantFusion(fusion));
+    if (!thunks.empty()) {
+      return thunks;
+    }
+  }
+  
+  // Add more FFI pattern matching here in the future
+  // Pattern 2: ...
+  
+  VLOG(3) << "Ascend ThunkEmitter: no matching FFI pattern found for fusion";
   return xla::gpu::ThunkSequence{};
 }
 
-absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitHloComputation(
-    const HloComputation* computation) {
-  xla::gpu::ThunkSequence thunk_sequence;
+// Helper function to emit broadcast-constant fusion as aclnnBroadcast FFI call
+absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitBroadcastConstantFusion(
+    const HloFusionInstruction* fusion) {
+  VLOG(2) << "Emitting broadcast-constant fusion as ascend.full: " << fusion->name();
   
-  for (const auto* instruction : computation->MakeInstructionPostOrder()) {
-    TF_ASSIGN_OR_RETURN(auto result, EmitHloInstruction(instruction));
-    
-    // If the instruction was handled, append its thunks
-    if (result.has_value()) {
-      // Move the entire ThunkSequence from the optional
-      xla::gpu::ThunkSequence& seq = result.value();
-      thunk_sequence.insert(thunk_sequence.end(),
-                           std::make_move_iterator(seq.begin()),
-                           std::make_move_iterator(seq.end()));
+  // Get the output buffer allocation (this is the tensor to be filled)
+  TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
+  
+  // Extract constant value from the fusion computation
+  auto* computation = fusion->fused_instructions_computation();
+  const HloInstruction* constant_instr = nullptr;
+  
+  for (const auto* instr : computation->instructions()) {
+    if (instr->opcode() == HloOpcode::kConstant) {
+      constant_instr = instr;
+      break;
     }
-    // If not handled (nullopt), skip it (it will be handled by GPU emitter)
   }
   
-  return thunk_sequence;
+  if (!constant_instr) {
+    return absl::InternalError("No constant instruction found in broadcast-constant fusion");
+  }
+  
+  // Extract the fill value from the constant literal
+  // The constant is a scalar (f32[]), so we get the first element
+  const auto& literal = constant_instr->literal();
+  float fill_value = literal.GetFirstElement<float>();
+  
+  VLOG(2) << "Broadcast-constant fusion: fill_value=" << fill_value;
+  
+  // Create operands and results for CustomCallThunk
+  std::vector<NullableShapedSlice> operands;
+  std::vector<NullableShapedSlice> results;
+  
+  // Add the output slice as both operand and result (inplace operation)
+  operands.push_back(output_slice);
+  results.push_back(output_slice);
+  
+  // Create attributes map with fill_value
+  xla::ffi::AttributesMap attributes;
+  attributes["value"] = xla::ffi::Scalar(fill_value);
+  
+  // Get GPU compute capability
+  const se::GpuComputeCapability& gpu_compute_capability = 
+      ir_emitter_context_->gpu_compute_capability();
+  
+  // Create CustomCallThunk
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::gpu::CustomCallThunk> thunk,
+      xla::gpu::CustomCallThunk::Create(
+          xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
+          "ascend.full.f32",
+          std::move(operands),
+          std::move(results),
+          std::move(attributes),
+          /*called_computation=*/nullptr,
+          "ASCEND",
+          gpu_compute_capability,
+          /*execution_state=*/nullptr));
+  
+  // Add the thunk to the sequence
+  xla::gpu::ThunkSequence sequence;
+  sequence.push_back(std::move(thunk));
+  
+  return sequence;
 }
 
 absl::StatusOr<std::optional<xla::gpu::ThunkSequence>> ThunkEmitter::EmitHloInstruction(
@@ -187,31 +290,27 @@ absl::StatusOr<std::optional<xla::gpu::ThunkSequence>> ThunkEmitter::EmitHloInst
       return thunks;
     }
     
-    case HloOpcode::kBroadcast: {
-      // Check if this is a broadcast operation that we want to handle
-      // For the test case: broadcast(%constant_1_1), dimensions={}
-      TF_ASSIGN_OR_RETURN(auto thunks, EmitBroadcast(hlo));
-      return thunks;
-    }
-    
     case HloOpcode::kFusion: {
       auto* fusion = Cast<HloFusionInstruction>(hlo);
       TF_ASSIGN_OR_RETURN(auto thunks, EmitFusion(fusion));
-      // Return nullopt if fusion was not handled by Ascend
-      if (thunks.empty() && fusion->fusion_kind() != HloInstruction::FusionKind::kLoop) {
+      
+      // If EmitFusion returned an empty sequence, it means Ascend doesn't support this fusion
+      // Return nullopt to let GPU emitter handle it
+      if (thunks.empty()) {
+        VLOG(3) << "Ascend ThunkEmitter: fusion not supported, delegating to GPU";
         return std::nullopt;
       }
+      
       return thunks;
     }
     
-    // Add more cases here as needed
-    // case HloOpcode::kAdd:
-    // case HloOpcode::kMultiply:
-    // etc.
+    // Add more cases here as needed for top-level instructions
+    // Note: Instructions inside fusions are NOT emitted separately - 
+    // they are part of the fusion's CustomCall
     
     default:
       // For unhandled opcodes, return nullopt so GPU emitter can try
-      VLOG(3) << "Ascend ThunkEmitter: opcode not handled: " 
+      VLOG(3) << "Ascend ThunkEmitter: opcode not handled at top level: " 
               << HloOpcodeString(hlo->opcode());
       return std::nullopt;
   }
@@ -224,8 +323,8 @@ absl::StatusOr<std::optional<xla::gpu::ThunkSequence>> TryEmitHloInstructionAsce
     xla::llvm_ir::LLVMCommandLineOptionsReleasableLock* llvm_options_lock) {
   
   // Check if we should handle this with Ascend backend
-  // For now, check the platform name
-  if (ir_emitter_context->platform_name() != "ascend") {
+  // For now, check the platform name (case-insensitive)
+  if (absl::AsciiStrToLower(ir_emitter_context->platform_name()) != "ascend") {
     return std::nullopt;
   }
   

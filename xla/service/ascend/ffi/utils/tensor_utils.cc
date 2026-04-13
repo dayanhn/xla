@@ -90,10 +90,25 @@ template aclTensor* ConvertToAclTensor<DataType::BF16, 2>(const Buffer<DataType:
 template aclTensor* ConvertToAclTensor<DataType::BF16, 3>(const Buffer<DataType::BF16, 3>&);
 template aclTensor* ConvertToAclTensor<DataType::BF16, 4>(const Buffer<DataType::BF16, 4>&);
 
+template aclTensor* ConvertToAclTensor<DataType::S32, 0>(const Buffer<DataType::S32, 0>&);
+template aclTensor* ConvertToAclTensor<DataType::S32, 1>(const Buffer<DataType::S32, 1>&);
+template aclTensor* ConvertToAclTensor<DataType::S32, 2>(const Buffer<DataType::S32, 2>&);
+template aclTensor* ConvertToAclTensor<DataType::S32, 3>(const Buffer<DataType::S32, 3>&);
+template aclTensor* ConvertToAclTensor<DataType::S32, 4>(const Buffer<DataType::S32, 4>&);
+
+template aclTensor* ConvertToAclTensor<DataType::S64, 0>(const Buffer<DataType::S64, 0>&);
+template aclTensor* ConvertToAclTensor<DataType::S64, 1>(const Buffer<DataType::S64, 1>&);
+template aclTensor* ConvertToAclTensor<DataType::S64, 2>(const Buffer<DataType::S64, 2>&);
+template aclTensor* ConvertToAclTensor<DataType::S64, 3>(const Buffer<DataType::S64, 3>&);
+template aclTensor* ConvertToAclTensor<DataType::S64, 4>(const Buffer<DataType::S64, 4>&);
+
 // Explicit instantiation for dynamic rank
 template aclTensor* ConvertToAclTensor<DataType::F32, std::numeric_limits<size_t>::max()>(const Buffer<DataType::F32, std::numeric_limits<size_t>::max()>&);
 template aclTensor* ConvertToAclTensor<DataType::F16, std::numeric_limits<size_t>::max()>(const Buffer<DataType::F16, std::numeric_limits<size_t>::max()>&);
 template aclTensor* ConvertToAclTensor<DataType::BF16, std::numeric_limits<size_t>::max()>(const Buffer<DataType::BF16, std::numeric_limits<size_t>::max()>&);
+template aclTensor* ConvertToAclTensor<DataType::S32, std::numeric_limits<size_t>::max()>(const Buffer<DataType::S32, std::numeric_limits<size_t>::max()>&);
+template aclTensor* ConvertToAclTensor<DataType::S64, std::numeric_limits<size_t>::max()>(const Buffer<DataType::S64, std::numeric_limits<size_t>::max()>&);
+
 
 aclDataType ConvertToAclDataType(PrimitiveType type) {
   switch (type) {

@@ -37,6 +37,81 @@ void RegisterAscendFfiHandlers() {
     LOG(INFO) << "Registered ascend.matmul operator";
   }
 
+  // Register InplaceIndexFillTensor operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.inplace_index_fill_tensor",
+      "ASCEND",
+      AscendInplaceIndexFillTensor);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.inplace_index_fill_tensor operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.inplace_index_fill_tensor operator: " + status.ToString());
+  }else {
+    LOG(INFO) << "Registered ascend.inplace_index_fill_tensor operator";
+  }
+
+  // Register Full operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.full",
+      "ASCEND",
+      AscendFull);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.full operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.full operator: " + status.ToString());
+  }else {
+    LOG(INFO) << "Registered ascend.full operator";
+  }
+
+  // Register FullF32 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.full.f32",
+      "ASCEND",
+      AscendFullF32);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.full.f32 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.full.f32 operator: " + status.ToString());
+  }else {
+    LOG(INFO) << "Registered ascend.full.f32 operator";
+  }
+
+  // Register FullS32 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.full.s32",
+      "ASCEND",
+      AscendFullS32);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.full.s32 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.full.s32 operator: " + status.ToString());
+  }else {
+    LOG(INFO) << "Registered ascend.full.s32 operator";
+  }
+
+  // Register FullS64 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.full.s64",
+      "ASCEND",
+      AscendFullS64);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.full.s64 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.full.s64 operator: " + status.ToString());
+  }else {
+    LOG(INFO) << "Registered ascend.full.s64 operator";
+  }
+
   // Register other operators here in the future
 }
 

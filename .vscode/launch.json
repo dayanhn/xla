@@ -9,7 +9,7 @@
             "request": "launch",
             "name": "ascend",
             "program": "${workspaceFolder}/bazel-bin/xla/pjrt/plugin/xla_npu/xla_npu_pjrt_client_test",
-            "args": ["/data3/zhongzhw/code/uni_ai/google/xla/xla/pjrt/plugin/xla_npu/test_ffi_matmul_stablehlo.mlir"],
+            "args": ["/data3/zhongzhw/code/uni_ai/google/xla/xla/pjrt/plugin/xla_npu/test_jnp_full_stablehlo.mlir"],
             "cwd": "${workspaceFolder}",
             "envFile": "${workspaceFolder}/.vscode/cann_env",
             "sourceMap": {

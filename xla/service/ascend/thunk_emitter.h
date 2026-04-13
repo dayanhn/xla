@@ -63,10 +63,6 @@ class ThunkEmitter {
       const HloInstruction* hlo);
 
  private:
-  // Emits code for the given HLO computation.
-  absl::StatusOr<xla::gpu::ThunkSequence> EmitHloComputation(
-      const HloComputation* computation);
-
   // Helper to get allocation slice for HLO
   absl::StatusOr<BufferAllocation::Slice> GetAllocationSliceForHlo(
       const HloInstruction* instr,
@@ -85,13 +81,14 @@ class ThunkEmitter {
   }
 
   // Emit handlers for specific HLO opcodes
-  absl::StatusOr<xla::gpu::ThunkSequence> EmitBroadcast(
-      const HloInstruction* hlo);
-  
   absl::StatusOr<xla::gpu::ThunkSequence> EmitConstant(
       const HloConstantInstruction* instr);
       
   absl::StatusOr<xla::gpu::ThunkSequence> EmitFusion(
+      const HloFusionInstruction* fusion);
+  
+  // Emit handlers for specific FFI patterns
+  absl::StatusOr<xla::gpu::ThunkSequence> EmitBroadcastConstantFusion(
       const HloFusionInstruction* fusion);
 
   // Context and state

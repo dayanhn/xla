@@ -180,6 +180,37 @@ int execute_gelu_program(std::unique_ptr<PjRtClient> &client,std::unique_ptr<PjR
   return 0;
 }
 
+
+int execute_jnp_full_program(std::unique_ptr<PjRtClient> &client,std::unique_ptr<PjRtLoadedExecutable> &executable) { 
+  // test_jnp_full_stablehlo.mlir 没有输入参数，直接在内部生成常量
+  std::cout << "Executing jnp_full program (no input parameters needed)..." << std::endl;
+  
+  // 执行计算 - 不需要传入任何输入参数
+  absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> result = 
+      executable->Execute({{}}, {});
+  if (!result.ok()) {
+    std::cerr << "Failed to execute computation: " 
+              << result.status().ToString() << std::endl;
+    return 1;
+  }
+
+  // 获取结果并转换为字面量
+  std::cout << "Getting result..." << std::endl;
+  absl::StatusOr<std::shared_ptr<Literal>> result_or = result->at(0).at(0)->ToLiteralSync();
+  if (!result_or.ok()) {
+    std::cerr << "Failed to get result literal: " 
+              << result_or.status().ToString() << std::endl;
+    return 1;
+  }
+  std::shared_ptr<Literal> result_literal = *result_or;
+
+  // 输出结果
+  std::cout << "Computation output shape: " << result_literal->shape().ToString() << std::endl;
+  std::cout << "Expected: 128x128 matrix filled with 2.0" << std::endl;
+  std::cout << "Computation output: " << *result_literal << std::endl;
+  return 0;
+}
+
 int execute_matmul_program(std::unique_ptr<PjRtClient> &client,std::unique_ptr<PjRtLoadedExecutable> &executable) { 
   // 构造输入参数
   std::cout << "Creating input parameters for matmul..." << std::endl;
@@ -361,7 +392,9 @@ int main(int argc, char** argv) {
   // xla::execute_gelu_program(client, executable);
   
   // 测试 Matmul 算子
-  xla::execute_matmul_program(client, executable);
+  // xla::execute_matmul_program(client, executable);
+
+  execute_jnp_full_program(client, executable);
 
   return 0;
 }

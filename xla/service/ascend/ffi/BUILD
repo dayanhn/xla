@@ -36,6 +36,8 @@ cc_library(
         "ascend_ffi.cc",
         "ops/nn/activation/gelu.cc",
         "ops/nn/matmul/matmul.cc",
+        "ops/nn/index_fill/index_fill_tensor.cc",
+        "ops/nn/full/full.cc",
         "utils/tensor_utils.cc",
     ],
     hdrs = [

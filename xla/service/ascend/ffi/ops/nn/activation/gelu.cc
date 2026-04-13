@@ -34,21 +34,26 @@ ffi::Error GeluHandlerImpl(aclrtStream stream, ffi::Buffer<DType> self, ffi::Res
 #endif
 
   // Call first stage interface to get workspace size and executor
-  uint64_t workspace_size = 0;
+  uint64_t workspaceSize = 0;
   aclOpExecutor* executor = nullptr;
   aclnnStatus status = aclnnGeluGetWorkspaceSize(
-      self_tensor, out_tensor, &workspace_size, &executor);
+      self_tensor, out_tensor, &workspaceSize, &executor);
   if (status != ACL_SUCCESS) {
     aclDestroyTensor(self_tensor);
     aclDestroyTensor(out_tensor);
     return ffi::Error::Internal(
         absl::StrCat("aclnnGeluGetWorkspaceSize failed: ", status));
   }
+  // 根据第一段接口计算出的workspaceSize申请device内存
+  void* workspaceAddr = nullptr;
+  if (workspaceSize > 0) {
+    aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+  }
 
   // Call second stage interface to execute computation
   status = aclnnGelu(
-      nullptr,  // workspace is managed by XLA
-      workspace_size,
+      workspaceAddr, 
+      workspaceSize,
       executor,
       stream);
   if (status != ACL_SUCCESS) {
@@ -115,6 +120,9 @@ ffi::Error GeluHandlerImpl(aclrtStream stream, ffi::Buffer<DType> self, ffi::Res
   // Release resources
   aclDestroyTensor(self_tensor);
   aclDestroyTensor(out_tensor);
+  if (workspaceSize > 0) {
+    aclrtFree(workspaceAddr);
+  }
 
   return ffi::Error::Success();
 }
