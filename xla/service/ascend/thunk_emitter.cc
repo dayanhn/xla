@@ -529,16 +529,39 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitShiftRightFusion(
   TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(fusion->operand(0)));
   TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
   
+  // Extract constant value from the fusion computation (shift bits)
+  auto* computation = fusion->fused_instructions_computation();
+  const HloInstruction* constant_instr = nullptr;
+  
+  for (const auto* instr : computation->instructions()) {
+    if (instr->opcode() == HloOpcode::kConstant) {
+      constant_instr = instr;
+      break;
+    }
+  }
+  
+  if (!constant_instr) {
+    return absl::InternalError("No constant instruction found in shift-right-logical fusion");
+  }
+  
+  // Extract the shift bits value from the constant literal
+  // The constant is a scalar (s32[]), so we get the first element
+  const auto& literal = constant_instr->literal();
+  int32_t shift_bits_value = literal.GetFirstElement<int32_t>();
+  
+  VLOG(2) << "Shift-right-logical fusion: shift_bits=" << shift_bits_value;
+  
   // Create operands and results for CustomCallThunk
   std::vector<NullableShapedSlice> operands;
   std::vector<NullableShapedSlice> results;
   
-  // Add input and output slices
+  // Add input slice as operand
   operands.push_back(input_slice);
   results.push_back(output_slice);
   
-  // Create attributes map (empty for shift operation)
+  // Create attributes map with shift_bits value
   xla::ffi::AttributesMap attributes;
+  attributes["shift_bits"] = xla::ffi::Scalar(shift_bits_value);
   
   // Get GPU compute capability
   const se::GpuComputeCapability& gpu_compute_capability = 
@@ -571,9 +594,40 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitConcatenateFusion(
   VLOG(2) << "Emitting concatenate fusion as ascend.cat: " << fusion->name();
   
   // Get the input buffer allocations
-  TF_ASSIGN_OR_RETURN(auto input1_slice, GetShapedSliceForHlo(fusion->operand(0)));
-  TF_ASSIGN_OR_RETURN(auto input2_slice, GetShapedSliceForHlo(fusion->operand(1)));
+  TF_ASSIGN_OR_RETURN(auto input1_slice_result, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto input2_slice_result, GetShapedSliceForHlo(fusion->operand(1)));
   TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
+  
+  // Fix: Use instruction's shape directly because GetShapeForUniqueSlice may return incorrect shape
+  xla::ShapedSlice input1_slice = input1_slice_result;
+  input1_slice.shape = fusion->operand(0)->shape();
+  
+  xla::ShapedSlice input2_slice = input2_slice_result;
+  input2_slice.shape = fusion->operand(1)->shape();
+  
+  // Extract the concatenate instruction to get the dimensions attribute
+  auto* computation = fusion->fused_instructions_computation();
+  const HloInstruction* concat_instr = nullptr;
+  
+  for (const auto* instr : computation->instructions()) {
+    if (instr->opcode() == HloOpcode::kConcatenate) {
+      concat_instr = instr;
+      break;
+    }
+  }
+  
+  if (!concat_instr) {
+    return absl::InternalError("No concatenate instruction found in concatenate fusion");
+  }
+  
+  // Get the concatenate dimension from the instruction
+  absl::Span<const int64_t> dimensions = concat_instr->dimensions();
+  if (dimensions.empty()) {
+    return absl::InternalError("Concatenate instruction has no dimensions attribute");
+  }
+  
+  int64_t concat_dimension = dimensions[0];  // Typically concatenate has one dimension
+  VLOG(2) << "Concatenate fusion: concat_dimension=" << concat_dimension;
   
   // Create operands and results for CustomCallThunk
   std::vector<NullableShapedSlice> operands;
@@ -584,8 +638,9 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitConcatenateFusion(
   operands.push_back(input2_slice);
   results.push_back(output_slice);
   
-  // Create attributes map (empty for concatenate operation)
+  // Create attributes map with concatenate dimension
   xla::ffi::AttributesMap attributes;
+  attributes["dim"] = xla::ffi::Scalar(concat_dimension);
   
   // Get GPU compute capability
   const se::GpuComputeCapability& gpu_compute_capability = 
