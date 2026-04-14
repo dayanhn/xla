@@ -168,6 +168,123 @@ bool IsConvertFusion(const HloFusionInstruction* fusion) {
   return true;
 }
 
+// Helper function to check if a fusion matches the shift-right-logical pattern
+// Pattern: fusion { parameter + constant -> shift-right-logical }
+bool IsShiftRightFusion(const HloFusionInstruction* fusion) {
+  auto* computation = fusion->fused_instructions_computation();
+  
+  // Must have exactly 3 instructions: parameter + constant + shift-right-logical
+  const auto& instructions = computation->instructions();
+  int64_t instruction_count = std::distance(instructions.begin(), instructions.end());
+  if (instruction_count != 3) {
+    VLOG(4) << "ShiftRightFusion: expected 3 instructions, got " 
+            << instruction_count;
+    return false;
+  }
+  
+  // Find the parameter, constant, and shift-right-logical instructions
+  const HloInstruction* param_instr = nullptr;
+  const HloInstruction* constant_instr = nullptr;
+  const HloInstruction* shift_instr = nullptr;
+  
+  for (const auto* instr : instructions) {
+    if (instr->opcode() == HloOpcode::kParameter) {
+      param_instr = instr;
+    } else if (instr->opcode() == HloOpcode::kConstant) {
+      constant_instr = instr;
+    } else if (instr->opcode() == HloOpcode::kShiftRightLogical) {
+      shift_instr = instr;
+    } else {
+      VLOG(4) << "ShiftRightFusion: unexpected opcode " 
+              << HloOpcodeString(instr->opcode());
+      return false;
+    }
+  }
+  
+  // All instructions must be present
+  if (!param_instr || !constant_instr || !shift_instr) {
+    VLOG(4) << "ShiftRightFusion: missing parameter, constant, or shift instruction";
+    return false;
+  }
+  
+  // Shift must take parameter and constant as operands
+  if (shift_instr->operand_count() != 2 || 
+      shift_instr->operand(0) != param_instr ||
+      shift_instr->operand(1) != constant_instr) {
+    VLOG(4) << "ShiftRightFusion: shift does not take parameter and constant as operands";
+    return false;
+  }
+  
+  // Fusion's root must be the shift instruction
+  if (computation->root_instruction() != shift_instr) {
+    VLOG(4) << "ShiftRightFusion: fusion root is not shift";
+    return false;
+  }
+  
+  return true;
+}
+
+// Helper function to check if a fusion matches the concatenate pattern
+// Pattern: fusion { parameter0 + parameter1 -> concatenate }
+bool IsConcatenateFusion(const HloFusionInstruction* fusion) {
+  auto* computation = fusion->fused_instructions_computation();
+  
+  // Must have exactly 3 instructions: parameter0 + parameter1 + concatenate
+  const auto& instructions = computation->instructions();
+  int64_t instruction_count = std::distance(instructions.begin(), instructions.end());
+  if (instruction_count != 3) {
+    VLOG(4) << "ConcatenateFusion: expected 3 instructions, got " 
+            << instruction_count;
+    return false;
+  }
+  
+  // Find the parameters and concatenate instructions
+  const HloInstruction* param0_instr = nullptr;
+  const HloInstruction* param1_instr = nullptr;
+  const HloInstruction* concat_instr = nullptr;
+  
+  for (const auto* instr : instructions) {
+    if (instr->opcode() == HloOpcode::kParameter) {
+      if (!param0_instr) {
+        param0_instr = instr;
+      } else if (!param1_instr) {
+        param1_instr = instr;
+      } else {
+        VLOG(4) << "ConcatenateFusion: too many parameter instructions";
+        return false;
+      }
+    } else if (instr->opcode() == HloOpcode::kConcatenate) {
+      concat_instr = instr;
+    } else {
+      VLOG(4) << "ConcatenateFusion: unexpected opcode " 
+              << HloOpcodeString(instr->opcode());
+      return false;
+    }
+  }
+  
+  // All instructions must be present
+  if (!param0_instr || !param1_instr || !concat_instr) {
+    VLOG(4) << "ConcatenateFusion: missing parameter or concatenate instruction";
+    return false;
+  }
+  
+  // Concatenate must take both parameters as operands
+  if (concat_instr->operand_count() != 2 || 
+      (concat_instr->operand(0) != param0_instr && concat_instr->operand(0) != param1_instr) ||
+      (concat_instr->operand(1) != param0_instr && concat_instr->operand(1) != param1_instr)) {
+    VLOG(4) << "ConcatenateFusion: concatenate does not take both parameters as operands";
+    return false;
+  }
+  
+  // Fusion's root must be the concatenate instruction
+  if (computation->root_instruction() != concat_instr) {
+    VLOG(4) << "ConcatenateFusion: fusion root is not concatenate";
+    return false;
+  }
+  
+  return true;
+}
+
 // Helper function to serialize broadcast-constant fusion metadata
 std::string SerializeBroadcastConstantMetadata(
     const HloFusionInstruction* fusion,
@@ -268,8 +385,24 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitFusion(
     }
   }
   
+  // Pattern 3: shift-right-logical -> ascend.right_shift
+  if (IsShiftRightFusion(fusion)) {
+    TF_ASSIGN_OR_RETURN(auto thunks, EmitShiftRightFusion(fusion));
+    if (!thunks.empty()) {
+      return thunks;
+    }
+  }
+  
+  // Pattern 4: concatenate -> ascend.cat
+  if (IsConcatenateFusion(fusion)) {
+    TF_ASSIGN_OR_RETURN(auto thunks, EmitConcatenateFusion(fusion));
+    if (!thunks.empty()) {
+      return thunks;
+    }
+  }
+  
   // Add more FFI pattern matching here in the future
-  // Pattern 3: ...
+  // Pattern 5: ...
   
   VLOG(3) << "Ascend ThunkEmitter: no matching FFI pattern found for fusion";
   return xla::gpu::ThunkSequence{};
@@ -372,6 +505,98 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitConvertFusion(
       xla::gpu::CustomCallThunk::Create(
           xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
           "ascend.cast.s32_to_u32",
+          std::move(operands),
+          std::move(results),
+          std::move(attributes),
+          /*called_computation=*/nullptr,
+          "ASCEND",
+          gpu_compute_capability,
+          /*execution_state=*/nullptr));
+  
+  // Add the thunk to the sequence
+  xla::gpu::ThunkSequence sequence;
+  sequence.push_back(std::move(thunk));
+  
+  return sequence;
+}
+
+// Helper function to emit shift-right-logical fusion as ascend.right_shift FFI call
+absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitShiftRightFusion(
+    const HloFusionInstruction* fusion) {
+  VLOG(2) << "Emitting shift-right-logical fusion as ascend.right_shift: " << fusion->name();
+  
+  // Get the input buffer allocation
+  TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
+  
+  // Create operands and results for CustomCallThunk
+  std::vector<NullableShapedSlice> operands;
+  std::vector<NullableShapedSlice> results;
+  
+  // Add input and output slices
+  operands.push_back(input_slice);
+  results.push_back(output_slice);
+  
+  // Create attributes map (empty for shift operation)
+  xla::ffi::AttributesMap attributes;
+  
+  // Get GPU compute capability
+  const se::GpuComputeCapability& gpu_compute_capability = 
+      ir_emitter_context_->gpu_compute_capability();
+  
+  // Create CustomCallThunk
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::gpu::CustomCallThunk> thunk,
+      xla::gpu::CustomCallThunk::Create(
+          xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
+          "ascend.right_shift",
+          std::move(operands),
+          std::move(results),
+          std::move(attributes),
+          /*called_computation=*/nullptr,
+          "ASCEND",
+          gpu_compute_capability,
+          /*execution_state=*/nullptr));
+  
+  // Add the thunk to the sequence
+  xla::gpu::ThunkSequence sequence;
+  sequence.push_back(std::move(thunk));
+  
+  return sequence;
+}
+
+// Helper function to emit concatenate fusion as ascend.cat FFI call
+absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitConcatenateFusion(
+    const HloFusionInstruction* fusion) {
+  VLOG(2) << "Emitting concatenate fusion as ascend.cat: " << fusion->name();
+  
+  // Get the input buffer allocations
+  TF_ASSIGN_OR_RETURN(auto input1_slice, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto input2_slice, GetShapedSliceForHlo(fusion->operand(1)));
+  TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
+  
+  // Create operands and results for CustomCallThunk
+  std::vector<NullableShapedSlice> operands;
+  std::vector<NullableShapedSlice> results;
+  
+  // Add input and output slices
+  operands.push_back(input1_slice);
+  operands.push_back(input2_slice);
+  results.push_back(output_slice);
+  
+  // Create attributes map (empty for concatenate operation)
+  xla::ffi::AttributesMap attributes;
+  
+  // Get GPU compute capability
+  const se::GpuComputeCapability& gpu_compute_capability = 
+      ir_emitter_context_->gpu_compute_capability();
+  
+  // Create CustomCallThunk
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::gpu::CustomCallThunk> thunk,
+      xla::gpu::CustomCallThunk::Create(
+          xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
+          "ascend.cat",
           std::move(operands),
           std::move(results),
           std::move(attributes),

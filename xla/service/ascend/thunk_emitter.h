@@ -93,6 +93,12 @@ class ThunkEmitter {
   
   absl::StatusOr<xla::gpu::ThunkSequence> EmitConvertFusion(
       const HloFusionInstruction* fusion);
+  
+  absl::StatusOr<xla::gpu::ThunkSequence> EmitShiftRightFusion(
+      const HloFusionInstruction* fusion);
+  
+  absl::StatusOr<xla::gpu::ThunkSequence> EmitConcatenateFusion(
+      const HloFusionInstruction* fusion);
 
   // Context and state
   xla::gpu::IrEmitterContext* ir_emitter_context_;
