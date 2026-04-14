@@ -16,6 +16,10 @@ extern "C" XLA_FFI_Error* AscendFull(XLA_FFI_CallFrame* frame);
 extern "C" XLA_FFI_Error* AscendFullF32(XLA_FFI_CallFrame* frame);
 extern "C" XLA_FFI_Error* AscendFullS32(XLA_FFI_CallFrame* frame);
 extern "C" XLA_FFI_Error* AscendFullS64(XLA_FFI_CallFrame* frame);
+extern "C" XLA_FFI_Error* AscendCast(XLA_FFI_CallFrame* frame);
+extern "C" XLA_FFI_Error* AscendCastS32ToU32(XLA_FFI_CallFrame* frame);
+extern "C" XLA_FFI_Error* AscendRightShift(XLA_FFI_CallFrame* frame);
+extern "C" XLA_FFI_Error* AscendCat(XLA_FFI_CallFrame* frame);
 
 }  // namespace xla::ffi
 

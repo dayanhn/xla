@@ -109,6 +109,65 @@ bool IsBroadcastConstantFusion(const HloFusionInstruction* fusion) {
   return true;
 }
 
+// Helper function to check if a fusion matches the convert-element-type pattern
+// Pattern: fusion { parameter -> convert-element-type }
+bool IsConvertFusion(const HloFusionInstruction* fusion) {
+  auto* computation = fusion->fused_instructions_computation();
+  
+  // Must have exactly 2 instructions: parameter + convert
+  const auto& instructions = computation->instructions();
+  int64_t instruction_count = std::distance(instructions.begin(), instructions.end());
+  if (instruction_count != 2) {
+    VLOG(4) << "ConvertFusion: expected 2 instructions, got " 
+            << instruction_count;
+    return false;
+  }
+  
+  // Find the parameter and convert instructions
+  const HloInstruction* param_instr = nullptr;
+  const HloInstruction* convert_instr = nullptr;
+  
+  for (const auto* instr : instructions) {
+    if (instr->opcode() == HloOpcode::kParameter) {
+      param_instr = instr;
+    } else if (instr->opcode() == HloOpcode::kConvert) {
+      convert_instr = instr;
+    } else {
+      VLOG(4) << "ConvertFusion: unexpected opcode " 
+              << HloOpcodeString(instr->opcode());
+      return false;
+    }
+  }
+  
+  // Both instructions must be present
+  if (!param_instr || !convert_instr) {
+    VLOG(4) << "ConvertFusion: missing parameter or convert instruction";
+    return false;
+  }
+  
+  // Convert must take parameter as its only operand
+  if (convert_instr->operand_count() != 1 || 
+      convert_instr->operand(0) != param_instr) {
+    VLOG(4) << "ConvertFusion: convert does not take parameter as operand";
+    return false;
+  }
+  
+  // Fusion's root must be the convert instruction
+  if (computation->root_instruction() != convert_instr) {
+    VLOG(4) << "ConvertFusion: fusion root is not convert";
+    return false;
+  }
+  
+  // Check if it's s32 to u32 conversion
+  if (convert_instr->operand(0)->shape().element_type() != PrimitiveType::S32 ||
+      convert_instr->shape().element_type() != PrimitiveType::U32) {
+    VLOG(4) << "ConvertFusion: only s32 to u32 conversion is supported";
+    return false;
+  }
+  
+  return true;
+}
+
 // Helper function to serialize broadcast-constant fusion metadata
 std::string SerializeBroadcastConstantMetadata(
     const HloFusionInstruction* fusion,
@@ -193,7 +252,7 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitFusion(
   VLOG(2) << "EmitFusion (kLoop) for Ascend: " << fusion->name();
   
   // Try to match and emit specific FFI patterns
-  // Pattern 1: broadcast-constant -> ascend.inplace_index_fill_tensor (for memset-like operation)
+  // Pattern 1: broadcast-constant -> ascend.full.f32 (for memset-like operation)
   if (IsBroadcastConstantFusion(fusion)) {
     TF_ASSIGN_OR_RETURN(auto thunks, EmitBroadcastConstantFusion(fusion));
     if (!thunks.empty()) {
@@ -201,8 +260,16 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitFusion(
     }
   }
   
+  // Pattern 2: convert-element-type -> ascend.cast.s32_to_u32
+  if (IsConvertFusion(fusion)) {
+    TF_ASSIGN_OR_RETURN(auto thunks, EmitConvertFusion(fusion));
+    if (!thunks.empty()) {
+      return thunks;
+    }
+  }
+  
   // Add more FFI pattern matching here in the future
-  // Pattern 2: ...
+  // Pattern 3: ...
   
   VLOG(3) << "Ascend ThunkEmitter: no matching FFI pattern found for fusion";
   return xla::gpu::ThunkSequence{};
@@ -260,6 +327,51 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitBroadcastConstantFusio
       xla::gpu::CustomCallThunk::Create(
           xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
           "ascend.full.f32",
+          std::move(operands),
+          std::move(results),
+          std::move(attributes),
+          /*called_computation=*/nullptr,
+          "ASCEND",
+          gpu_compute_capability,
+          /*execution_state=*/nullptr));
+  
+  // Add the thunk to the sequence
+  xla::gpu::ThunkSequence sequence;
+  sequence.push_back(std::move(thunk));
+  
+  return sequence;
+}
+
+// Helper function to emit convert-element-type fusion as ascend.cast.s32_to_u32 FFI call
+absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitConvertFusion(
+    const HloFusionInstruction* fusion) {
+  VLOG(2) << "Emitting convert-element-type fusion as ascend.cast.s32_to_u32: " << fusion->name();
+  
+  // Get the input and output buffer allocations
+  TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
+  
+  // Create operands and results for CustomCallThunk
+  std::vector<NullableShapedSlice> operands;
+  std::vector<NullableShapedSlice> results;
+  
+  // Add input and output slices
+  operands.push_back(input_slice);
+  results.push_back(output_slice);
+  
+  // Create attributes map (empty for cast operation)
+  xla::ffi::AttributesMap attributes;
+  
+  // Get GPU compute capability
+  const se::GpuComputeCapability& gpu_compute_capability = 
+      ir_emitter_context_->gpu_compute_capability();
+  
+  // Create CustomCallThunk
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::gpu::CustomCallThunk> thunk,
+      xla::gpu::CustomCallThunk::Create(
+          xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
+          "ascend.cast.s32_to_u32",
           std::move(operands),
           std::move(results),
           std::move(attributes),

@@ -54,6 +54,7 @@ ffi::Error MatmulHandlerImpl(aclrtStream stream, ffi::Buffer<DType> self, ffi::B
     return ffi::Error::Internal(
         absl::StrCat("aclnnMatmul failed: ", status));
   }
+  aclrtSynchronizeStream(stream);
 #endif
   // Release resources
   aclDestroyTensor(self_tensor);

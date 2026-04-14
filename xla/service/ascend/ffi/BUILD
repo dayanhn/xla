@@ -38,6 +38,9 @@ cc_library(
         "ops/nn/matmul/matmul.cc",
         "ops/nn/index_fill/index_fill_tensor.cc",
         "ops/nn/full/full.cc",
+        "ops/math/cast/cast.cc",
+        "ops/math/right_shift/right_shift.cc",
+        "ops/math/cat/cat.cc",
         "utils/tensor_utils.cc",
     ],
     hdrs = [

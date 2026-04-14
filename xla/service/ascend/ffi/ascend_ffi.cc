@@ -112,6 +112,66 @@ void RegisterAscendFfiHandlers() {
     LOG(INFO) << "Registered ascend.full.s64 operator";
   }
 
+  // Register Cast S32 to U32 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.cast.s32_to_u32",
+      "ASCEND",
+      AscendCastS32ToU32);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.cast.s32_to_u32 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.cast.s32_to_u32 operator: " + status.ToString());
+  }else {
+    LOG(INFO) << "Registered ascend.cast.s32_to_u32 operator";
+  }
+
+  // Register Cast operator (default to S32 to U32)
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.cast",
+      "ASCEND",
+      AscendCast);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.cast operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.cast operator: " + status.ToString());
+  }else {
+    LOG(INFO) << "Registered ascend.cast operator";
+  }
+
+  // Register RightShift operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.right_shift",
+      "ASCEND",
+      AscendRightShift);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.right_shift operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.right_shift operator: " + status.ToString());
+  }else {
+    LOG(INFO) << "Registered ascend.right_shift operator";
+  }
+
+  // Register Cat operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.cat",
+      "ASCEND",
+      AscendCat);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.cat operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.cat operator: " + status.ToString());
+  }else {
+    LOG(INFO) << "Registered ascend.cat operator";
+  }
+
   // Register other operators here in the future
 }
 

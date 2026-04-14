@@ -154,15 +154,23 @@ ffi::Error FullHandlerS32(
     return ffi::Error::Internal(
         absl::StrCat("aclnnForeachZeroInplaceGetWorkspaceSize failed: ", status));
   }
+  // Allocate workspace memory for zero operation
+  void* workspaceAddr_zero = nullptr;
+  if (workspace_size_zero > 0) {
+    aclrtMalloc(&workspaceAddr_zero, workspace_size_zero, ACL_MEM_MALLOC_HUGE_FIRST);
+  }
 
   status = aclnnForeachZeroInplace(
-      nullptr,  // workspace is managed by XLA
+      workspaceAddr_zero,
       workspace_size_zero,
       executor_zero,
       stream);
   if (status != ACL_SUCCESS) {
     aclDestroyTensorList(tensor_list);
     aclDestroyTensor(self_tensor);
+    if (workspace_size_zero > 0) {
+      aclrtFree(workspaceAddr_zero);
+    }
     return ffi::Error::Internal(
         absl::StrCat("aclnnForeachZeroInplace failed: ", status));
   }
@@ -173,6 +181,9 @@ ffi::Error FullHandlerS32(
   if (scalar_value == nullptr) {
     aclDestroyTensorList(tensor_list);
     aclDestroyTensor(self_tensor);
+    if (workspace_size_zero > 0) {
+      aclrtFree(workspaceAddr_zero);
+    }
     return ffi::Error::Internal("Failed to create aclScalar");
   }
   
@@ -186,12 +197,21 @@ ffi::Error FullHandlerS32(
     aclDestroyScalar(scalar_value);
     aclDestroyTensorList(tensor_list);
     aclDestroyTensor(self_tensor);
+    if (workspace_size_zero > 0) {
+      aclrtFree(workspaceAddr_zero);
+    }
     return ffi::Error::Internal(
         absl::StrCat("aclnnForeachAddScalarV2GetWorkspaceSize failed: ", status));
   }
 
+  // Allocate workspace memory for add operation
+  void* workspaceAddr_add = nullptr;
+  if (workspace_size_add > 0) {
+    aclrtMalloc(&workspaceAddr_add, workspace_size_add, ACL_MEM_MALLOC_HUGE_FIRST);
+  }
+
   status = aclnnForeachAddScalarV2(
-      nullptr,  // workspace is managed by XLA
+      workspaceAddr_add,
       workspace_size_add,
       executor_add,
       stream);
@@ -199,14 +219,41 @@ ffi::Error FullHandlerS32(
     aclDestroyScalar(scalar_value);
     aclDestroyTensorList(tensor_list);
     aclDestroyTensor(self_tensor);
+    if (workspace_size_zero > 0) {
+      aclrtFree(workspaceAddr_zero);
+    }
+    if (workspace_size_add > 0) {
+      aclrtFree(workspaceAddr_add);
+    }
     return ffi::Error::Internal(
         absl::StrCat("aclnnForeachAddScalarV2 failed: ", status));
+  }
+
+  status = aclrtSynchronizeStream(stream);
+  if(status != ACL_SUCCESS){
+    aclDestroyScalar(scalar_value);
+    aclDestroyTensorList(tensor_list);
+    aclDestroyTensor(self_tensor);
+    if (workspace_size_zero > 0) {
+      aclrtFree(workspaceAddr_zero);
+    }
+    if (workspace_size_add > 0) {
+      aclrtFree(workspaceAddr_add);
+    }
+    return ffi::Error::Internal(
+        absl::StrCat("aclrtSynchronizeStream failed: ", status));
   }
 
   // Release resources
   aclDestroyScalar(scalar_value);
   aclDestroyTensorList(tensor_list);
   aclDestroyTensor(self_tensor);
+  if (workspace_size_zero > 0) {
+    aclrtFree(workspaceAddr_zero);
+  }
+  if (workspace_size_add > 0) {
+    aclrtFree(workspaceAddr_add);
+  }
 
   return ffi::Error::Success();
 }
@@ -241,15 +288,23 @@ ffi::Error FullHandlerS64(
     return ffi::Error::Internal(
         absl::StrCat("aclnnForeachZeroInplaceGetWorkspaceSize failed: ", status));
   }
+  // Allocate workspace memory for zero operation
+  void* workspaceAddr_zero = nullptr;
+  if (workspace_size_zero > 0) {
+    aclrtMalloc(&workspaceAddr_zero, workspace_size_zero, ACL_MEM_MALLOC_HUGE_FIRST);
+  }
 
   status = aclnnForeachZeroInplace(
-      nullptr,  // workspace is managed by XLA
+      workspaceAddr_zero,
       workspace_size_zero,
       executor_zero,
       stream);
   if (status != ACL_SUCCESS) {
     aclDestroyTensorList(tensor_list);
     aclDestroyTensor(self_tensor);
+    if (workspace_size_zero > 0) {
+      aclrtFree(workspaceAddr_zero);
+    }
     return ffi::Error::Internal(
         absl::StrCat("aclnnForeachZeroInplace failed: ", status));
   }
@@ -260,6 +315,9 @@ ffi::Error FullHandlerS64(
   if (scalar_value == nullptr) {
     aclDestroyTensorList(tensor_list);
     aclDestroyTensor(self_tensor);
+    if (workspace_size_zero > 0) {
+      aclrtFree(workspaceAddr_zero);
+    }
     return ffi::Error::Internal("Failed to create aclScalar");
   }
   
@@ -273,12 +331,21 @@ ffi::Error FullHandlerS64(
     aclDestroyScalar(scalar_value);
     aclDestroyTensorList(tensor_list);
     aclDestroyTensor(self_tensor);
+    if (workspace_size_zero > 0) {
+      aclrtFree(workspaceAddr_zero);
+    }
     return ffi::Error::Internal(
         absl::StrCat("aclnnForeachAddScalarV2GetWorkspaceSize failed: ", status));
   }
 
+  // Allocate workspace memory for add operation
+  void* workspaceAddr_add = nullptr;
+  if (workspace_size_add > 0) {
+    aclrtMalloc(&workspaceAddr_add, workspace_size_add, ACL_MEM_MALLOC_HUGE_FIRST);
+  }
+
   status = aclnnForeachAddScalarV2(
-      nullptr,  // workspace is managed by XLA
+      workspaceAddr_add,
       workspace_size_add,
       executor_add,
       stream);
@@ -286,14 +353,41 @@ ffi::Error FullHandlerS64(
     aclDestroyScalar(scalar_value);
     aclDestroyTensorList(tensor_list);
     aclDestroyTensor(self_tensor);
+    if (workspace_size_zero > 0) {
+      aclrtFree(workspaceAddr_zero);
+    }
+    if (workspace_size_add > 0) {
+      aclrtFree(workspaceAddr_add);
+    }
     return ffi::Error::Internal(
         absl::StrCat("aclnnForeachAddScalarV2 failed: ", status));
+  }
+
+  status = aclrtSynchronizeStream(stream);
+  if(status != ACL_SUCCESS){
+    aclDestroyScalar(scalar_value);
+    aclDestroyTensorList(tensor_list);
+    aclDestroyTensor(self_tensor);
+    if (workspace_size_zero > 0) {
+      aclrtFree(workspaceAddr_zero);
+    }
+    if (workspace_size_add > 0) {
+      aclrtFree(workspaceAddr_add);
+    }
+    return ffi::Error::Internal(
+        absl::StrCat("aclrtSynchronizeStream failed: ", status));
   }
 
   // Release resources
   aclDestroyScalar(scalar_value);
   aclDestroyTensorList(tensor_list);
   aclDestroyTensor(self_tensor);
+  if (workspace_size_zero > 0) {
+    aclrtFree(workspaceAddr_zero);
+  }
+  if (workspace_size_add > 0) {
+    aclrtFree(workspaceAddr_add);
+  }
 
   return ffi::Error::Success();
 }

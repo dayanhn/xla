@@ -90,6 +90,9 @@ class ThunkEmitter {
   // Emit handlers for specific FFI patterns
   absl::StatusOr<xla::gpu::ThunkSequence> EmitBroadcastConstantFusion(
       const HloFusionInstruction* fusion);
+  
+  absl::StatusOr<xla::gpu::ThunkSequence> EmitConvertFusion(
+      const HloFusionInstruction* fusion);
 
   // Context and state
   xla::gpu::IrEmitterContext* ir_emitter_context_;
