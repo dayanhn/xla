@@ -109,6 +109,57 @@ bool IsBroadcastConstantFusion(const HloFusionInstruction* fusion) {
   return true;
 }
 
+// Helper function to check if a fusion is a tensor broadcast fusion (parameter + broadcast)
+bool IsTensorBroadcastFusion(const HloFusionInstruction* fusion) {
+  auto* computation = fusion->fused_instructions_computation();
+  
+  // Must have exactly 2 instructions: parameter + broadcast
+  const auto& instructions = computation->instructions();
+  int64_t instruction_count = std::distance(instructions.begin(), instructions.end());
+  if (instruction_count != 2) {
+    VLOG(4) << "TensorBroadcastFusion: expected 2 instructions, got " 
+            << instruction_count;
+    return false;
+  }
+  
+  // Find the parameter and broadcast instructions
+  const HloInstruction* param_instr = nullptr;
+  const HloInstruction* broadcast_instr = nullptr;
+  
+  for (const auto* instr : instructions) {
+    if (instr->opcode() == HloOpcode::kParameter) {
+      param_instr = instr;
+    } else if (instr->opcode() == HloOpcode::kBroadcast) {
+      broadcast_instr = instr;
+    } else {
+      VLOG(4) << "TensorBroadcastFusion: unexpected opcode " 
+              << HloOpcodeString(instr->opcode());
+      return false;
+    }
+  }
+  
+  // Both instructions must be present
+  if (!param_instr || !broadcast_instr) {
+    VLOG(4) << "TensorBroadcastFusion: missing parameter or broadcast instruction";
+    return false;
+  }
+  
+  // Broadcast must take parameter as its only operand
+  if (broadcast_instr->operand_count() != 1 || 
+      broadcast_instr->operand(0) != param_instr) {
+    VLOG(4) << "TensorBroadcastFusion: broadcast does not take parameter as operand";
+    return false;
+  }
+  
+  // Fusion's root must be the broadcast instruction
+  if (computation->root_instruction() != broadcast_instr) {
+    VLOG(4) << "TensorBroadcastFusion: fusion root is not broadcast";
+    return false;
+  }
+  
+  return true;
+}
+
 // Helper function to check if a fusion matches the convert-element-type pattern
 // Pattern: fusion { parameter -> convert-element-type }
 bool IsConvertFusion(const HloFusionInstruction* fusion) {
@@ -377,6 +428,13 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitFusion(
     }
   }
   
+  if (IsTensorBroadcastFusion(fusion)) {
+    TF_ASSIGN_OR_RETURN(auto thunks, EmitTensorBroadcastFusion(fusion));
+    if (!thunks.empty()) {
+      return thunks;
+    }
+  }
+  
   // Pattern 2: convert-element-type -> ascend.cast.s32_to_u32
   if (IsConvertFusion(fusion)) {
     TF_ASSIGN_OR_RETURN(auto thunks, EmitConvertFusion(fusion));
@@ -467,6 +525,111 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitBroadcastConstantFusio
           "ASCEND",
           gpu_compute_capability,
           /*execution_state=*/nullptr));
+  
+  // Add the thunk to the sequence
+  xla::gpu::ThunkSequence sequence;
+  sequence.push_back(std::move(thunk));
+  
+  return sequence;
+}
+
+// Helper function to emit tensor broadcast fusion as ascend.expand FFI call
+absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitTensorBroadcastFusion(
+    const HloFusionInstruction* fusion) {
+  VLOG(2) << "Emitting tensor broadcast fusion as ascend.expand: " << fusion->name();
+  
+  // Get the input and output buffer allocations
+  TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
+  
+  // Extract broadcast dimensions from the fusion computation
+  auto* computation = fusion->fused_instructions_computation();
+  const HloInstruction* broadcast_instr = nullptr;
+  
+  for (const auto* instr : computation->instructions()) {
+    if (instr->opcode() == HloOpcode::kBroadcast) {
+      broadcast_instr = instr;
+      break;
+    }
+  }
+  
+  if (!broadcast_instr) {
+    return absl::InternalError("No broadcast instruction found in tensor broadcast fusion");
+  }
+  
+  // Get the output shape (target shape for expand)
+  const Shape& output_shape = fusion->shape();
+  std::vector<int64_t> size(output_shape.dimensions().begin(), output_shape.dimensions().end());
+  
+  VLOG(2) << "Tensor broadcast fusion: input shape=" << fusion->operand(0)->shape().ToString() 
+          << ", output shape=" << output_shape.ToString();
+  
+  // Create operands and results for CustomCallThunk
+  std::vector<NullableShapedSlice> operands;
+  std::vector<NullableShapedSlice> results;
+  
+  // Add input and output slices
+  operands.push_back(input_slice);
+  results.push_back(output_slice);
+  
+  // Get GPU compute capability
+  const se::GpuComputeCapability& gpu_compute_capability = 
+      ir_emitter_context_->gpu_compute_capability();
+  
+  // Determine the function name based on data type
+  std::string function_name = "ascend.expand";
+  const Shape& input_shape = fusion->operand(0)->shape();
+  PrimitiveType element_type = input_shape.element_type();
+  
+  switch (element_type) {
+    case F32:
+      function_name += ".f32";
+      break;
+    case F16:
+      function_name += ".f16";
+      break;
+    case BF16:
+      function_name += ".bf16";
+      break;
+    case S32:
+      function_name += ".s32";
+      break;
+    case S64:
+      function_name += ".s64";
+      break;
+    case U8:
+      function_name += ".u8";
+      break;
+    case S8:
+      function_name += ".s8";
+      break;
+    case PRED:
+      function_name += ".bool";
+      break;
+    default:
+      VLOG(2) << "Unsupported data type for expand: " << PrimitiveType_Name(element_type);
+      function_name += ".f32"; // Default to f32 if type not supported
+      break;
+  }
+  
+  VLOG(2) << "Using expand function: " << function_name;
+  
+  // Create CustomCallThunk with size as additional argument
+  auto thunk_builder = xla::gpu::CustomCallThunk::Builder(
+      xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
+      function_name,
+      std::move(operands),
+      std::move(results),
+      "ASCEND");
+  
+  // Add size as an argument
+  thunk_builder.AddArg(xla::ffi::Array<int64_t>(size));
+  
+  // Create the thunk
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::gpu::CustomCallThunk> thunk,
+      thunk_builder.Build(gpu_compute_capability));
+
   
   // Add the thunk to the sequence
   xla::gpu::ThunkSequence sequence;

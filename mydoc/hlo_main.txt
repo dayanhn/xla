@@ -1,0 +1,356 @@
+
+
+
+ENTRY %main.16 (params_0___W__.1: f32[784,512], params_0___b__.1: f32[512], params_1___W__.1: f32[512,256], params_1___b__.1: f32[256], params_2___W__.1: f32[256,10], params_2___b__.1: f32[10], x.1: f32[128,784], y.1: u8[128], lr.1: f32[]) -> (f32[784,512], f32[512], f32[512,256], f32[256], f32[256,10], /*index=5*/f32[10]) {
+  %loop_broadcast_fusion = f32[128,512]{1,0} fusion(), kind=kLoop, calls=
+  () -> f32[128,512] {
+    %constant_18_1 = f32[] constant(0)
+    ROOT %broadcast.3.1 = f32[128,512]{1,0} broadcast(%constant_18_1), dimensions={}
+  }
+  %params_0___W__.1 = f32[784,512]{1,0} parameter(0), sharding={replicated}, frontend_attributes={xla.sdy.sharding="#sdy.sharding<@empty_mesh, [{}, {}]>"}, metadata={op_name="params[0][\'W\']"}
+  %x.1 = f32[128,784]{1,0} parameter(6), metadata={op_name="x"}
+  %custom-call.8 = (f32[128,512]{1,0}, s8[2007040]{0}) custom-call(%x.1, %params_0___W__.1), custom_call_target="__cublas$gemm", metadata={op_name="jit(update)/jvp()/dot_general" stack_frame_id=10}, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"],"algorithm":"ALG_UNSET"},"epilogue":"DEFAULT","lhs_stride":"100352","rhs_stride":"401408","grad_x":false,"grad_y":false,"damax_output":false,"autotune_workspace_size":"0"},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
+  %get-tuple-element.8 = f32[128,512]{1,0} get-tuple-element(%custom-call.8), index=0, metadata={op_name="jit(update)/jvp()/dot_general" stack_frame_id=10}
+  %params_0___b__.1 = f32[512]{0} parameter(1), sharding={replicated}, frontend_attributes={xla.sdy.sharding="#sdy.sharding<@empty_mesh, [{}]>"}, metadata={op_name="params[0][\'b\']"}
+  %wrapped_broadcast.1 = f32[128,512]{1,0} fusion(%params_0___b__.1), kind=kLoop, calls=
+  (param_0.11: f32[512]) -> f32[128,512] {
+    %param_0.11 = f32[512]{0} parameter(0)
+    ROOT %add.14.1 = f32[128,512]{1,0} broadcast(%param_0.11), dimensions={1}, metadata={op_name="jit(update)/jvp()/add" stack_frame_id=10}
+  }, metadata={op_name="jit(update)/jvp()/add" stack_frame_id=10}
+  %wrapped_add = f32[128,512]{1,0} fusion(%get-tuple-element.8, %wrapped_broadcast.1), kind=kLoop, calls=
+  (param_0.12: f32[128,512], param_1.6: f32[128,512]) -> f32[128,512] {
+    %param_0.12 = f32[128,512]{1,0} parameter(0)
+    %param_1.6 = f32[128,512]{1,0} parameter(1)
+    ROOT %add.15.1 = f32[128,512]{1,0} add(%param_0.12, %param_1.6), metadata={op_name="jit(update)/jvp()/add" stack_frame_id=10}
+  }, metadata={op_name="jit(update)/jvp()/add" stack_frame_id=10}
+  %wrapped_maximum = f32[128,512]{1,0} fusion(%wrapped_add, %loop_broadcast_fusion), kind=kLoop, calls=
+  (param_0.14: f32[128,512], param_1.8: f32[128,512]) -> f32[128,512] {
+    %param_0.14 = f32[128,512]{1,0} parameter(0)
+    %param_1.8 = f32[128,512]{1,0} parameter(1)
+    ROOT %max.1.1 = f32[128,512]{1,0} maximum(%param_0.14, %param_1.8), metadata={op_name="jit(update)/jvp()/jit(relu)/max" stack_frame_id=11}
+  }, metadata={op_name="jit(update)/jvp()/jit(relu)/max" stack_frame_id=11}
+  %params_1___W__.1 = f32[512,256]{1,0} parameter(2), sharding={replicated}, frontend_attributes={xla.sdy.sharding="#sdy.sharding<@empty_mesh, [{}, {}]>"}, metadata={op_name="params[1][\'W\']"}
+  %custom-call.9 = (f32[128,256]{1,0}, s8[786432]{0}) custom-call(%wrapped_maximum, %params_1___W__.1), custom_call_target="__cublas$gemm", metadata={op_name="jit(update)/jvp()/dot_general" stack_frame_id=10}, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"],"algorithm":"ALG_UNSET"},"epilogue":"DEFAULT","lhs_stride":"65536","rhs_stride":"131072","grad_x":false,"grad_y":false,"damax_output":false,"autotune_workspace_size":"0"},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
+  %get-tuple-element.1.0 = f32[128,256]{1,0} get-tuple-element(%custom-call.9), index=0, metadata={op_name="jit(update)/jvp()/dot_general" stack_frame_id=10}
+  %params_1___b__.1 = f32[256]{0} parameter(3), sharding={replicated}, frontend_attributes={xla.sdy.sharding="#sdy.sharding<@empty_mesh, [{}]>"}, metadata={op_name="params[1][\'b\']"}
+  %wrapped_broadcast.2 = f32[128,256]{1,0} fusion(%params_1___b__.1), kind=kLoop, calls=
+  (param_0.15: f32[256]) -> f32[128,256] {
+    %param_0.15 = f32[256]{0} parameter(0)
+    ROOT %add.18.1 = f32[128,256]{1,0} broadcast(%param_0.15), dimensions={1}, metadata={op_name="jit(update)/jvp()/add" stack_frame_id=10}
+  }, metadata={op_name="jit(update)/jvp()/add" stack_frame_id=10}
+  %wrapped_add.1 = f32[128,256]{1,0} fusion(%get-tuple-element.1.0, %wrapped_broadcast.2), kind=kLoop, calls=
+  (param_0.16: f32[128,256], param_1.9: f32[128,256]) -> f32[128,256] {
+    %param_0.16 = f32[128,256]{1,0} parameter(0)
+    %param_1.9 = f32[128,256]{1,0} parameter(1)
+    ROOT %add.19.1 = f32[128,256]{1,0} add(%param_0.16, %param_1.9), metadata={op_name="jit(update)/jvp()/add" stack_frame_id=10}
+  }, metadata={op_name="jit(update)/jvp()/add" stack_frame_id=10}
+  %loop_broadcast_fusion.1 = f32[128,256]{1,0} fusion(), kind=kLoop, calls=
+  () -> f32[128,256] {
+    %constant_18_2 = f32[] constant(0)
+    ROOT %broadcast.2.1 = f32[128,256]{1,0} broadcast(%constant_18_2), dimensions={}
+  }
+  %wrapped_maximum.1 = f32[128,256]{1,0} fusion(%wrapped_add.1, %loop_broadcast_fusion.1), kind=kLoop, calls=
+  (param_0.22: f32[128,256], param_1.13: f32[128,256]) -> f32[128,256] {
+    %param_0.22 = f32[128,256]{1,0} parameter(0)
+    %param_1.13 = f32[128,256]{1,0} parameter(1)
+    ROOT %max.5.1 = f32[128,256]{1,0} maximum(%param_0.22, %param_1.13), metadata={op_name="jit(update)/jvp()/jit(relu)/max" stack_frame_id=11}
+  }, metadata={op_name="jit(update)/jvp()/jit(relu)/max" stack_frame_id=11}
+  %params_2___W__.1 = f32[256,10]{1,0} parameter(4), sharding={replicated}, frontend_attributes={xla.sdy.sharding="#sdy.sharding<@empty_mesh, [{}, {}]>"}, metadata={op_name="params[2][\'W\']"}
+  %custom-call.10 = (f32[128,10]{1,0}, s8[141312]{0}) custom-call(%wrapped_maximum.1, %params_2___W__.1), custom_call_target="__cublas$gemm", metadata={op_name="jit(update)/jvp()/dot_general" stack_frame_id=12}, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"],"algorithm":"ALG_UNSET"},"epilogue":"DEFAULT","lhs_stride":"32768","rhs_stride":"2560","grad_x":false,"grad_y":false,"damax_output":false,"autotune_workspace_size":"0"},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
+  %get-tuple-element.2.0 = f32[128,10]{1,0} get-tuple-element(%custom-call.10), index=0, metadata={op_name="jit(update)/jvp()/dot_general" stack_frame_id=12}
+  %params_2___b__.1 = f32[10]{0} parameter(5), sharding={replicated}, frontend_attributes={xla.sdy.sharding="#sdy.sharding<@empty_mesh, [{}]>"}, metadata={op_name="params[2][\'b\']"}
+  %wrapped_broadcast.4 = f32[128,10]{1,0} fusion(%params_2___b__.1), kind=kLoop, calls=
+  (param_0.23: f32[10]) -> f32[128,10] {
+    %param_0.23 = f32[10]{0} parameter(0)
+    ROOT %add.22.1 = f32[128,10]{1,0} broadcast(%param_0.23), dimensions={1}, metadata={op_name="jit(update)/jvp()/add" stack_frame_id=12}
+  }, metadata={op_name="jit(update)/jvp()/add" stack_frame_id=12}
+  %wrapped_add.2 = f32[128,10]{1,0} fusion(%get-tuple-element.2.0, %wrapped_broadcast.4), kind=kLoop, calls=
+  (param_0.24: f32[128,10], param_1.14: f32[128,10]) -> f32[128,10] {
+    %param_0.24 = f32[128,10]{1,0} parameter(0)
+    %param_1.14 = f32[128,10]{1,0} parameter(1)
+    ROOT %add.23.1 = f32[128,10]{1,0} add(%param_0.24, %param_1.14), metadata={op_name="jit(update)/jvp()/add" stack_frame_id=12}
+  }, metadata={op_name="jit(update)/jvp()/add" stack_frame_id=12}
+  %loop_reduce_fusion.5 = f32[128]{0} fusion(%wrapped_add.2), kind=kLoop, calls=
+  (param_0.9: f32[128,10]) -> f32[128] {
+    %param_0.9 = f32[128,10]{1,0} parameter(0)
+    %constant_2_1 = f32[] constant(-inf), metadata={op_name="jit(update)/jvp(jit(log_softmax))"}
+    ROOT %reduce_max.0.1 = f32[128]{0} reduce(%param_0.9, %constant_2_1), dimensions={1}, to_apply=
+    (reduce_max.3: f32[], reduce_max.4: f32[]) -> f32[] {
+      %reduce_max.3 = f32[] parameter(0), metadata={op_name="reduce_max"}
+      %reduce_max.4 = f32[] parameter(1), metadata={op_name="reduce_max"}
+      ROOT %reduce_max.5.0 = f32[] maximum(%reduce_max.3, %reduce_max.4), metadata={op_name="reduce_max" stack_frame_id=23}
+    }, metadata={op_name="jit(update)/jvp(jit(log_softmax))/reduce_max" stack_frame_id=23}
+  }, metadata={op_name="jit(update)/jvp(jit(log_softmax))/reduce_max" stack_frame_id=23}
+  %wrapped_broadcast.5 = f32[128,10]{1,0} fusion(%loop_reduce_fusion.5), kind=kLoop, calls=
+  (param_0.25: f32[128]) -> f32[128,10] {
+    %param_0.25 = f32[128]{0} parameter(0)
+    ROOT %sub.2.1 = f32[128,10]{1,0} broadcast(%param_0.25), dimensions={0}, metadata={op_name="jit(update)/jvp(jit(log_softmax))/sub" stack_frame_id=23}
+  }, metadata={op_name="jit(update)/jvp(jit(log_softmax))/sub" stack_frame_id=23}
+  %wrapped_subtract = f32[128,10]{1,0} fusion(%wrapped_add.2, %wrapped_broadcast.5), kind=kLoop, calls=
+  (param_0.26: f32[128,10], param_1.15: f32[128,10]) -> f32[128,10] {
+    %param_0.26 = f32[128,10]{1,0} parameter(0)
+    %param_1.15 = f32[128,10]{1,0} parameter(1)
+    ROOT %sub.3.1 = f32[128,10]{1,0} subtract(%param_0.26, %param_1.15), metadata={op_name="jit(update)/jvp(jit(log_softmax))/sub" stack_frame_id=23}
+  }, metadata={op_name="jit(update)/jvp(jit(log_softmax))/sub" stack_frame_id=23}
+  %wrapped_exponential = f32[128,10]{1,0} fusion(%wrapped_subtract), kind=kLoop, calls=
+  (param_0.27: f32[128,10]) -> f32[128,10] {
+    %param_0.27 = f32[128,10]{1,0} parameter(0)
+    ROOT %exp.0.1 = f32[128,10]{1,0} exponential(%param_0.27), metadata={op_name="jit(update)/jvp(jit(log_softmax))/exp" stack_frame_id=23}
+  }, metadata={op_name="jit(update)/jvp(jit(log_softmax))/exp" stack_frame_id=23}
+  %loop_reduce_fusion.4 = f32[128]{0} fusion(%wrapped_exponential), kind=kLoop, calls=
+  (param_0.7: f32[128,10]) -> f32[128] {
+    %param_0.7 = f32[128,10]{1,0} parameter(0)
+    %constant_18_8 = f32[] constant(0)
+    ROOT %reduce_sum.0.1 = f32[128]{0} reduce(%param_0.7, %constant_18_8), dimensions={1}, to_apply=
+    (reduce_sum.16: f32[], reduce_sum.17: f32[]) -> f32[] {
+      %reduce_sum.16 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+      %reduce_sum.17 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+      ROOT %reduce_sum.21.0 = f32[] add(%reduce_sum.16, %reduce_sum.17), metadata={op_name="reduce_sum" stack_frame_id=23}
+    }, metadata={op_name="jit(update)/jvp(jit(log_softmax))/reduce_sum" stack_frame_id=23}
+  }, metadata={op_name="jit(update)/jvp(jit(log_softmax))/reduce_sum" deduplicated_name="loop_reduce_fusion.3" stack_frame_id=23}
+  %loop_broadcast_fusion.2 = f32[128,10]{1,0} fusion(), kind=kLoop, calls=
+  () -> f32[128,10] {
+    %constant_18_6 = f32[] constant(0)
+    ROOT %broadcast.22 = f32[128,10]{1,0} broadcast(%constant_18_6), dimensions={}
+  }
+  %loop_broadcast_fusion.3 = f32[128,10]{1,0} fusion(), kind=kLoop, calls=
+  () -> f32[128,10] {
+    %constant_16_1 = f32[] constant(-0.0078125)
+    ROOT %broadcast_in_dim.13.1 = f32[128,10]{1,0} broadcast(%constant_16_1), dimensions={}, metadata={op_name="jit(update)/transpose(jvp())/broadcast_in_dim;jit(update)/transpose(jvp())/broadcast_in_dim"}
+  }, metadata={op_name="jit(update)/transpose(jvp())/broadcast_in_dim;jit(update)/transpose(jvp())/broadcast_in_dim"}
+  %y.1 = u8[128]{0} parameter(7), metadata={op_name="y"}
+  %wrapped_broadcast.3 = u8[128,10]{1,0} fusion(%y.1), kind=kLoop, calls=
+  (param_0.18: u8[128]) -> u8[128,10] {
+    %param_0.18 = u8[128]{0} parameter(0)
+    ROOT %eq.2.1 = u8[128,10]{1,0} broadcast(%param_0.18), dimensions={0}, metadata={op_name="jit(update)/jvp(jit(_one_hot))/eq" stack_frame_id=22}
+  }, metadata={op_name="jit(update)/jvp(jit(_one_hot))/eq" stack_frame_id=22}
+  %wrapped_iota = u8[128,10]{1,0} fusion(), kind=kLoop, calls=
+  () -> u8[128,10] {
+    ROOT %iota.6.1 = u8[128,10]{1,0} iota(), iota_dimension=1, metadata={op_name="jit(update)/jvp(jit(_one_hot))/eq" stack_frame_id=22}
+  }, metadata={op_name="jit(update)/jvp(jit(_one_hot))/eq" stack_frame_id=22}
+  %wrapped_compare.2 = pred[128,10]{1,0} fusion(%wrapped_broadcast.3, %wrapped_iota), kind=kLoop, calls=
+  (param_0.19: u8[128,10], param_1.11: u8[128,10]) -> pred[128,10] {
+    %param_0.19 = u8[128,10]{1,0} parameter(0)
+    %param_1.11 = u8[128,10]{1,0} parameter(1)
+    ROOT %eq.6.1 = pred[128,10]{1,0} compare(%param_0.19, %param_1.11), direction=EQ, metadata={op_name="jit(update)/jvp(jit(_one_hot))/eq" stack_frame_id=22}
+  }, metadata={op_name="jit(update)/jvp(jit(_one_hot))/eq" stack_frame_id=22}
+  %wrapped_select = f32[128,10]{1,0} fusion(%wrapped_compare.2, %loop_broadcast_fusion.3, %loop_broadcast_fusion.2), kind=kLoop, calls=
+  (param_0.20: pred[128,10], param_1.12: f32[128,10], param_2: f32[128,10]) -> f32[128,10] {
+    %param_0.20 = pred[128,10]{1,0} parameter(0)
+    %param_1.12 = f32[128,10]{1,0} parameter(1)
+    %param_2 = f32[128,10]{1,0} parameter(2)
+    ROOT %select.2 = f32[128,10]{1,0} select(%param_0.20, %param_1.12, %param_2), metadata={op_name="jit(update)/transpose(jvp())/mul;jit(update)/transpose(jvp())/broadcast_in_dim;jit(update)/transpose(jvp())/broadcast_in_dim"}
+  }, metadata={op_name="jit(update)/transpose(jvp())/mul;jit(update)/transpose(jvp())/broadcast_in_dim;jit(update)/transpose(jvp())/broadcast_in_dim"}
+  %loop_reduce_fusion.3 = f32[128]{0} fusion(%wrapped_select), kind=kLoop, calls=
+  (param_0.6: f32[128,10]) -> f32[128] {
+    %param_0.6 = f32[128,10]{1,0} parameter(0)
+    %constant_18_7 = f32[] constant(0)
+    ROOT %reduce_sum.1.1 = f32[128]{0} reduce(%param_0.6, %constant_18_7), dimensions={1}, to_apply=
+    (reduce_sum.24: f32[], reduce_sum.25: f32[]) -> f32[] {
+      %reduce_sum.24 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+      %reduce_sum.25 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+      ROOT %reduce_sum.26.0 = f32[] add(%reduce_sum.24, %reduce_sum.25), metadata={op_name="reduce_sum" stack_frame_id=23}
+    }, metadata={op_name="jit(update)/transpose(jvp(jit(log_softmax)))/reduce_sum" stack_frame_id=23}
+  }, metadata={op_name="jit(update)/transpose(jvp(jit(log_softmax)))/reduce_sum" deduplicated_name="loop_reduce_fusion.3" stack_frame_id=23}
+  %wrapped_negate = f32[128]{0} fusion(%loop_reduce_fusion.3), kind=kLoop, calls=
+  (param_0.21: f32[128]) -> f32[128] {
+    %param_0.21 = f32[128]{0} parameter(0)
+    ROOT %negate.2 = f32[128]{0} negate(%param_0.21), metadata={op_name="jit(update)/transpose(jvp(jit(log_softmax)))/neg" stack_frame_id=23}
+  }, metadata={op_name="jit(update)/transpose(jvp(jit(log_softmax)))/neg" stack_frame_id=23}
+  %wrapped_divide = f32[128]{0} fusion(%wrapped_negate, %loop_reduce_fusion.4), kind=kLoop, calls=
+  (param_0.28: f32[128], param_1.16: f32[128]) -> f32[128] {
+    %param_0.28 = f32[128]{0} parameter(0)
+    %param_1.16 = f32[128]{0} parameter(1)
+    ROOT %div.2.1 = f32[128]{0} divide(%param_0.28, %param_1.16), metadata={op_name="jit(update)/transpose(jvp(jit(log_softmax)))/div" stack_frame_id=23}
+  }, metadata={op_name="jit(update)/transpose(jvp(jit(log_softmax)))/div" stack_frame_id=23}
+  %wrapped_broadcast.6 = f32[128,10]{1,0} fusion(%wrapped_divide), kind=kLoop, calls=
+  (param_0.29: f32[128]) -> f32[128,10] {
+    %param_0.29 = f32[128]{0} parameter(0)
+    ROOT %broadcast_in_dim.3.1 = f32[128,10]{1,0} broadcast(%param_0.29), dimensions={0}, metadata={op_name="jit(update)/transpose(jvp(jit(log_softmax)))/broadcast_in_dim" stack_frame_id=23}
+  }, metadata={op_name="jit(update)/transpose(jvp(jit(log_softmax)))/broadcast_in_dim" stack_frame_id=23}
+  %wrapped_multiply = f32[128,10]{1,0} fusion(%wrapped_broadcast.6, %wrapped_exponential), kind=kLoop, calls=
+  (param_0.30: f32[128,10], param_1.17: f32[128,10]) -> f32[128,10] {
+    %param_0.30 = f32[128,10]{1,0} parameter(0)
+    %param_1.17 = f32[128,10]{1,0} parameter(1)
+    ROOT %mul.0.1 = f32[128,10]{1,0} multiply(%param_0.30, %param_1.17), metadata={op_name="jit(update)/transpose(jvp(jit(log_softmax)))/mul" stack_frame_id=23}
+  }, metadata={op_name="jit(update)/transpose(jvp(jit(log_softmax)))/mul" stack_frame_id=23}
+  %wrapped_add.3 = f32[128,10]{1,0} fusion(%wrapped_select, %wrapped_multiply), kind=kLoop, calls=
+  (param_0.31: f32[128,10], param_1.18: f32[128,10]) -> f32[128,10] {
+    %param_0.31 = f32[128,10]{1,0} parameter(0)
+    %param_1.18 = f32[128,10]{1,0} parameter(1)
+    ROOT %add_any.0.1 = f32[128,10]{1,0} add(%param_0.31, %param_1.18), metadata={op_name="jit(update)/transpose(jvp(jit(log_softmax)))/add_any" stack_frame_id=23}
+  }, metadata={op_name="jit(update)/transpose(jvp(jit(log_softmax)))/add_any" stack_frame_id=23}
+  %custom-call.11 = (f32[128,256]{1,0}, s8[15360]{0}) custom-call(%wrapped_add.3, %params_2___W__.1), custom_call_target="__cublas$gemm", metadata={op_name="jit(update)/transpose(jvp())/dot_general" stack_frame_id=12}, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["1"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"],"algorithm":"ALG_UNSET"},"epilogue":"DEFAULT","lhs_stride":"1280","rhs_stride":"2560","grad_x":false,"grad_y":false,"damax_output":false,"autotune_workspace_size":"0"},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
+  %get-tuple-element.3.0 = f32[128,256]{1,0} get-tuple-element(%custom-call.11), index=0, metadata={op_name="jit(update)/transpose(jvp())/dot_general" stack_frame_id=12}
+  %wrapped_compare.1 = pred[128,256]{1,0} fusion(%wrapped_add.1, %loop_broadcast_fusion.1), kind=kLoop, calls=
+  (param_0.17: f32[128,256], param_1.10: f32[128,256]) -> pred[128,256] {
+    %param_0.17 = f32[128,256]{1,0} parameter(0)
+    %param_1.10 = f32[128,256]{1,0} parameter(1)
+    ROOT %gt.3.1 = pred[128,256]{1,0} compare(%param_0.17, %param_1.10), direction=GT, metadata={op_name="jit(update)/jvp()/gt" stack_frame_id=11}
+  }, metadata={op_name="jit(update)/jvp()/gt" stack_frame_id=11}
+  %wrapped_select.1 = f32[128,256]{1,0} fusion(%wrapped_compare.1, %get-tuple-element.3.0, %loop_broadcast_fusion.1), kind=kLoop, calls=
+  (param_0.32: pred[128,256], param_1.19: f32[128,256], param_2.1: f32[128,256]) -> f32[128,256] {
+    %param_0.32 = pred[128,256]{1,0} parameter(0)
+    %param_1.19 = f32[128,256]{1,0} parameter(1)
+    %param_2.1 = f32[128,256]{1,0} parameter(2)
+    ROOT %select_n.2.1 = f32[128,256]{1,0} select(%param_0.32, %param_1.19, %param_2.1), metadata={op_name="jit(update)/transpose(jvp())/select_n" stack_frame_id=11}
+  }, metadata={op_name="jit(update)/transpose(jvp())/select_n" stack_frame_id=11}
+  %custom-call.12 = (f32[128,512]{1,0}, s8[655360]{0}) custom-call(%wrapped_select.1, %params_1___W__.1), custom_call_target="__cublas$gemm", metadata={op_name="jit(update)/transpose(jvp())/dot_general" stack_frame_id=10}, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["1"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"],"algorithm":"ALG_UNSET"},"epilogue":"DEFAULT","lhs_stride":"32768","rhs_stride":"131072","grad_x":false,"grad_y":false,"damax_output":false,"autotune_workspace_size":"0"},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
+  %get-tuple-element.4.0 = f32[128,512]{1,0} get-tuple-element(%custom-call.12), index=0, metadata={op_name="jit(update)/transpose(jvp())/dot_general" stack_frame_id=10}
+  %wrapped_compare = pred[128,512]{1,0} fusion(%wrapped_add, %loop_broadcast_fusion), kind=kLoop, calls=
+  (param_0.13: f32[128,512], param_1.7: f32[128,512]) -> pred[128,512] {
+    %param_0.13 = f32[128,512]{1,0} parameter(0)
+    %param_1.7 = f32[128,512]{1,0} parameter(1)
+    ROOT %gt.2.1 = pred[128,512]{1,0} compare(%param_0.13, %param_1.7), direction=GT, metadata={op_name="jit(update)/jvp()/gt" stack_frame_id=11}
+  }, metadata={op_name="jit(update)/jvp()/gt" stack_frame_id=11}
+  %wrapped_select.2 = f32[128,512]{1,0} fusion(%wrapped_compare, %get-tuple-element.4.0, %loop_broadcast_fusion), kind=kLoop, calls=
+  (param_0.33: pred[128,512], param_1.20: f32[128,512], param_2.2: f32[128,512]) -> f32[128,512] {
+    %param_0.33 = pred[128,512]{1,0} parameter(0)
+    %param_1.20 = f32[128,512]{1,0} parameter(1)
+    %param_2.2 = f32[128,512]{1,0} parameter(2)
+    ROOT %select_n.3.1 = f32[128,512]{1,0} select(%param_0.33, %param_1.20, %param_2.2), metadata={op_name="jit(update)/transpose(jvp())/select_n" stack_frame_id=11}
+  }, metadata={op_name="jit(update)/transpose(jvp())/select_n" stack_frame_id=11}
+  %custom-call.13 = (f32[784,512]{1,0}, s8[663552]{0}) custom-call(%x.1, %wrapped_select.2), custom_call_target="__cublas$gemm", metadata={op_name="jit(update)/transpose(jvp())/transpose" stack_frame_id=10}, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["0"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"],"algorithm":"ALG_UNSET"},"epilogue":"DEFAULT","lhs_stride":"100352","rhs_stride":"65536","grad_x":false,"grad_y":false,"damax_output":false,"autotune_workspace_size":"0"},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
+  %get-tuple-element.5.0 = f32[784,512]{1,0} get-tuple-element(%custom-call.13), index=0, metadata={op_name="jit(update)/transpose(jvp())/transpose" stack_frame_id=10}
+  %lr.1 = f32[] parameter(8), metadata={op_name="lr"}
+  %wrapped_broadcast = f32[784,512]{1,0} fusion(%lr.1), kind=kLoop, calls=
+  (param_0.10: f32[]) -> f32[784,512] {
+    %param_0.10 = f32[] parameter(0)
+    ROOT %mul.14.1 = f32[784,512]{1,0} broadcast(%param_0.10), dimensions={}, metadata={op_name="jit(update)/mul" stack_frame_id=25}
+  }, metadata={op_name="jit(update)/mul" stack_frame_id=25}
+  %wrapped_multiply.1 = f32[784,512]{1,0} fusion(%wrapped_broadcast, %get-tuple-element.5.0), kind=kLoop, calls=
+  (param_0.34: f32[784,512], param_1.21: f32[784,512]) -> f32[784,512] {
+    %param_0.34 = f32[784,512]{1,0} parameter(0)
+    %param_1.21 = f32[784,512]{1,0} parameter(1)
+    ROOT %mul.15.1 = f32[784,512]{1,0} multiply(%param_0.34, %param_1.21), metadata={op_name="jit(update)/mul" stack_frame_id=25}
+  }, metadata={op_name="jit(update)/mul" stack_frame_id=25}
+  %wrapped_subtract.1 = f32[784,512]{1,0} fusion(%params_0___W__.1, %wrapped_multiply.1), kind=kLoop, calls=
+  (param_0.35: f32[784,512], param_1.22: f32[784,512]) -> f32[784,512] {
+    %param_0.35 = f32[784,512]{1,0} parameter(0)
+    %param_1.22 = f32[784,512]{1,0} parameter(1)
+    ROOT %sub.14.1 = f32[784,512]{1,0} subtract(%param_0.35, %param_1.22), metadata={op_name="jit(update)/sub" stack_frame_id=26}
+  }, metadata={op_name="jit(update)/sub" stack_frame_id=26}
+  %loop_reduce_fusion = f32[512]{0} fusion(%wrapped_select.2), kind=kLoop, calls=
+  (param_0.2: f32[128,512]) -> f32[512] {
+    %param_0.2 = f32[128,512]{1,0} parameter(0)
+    %constant_18_3 = f32[] constant(0)
+    ROOT %reduce_sum.70.1 = f32[512]{0} reduce(%param_0.2, %constant_18_3), dimensions={0}, to_apply=
+    (reduce_sum.3: f32[], reduce_sum.4: f32[]) -> f32[] {
+      %reduce_sum.3 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+      %reduce_sum.4 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+      ROOT %reduce_sum.5.0 = f32[] add(%reduce_sum.3, %reduce_sum.4), metadata={op_name="reduce_sum" stack_frame_id=23}
+    }, metadata={op_name="jit(update)/transpose(jvp())/reduce_sum" stack_frame_id=10}
+  }, metadata={op_name="jit(update)/transpose(jvp())/reduce_sum" stack_frame_id=10}
+  %wrapped_broadcast.7 = f32[512]{0} fusion(%lr.1), kind=kLoop, calls=
+  (param_0.36: f32[]) -> f32[512] {
+    %param_0.36 = f32[] parameter(0)
+    ROOT %broadcast.15.1 = f32[512]{0} broadcast(%param_0.36), dimensions={}, metadata={op_name="jit(update)/mul" stack_frame_id=25}
+  }, metadata={op_name="jit(update)/mul" stack_frame_id=25}
+  %wrapped_multiply.2 = f32[512]{0} fusion(%wrapped_broadcast.7, %loop_reduce_fusion), kind=kLoop, calls=
+  (param_0.37: f32[512], param_1.23: f32[512]) -> f32[512] {
+    %param_0.37 = f32[512]{0} parameter(0)
+    %param_1.23 = f32[512]{0} parameter(1)
+    ROOT %mul.5.1 = f32[512]{0} multiply(%param_0.37, %param_1.23), metadata={op_name="jit(update)/mul" stack_frame_id=25}
+  }, metadata={op_name="jit(update)/mul" stack_frame_id=25}
+  %wrapped_subtract.2 = f32[512]{0} fusion(%params_0___b__.1, %wrapped_multiply.2), kind=kLoop, calls=
+  (param_0.38: f32[512], param_1.24: f32[512]) -> f32[512] {
+    %param_0.38 = f32[512]{0} parameter(0)
+    %param_1.24 = f32[512]{0} parameter(1)
+    ROOT %sub.15.1 = f32[512]{0} subtract(%param_0.38, %param_1.24), metadata={op_name="jit(update)/sub" stack_frame_id=26}
+  }, metadata={op_name="jit(update)/sub" stack_frame_id=26}
+  %custom-call.14 = (f32[512,256]{1,0}, s8[393216]{0}) custom-call(%wrapped_maximum, %wrapped_select.1), custom_call_target="__cublas$gemm", metadata={op_name="jit(update)/transpose(jvp())/transpose" stack_frame_id=10}, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["0"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"],"algorithm":"ALG_UNSET"},"epilogue":"DEFAULT","lhs_stride":"65536","rhs_stride":"32768","grad_x":false,"grad_y":false,"damax_output":false,"autotune_workspace_size":"0"},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
+  %get-tuple-element.6.0 = f32[512,256]{1,0} get-tuple-element(%custom-call.14), index=0, metadata={op_name="jit(update)/transpose(jvp())/transpose" stack_frame_id=10}
+  %wrapped_broadcast.8 = f32[512,256]{1,0} fusion(%lr.1), kind=kLoop, calls=
+  (param_0.39: f32[]) -> f32[512,256] {
+    %param_0.39 = f32[] parameter(0)
+    ROOT %mul.18.1 = f32[512,256]{1,0} broadcast(%param_0.39), dimensions={}, metadata={op_name="jit(update)/mul" stack_frame_id=25}
+  }, metadata={op_name="jit(update)/mul" stack_frame_id=25}
+  %wrapped_multiply.3 = f32[512,256]{1,0} fusion(%wrapped_broadcast.8, %get-tuple-element.6.0), kind=kLoop, calls=
+  (param_0.40: f32[512,256], param_1.25: f32[512,256]) -> f32[512,256] {
+    %param_0.40 = f32[512,256]{1,0} parameter(0)
+    %param_1.25 = f32[512,256]{1,0} parameter(1)
+    ROOT %mul.19.1 = f32[512,256]{1,0} multiply(%param_0.40, %param_1.25), metadata={op_name="jit(update)/mul" stack_frame_id=25}
+  }, metadata={op_name="jit(update)/mul" stack_frame_id=25}
+  %wrapped_subtract.3 = f32[512,256]{1,0} fusion(%params_1___W__.1, %wrapped_multiply.3), kind=kLoop, calls=
+  (param_0.41: f32[512,256], param_1.26: f32[512,256]) -> f32[512,256] {
+    %param_0.41 = f32[512,256]{1,0} parameter(0)
+    %param_1.26 = f32[512,256]{1,0} parameter(1)
+    ROOT %sub.16.1 = f32[512,256]{1,0} subtract(%param_0.41, %param_1.26), metadata={op_name="jit(update)/sub" stack_frame_id=26}
+  }, metadata={op_name="jit(update)/sub" stack_frame_id=26}
+  %loop_reduce_fusion.2 = f32[256]{0} fusion(%wrapped_select.1), kind=kLoop, calls=
+  (param_0.4: f32[128,256]) -> f32[256] {
+    %param_0.4 = f32[128,256]{1,0} parameter(0)
+    %constant_18_5 = f32[] constant(0)
+    ROOT %reduce_sum.68.1 = f32[256]{0} reduce(%param_0.4, %constant_18_5), dimensions={0}, to_apply=
+    (reduce_sum.6: f32[], reduce_sum.8: f32[]) -> f32[] {
+      %reduce_sum.6 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+      %reduce_sum.8 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+      ROOT %reduce_sum.9.0 = f32[] add(%reduce_sum.6, %reduce_sum.8), metadata={op_name="reduce_sum" stack_frame_id=23}
+    }, metadata={op_name="jit(update)/transpose(jvp())/reduce_sum" stack_frame_id=10}
+  }, metadata={op_name="jit(update)/transpose(jvp())/reduce_sum" stack_frame_id=10}
+  %wrapped_broadcast.9 = f32[256]{0} fusion(%lr.1), kind=kLoop, calls=
+  (param_0.42: f32[]) -> f32[256] {
+    %param_0.42 = f32[] parameter(0)
+    ROOT %broadcast.17.1 = f32[256]{0} broadcast(%param_0.42), dimensions={}, metadata={op_name="jit(update)/mul" stack_frame_id=25}
+  }, metadata={op_name="jit(update)/mul" stack_frame_id=25}
+  %wrapped_multiply.4 = f32[256]{0} fusion(%wrapped_broadcast.9, %loop_reduce_fusion.2), kind=kLoop, calls=
+  (param_0.43: f32[256], param_1.27: f32[256]) -> f32[256] {
+    %param_0.43 = f32[256]{0} parameter(0)
+    %param_1.27 = f32[256]{0} parameter(1)
+    ROOT %mul.6.1 = f32[256]{0} multiply(%param_0.43, %param_1.27), metadata={op_name="jit(update)/mul" stack_frame_id=25}
+  }, metadata={op_name="jit(update)/mul" stack_frame_id=25}
+  %wrapped_subtract.4 = f32[256]{0} fusion(%params_1___b__.1, %wrapped_multiply.4), kind=kLoop, calls=
+  (param_0.44: f32[256], param_1.28: f32[256]) -> f32[256] {
+    %param_0.44 = f32[256]{0} parameter(0)
+    %param_1.28 = f32[256]{0} parameter(1)
+    ROOT %sub.17.1 = f32[256]{0} subtract(%param_0.44, %param_1.28), metadata={op_name="jit(update)/sub" stack_frame_id=26}
+  }, metadata={op_name="jit(update)/sub" stack_frame_id=26}
+  %custom-call.15 = (f32[256,10]{1,0}, s8[136192]{0}) custom-call(%wrapped_maximum.1, %wrapped_add.3), custom_call_target="__cublas$gemm", metadata={op_name="jit(update)/transpose(jvp())/transpose" stack_frame_id=12}, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["0"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"],"algorithm":"ALG_UNSET"},"epilogue":"DEFAULT","lhs_stride":"32768","rhs_stride":"1280","grad_x":false,"grad_y":false,"damax_output":false,"autotune_workspace_size":"0"},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
+  %get-tuple-element.7.0 = f32[256,10]{1,0} get-tuple-element(%custom-call.15), index=0, metadata={op_name="jit(update)/transpose(jvp())/transpose" stack_frame_id=12}
+  %wrapped_broadcast.10 = f32[256,10]{1,0} fusion(%lr.1), kind=kLoop, calls=
+  (param_0.45: f32[]) -> f32[256,10] {
+    %param_0.45 = f32[] parameter(0)
+    ROOT %mul.22.1 = f32[256,10]{1,0} broadcast(%param_0.45), dimensions={}, metadata={op_name="jit(update)/mul" stack_frame_id=25}
+  }, metadata={op_name="jit(update)/mul" stack_frame_id=25}
+  %wrapped_multiply.5 = f32[256,10]{1,0} fusion(%wrapped_broadcast.10, %get-tuple-element.7.0), kind=kLoop, calls=
+  (param_0.46: f32[256,10], param_1.29: f32[256,10]) -> f32[256,10] {
+    %param_0.46 = f32[256,10]{1,0} parameter(0)
+    %param_1.29 = f32[256,10]{1,0} parameter(1)
+    ROOT %mul.23.1 = f32[256,10]{1,0} multiply(%param_0.46, %param_1.29), metadata={op_name="jit(update)/mul" stack_frame_id=25}
+  }, metadata={op_name="jit(update)/mul" stack_frame_id=25}
+  %wrapped_subtract.5 = f32[256,10]{1,0} fusion(%params_2___W__.1, %wrapped_multiply.5), kind=kLoop, calls=
+  (param_0.47: f32[256,10], param_1.30: f32[256,10]) -> f32[256,10] {
+    %param_0.47 = f32[256,10]{1,0} parameter(0)
+    %param_1.30 = f32[256,10]{1,0} parameter(1)
+    ROOT %sub.18.1 = f32[256,10]{1,0} subtract(%param_0.47, %param_1.30), metadata={op_name="jit(update)/sub" stack_frame_id=26}
+  }, metadata={op_name="jit(update)/sub" stack_frame_id=26}
+  %loop_reduce_fusion.1 = f32[10]{0} fusion(%wrapped_add.3), kind=kLoop, calls=
+  (param_0.3: f32[128,10]) -> f32[10] {
+    %param_0.3 = f32[128,10]{1,0} parameter(0)
+    %constant_18_4 = f32[] constant(0)
+    ROOT %reduce_sum.66.1 = f32[10]{0} reduce(%param_0.3, %constant_18_4), dimensions={0}, to_apply=
+    (reduce_sum.10: f32[], reduce_sum.14: f32[]) -> f32[] {
+      %reduce_sum.10 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+      %reduce_sum.14 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+      ROOT %reduce_sum.15.0 = f32[] add(%reduce_sum.10, %reduce_sum.14), metadata={op_name="reduce_sum" stack_frame_id=23}
+    }, metadata={op_name="jit(update)/transpose(jvp())/reduce_sum" stack_frame_id=12}
+  }, metadata={op_name="jit(update)/transpose(jvp())/reduce_sum" stack_frame_id=12}
+  %wrapped_broadcast.11 = f32[10]{0} fusion(%lr.1), kind=kLoop, calls=
+  (param_0.48: f32[]) -> f32[10] {
+    %param_0.48 = f32[] parameter(0)
+    ROOT %broadcast.19.1 = f32[10]{0} broadcast(%param_0.48), dimensions={}, metadata={op_name="jit(update)/mul" stack_frame_id=25}
+  }, metadata={op_name="jit(update)/mul" stack_frame_id=25}
+  %wrapped_multiply.6 = f32[10]{0} fusion(%wrapped_broadcast.11, %loop_reduce_fusion.1), kind=kLoop, calls=
+  (param_0.49: f32[10], param_1.31: f32[10]) -> f32[10] {
+    %param_0.49 = f32[10]{0} parameter(0)
+    %param_1.31 = f32[10]{0} parameter(1)
+    ROOT %mul.7.1 = f32[10]{0} multiply(%param_0.49, %param_1.31), metadata={op_name="jit(update)/mul" stack_frame_id=25}
+  }, metadata={op_name="jit(update)/mul" stack_frame_id=25}
+  %wrapped_subtract.6 = f32[10]{0} fusion(%params_2___b__.1, %wrapped_multiply.6), kind=kLoop, calls=
+  (param_0.50: f32[10], param_1.32: f32[10]) -> f32[10] {
+    %param_0.50 = f32[10]{0} parameter(0)
+    %param_1.32 = f32[10]{0} parameter(1)
+    ROOT %sub.19.1 = f32[10]{0} subtract(%param_0.50, %param_1.32), metadata={op_name="jit(update)/sub" stack_frame_id=26}
+  }, metadata={op_name="jit(update)/sub" stack_frame_id=26}
+  ROOT %tuple.3.0 = (f32[784,512]{1,0}, f32[512]{0}, f32[512,256]{1,0}, f32[256]{0}, f32[256,10]{1,0}, /*index=5*/f32[10]{0}) tuple(%wrapped_subtract.1, %wrapped_subtract.2, %wrapped_subtract.3, %wrapped_subtract.4, %wrapped_subtract.5, /*index=5*/%wrapped_subtract.6)
+}

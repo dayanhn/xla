@@ -1,0 +1,218 @@
+# Hlo IR 指令类型分析报告
+
+## 1. 数据输入/输出指令
+
+### 1.1 parameter 指令
+- **功能**：定义函数的输入参数
+- **代表性示例**：
+  ```
+  %params_0___W__.1 = f32[784,512]{1,0} parameter(0), sharding={replicated}, frontend_attributes={xla.sdy.sharding="#sdy.sharding<@empty_mesh, [{}, {}]>"}, metadata={op_name="params[0]['W']"}
+  ```
+
+### 1.2 tuple 指令
+- **功能**：将多个值组合成一个元组作为输出
+- **代表性示例**：
+  ```
+  ROOT %tuple.3.0 = (f32[784,512]{1,0}, f32[512]{0}, f32[512,256]{1,0}, f32[256]{0}, f32[256,10]{1,0}, /*index=5*/f32[10]{0}) tuple(%wrapped_subtract.1, %wrapped_subtract.2, %wrapped_subtract.3, %wrapped_subtract.4, %wrapped_subtract.5, /*index=5*/%wrapped_subtract.6)
+  ```
+
+## 2. 基本算术操作指令
+
+### 2.1 add 指令
+- **功能**：执行加法操作
+- **代表性示例**：
+  ```
+  ROOT %add.15.1 = f32[128,512]{1,0} add(%param_0.12, %param_1.6), metadata={op_name="jit(update)/jvp()/add" stack_frame_id=10}
+  ```
+- **对应aclnn API**：aclnnAdd
+- API接口使用说明：/data3/zhongzhw/code/google/ascend/ops-math/math/add/docs/aclnnAdd&aclnnInplaceAdd.md
+
+
+### 2.2 subtract 指令
+- **功能**：执行减法操作
+- **代表性示例**：
+  ```
+  ROOT %sub.3.1 = f32[128,10]{1,0} subtract(%param_0.26, %param_1.15), metadata={op_name="jit(update)/jvp(jit(log_softmax))/sub" stack_frame_id=23}
+  ```
+- **对应aclnn API**：aclnnSub
+- API接口使用说明：/data3/zhongzhw/code/google/ascend/ops-math/math/sub/docs/aclnnSub&aclnnInplaceSub.md
+
+### 2.3 multiply 指令
+- **功能**：执行乘法操作
+- **代表性示例**：
+  ```
+  ROOT %mul.0.1 = f32[128,10]{1,0} multiply(%param_0.30, %param_1.17), metadata={op_name="jit(update)/transpose(jvp(jit(log_softmax)))/mul" stack_frame_id=23}
+  ```
+- **对应aclnn API**：aclnnMul（张量间乘法）或 aclnnMuls（张量与标量乘法）
+- API接口使用说明：/data3/zhongzhw/code/google/ascend/ops-math/math/mul/docs/aclnnMul&aclnnInplaceMul.md
+
+### 2.4 divide 指令
+- **功能**：执行除法操作
+- **代表性示例**：
+  ```
+  ROOT %div.2.1 = f32[128]{0} divide(%param_0.28, %param_1.16), metadata={op_name="jit(update)/transpose(jvp(jit(log_softmax)))/div" stack_frame_id=23}
+  ```
+- **对应aclnn API**：aclnnDiv
+- API接口使用说明：/data3/zhongzhw/code/google/ascend/ops-math/math/div/docs/aclnnDiv&aclnnInplaceDiv.md
+
+### 2.5 maximum 指令
+- **功能**：执行取最大值操作
+- **代表性示例**：
+  ```
+  ROOT %max.1.1 = f32[128,512]{1,0} maximum(%param_0.14, %param_1.8), metadata={op_name="jit(update)/jvp()/jit(relu)/max" stack_frame_id=11}
+  ```
+- **对应aclnn API**：aclnnMaximum
+- API接口使用说明：/data3/zhongzhw/code/google/ascend/ops-math/math/maximum/docs/aclnnMaximum.md
+
+### 2.6 negate 指令
+- **功能**：执行取反操作
+- **代表性示例**：
+  ```
+  ROOT %negate.2 = f32[128]{0} negate(%param_0.21), metadata={op_name="jit(update)/transpose(jvp(jit(log_softmax)))/neg" stack_frame_id=23}
+  ```
+- **对应aclnn API**：aclnnNeg
+- API接口使用说明：/data3/zhongzhw/code/google/ascend/ops-math/math/neg/docs/aclnnNeg&aclnnInplaceNeg.md
+
+### 2.7 exponential 指令
+- **功能**：执行指数操作
+- **代表性示例**：
+  ```
+  ROOT %exp.0.1 = f32[128,10]{1,0} exponential(%param_0.27), metadata={op_name="jit(update)/jvp(jit(log_softmax))/exp" stack_frame_id=23}
+  ```
+- **对应aclnn API**：aclnnExp
+- API接口使用说明：/data3/zhongzhw/code/google/ascend/ops-math/math/exp/docs/aclnnExp&aclnnInplaceExp.md
+
+## 3. 张量操作指令
+
+### 3.1 broadcast 指令
+- **功能**：将张量广播到更大的维度
+- **代表性示例**：
+  ```
+  ROOT %broadcast.3.1 = f32[128,512]{1,0} broadcast(%constant_18_1), dimensions={}
+  ```
+
+### 3.2 reduce 指令
+- **功能**：对张量的指定维度进行归约操作
+- **代表性示例**：
+  ```
+  ROOT %reduce_sum.0.1 = f32[128]{0} reduce(%param_0.7, %constant_18_8), dimensions={1}, to_apply=
+  (reduce_sum.16: f32[], reduce_sum.17: f32[]) -> f32[] {
+    %reduce_sum.16 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+    %reduce_sum.17 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+    ROOT %reduce_sum.21.0 = f32[] add(%reduce_sum.16, %reduce_sum.17), metadata={op_name="reduce_sum" stack_frame_id=23}
+  }
+  ```
+- **对应aclnn API**：aclnnReduceSum（求和归约）
+- API接口使用说明：/data3/zhongzhw/code/google/ascend/ops-math/math/reduce_sum/docs/aclnnReduceSum.md
+- **其他归约操作的API**：
+  - 均值归约：aclnnMean
+  - 最大值归约：aclnnMaxV2
+  - 最小值归约：aclnnMin
+  - 乘积归约：aclnnProdDim
+
+### 3.3 iota 指令
+- **功能**：生成一个包含递增整数的张量
+- **代表性示例**：
+  ```
+  ROOT %iota.6.1 = u8[128,10]{1,0} iota(), iota_dimension=1, metadata={op_name="jit(update)/jvp(jit(_one_hot))/eq" stack_frame_id=22}
+  ```
+- **对应aclnn API**：aclnnArange
+- API接口使用说明：/data3/zhongzhw/code/google/ascend/ops-math/math/range/docs/aclnnArange.md
+- **说明**：aclnnArange生成一维递增序列，可结合reshape操作生成多维iota张量
+
+## 4. 控制流操作指令
+
+### 4.1 select 指令
+- **功能**：根据条件选择两个值中的一个
+- **代表性示例**：
+  ```
+  ROOT %select.2 = f32[128,10]{1,0} select(%param_0.20, %param_1.12, %param_2), metadata={op_name="jit(update)/transpose(jvp())/mul;jit(update)/transpose(jvp())/broadcast_in_dim;jit(update)/transpose(jvp())/broadcast_in_dim"}
+  ```
+- **对应aclnn API**：aclnnSWhere
+- API接口使用说明：/data3/zhongzhw/code/google/ascend/ops-math/math/select/docs/aclnnSWhere.md
+
+### 4.2 compare 指令
+- **功能**：比较两个值并返回布尔结果
+- **代表性示例**：
+  ```
+  ROOT %eq.6.1 = pred[128,10]{1,0} compare(%param_0.19, %param_1.11), direction=EQ, metadata={op_name="jit(update)/jvp(jit(_one_hot))/eq" stack_frame_id=22}
+  ```
+- **对应aclnn API**：aclnnEqTensor（等于比较）
+- API接口使用说明：/data3/zhongzhw/code/google/ascend/ops-math/math/equal/docs/aclnnEqTensor&aclnnInplaceEqTensor.md
+- **其他比较操作的API**：
+  - 大于：aclnnGtTensor
+  - 小于：aclnnLtTensor
+  - 大于等于：aclnnGeTensor
+  - 小于等于：aclnnLeTensor
+  - 不等于：aclnnNeTensor
+
+## 5. 特殊操作指令
+
+### 5.1 fusion 指令
+- **功能**：将多个操作融合在一起执行，提高性能
+- **代表性示例**：
+  ```
+  %loop_broadcast_fusion = f32[128,512]{1,0} fusion(), kind=kLoop, calls=
+  () -> f32[128,512] {
+    %constant_18_1 = f32[] constant(0)
+    ROOT %broadcast.3.1 = f32[128,512]{1,0} broadcast(%constant_18_1), dimensions={}
+  }
+  ```
+
+### 5.2 custom-call 指令
+- **功能**：调用自定义操作，如矩阵乘法
+- **代表性示例**：
+  ```
+  %custom-call.8 = (f32[128,512]{1,0}, s8[2007040]{0}) custom-call(%x.1, %params_0___W__.1), custom_call_target="__cublas$gemm", metadata={op_name="jit(update)/jvp()/dot_general" stack_frame_id=10}, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"],"algorithm":"ALG_UNSET"},"epilogue":"DEFAULT","lhs_stride":"100352","rhs_stride":"401408","grad_x":false,"grad_y":false,"damax_output":false,"autotune_workspace_size":"0"},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
+  ```
+
+### 5.3 get-tuple-element 指令
+- **功能**：从元组中提取指定索引的元素
+- **代表性示例**：
+  ```
+  %get-tuple-element.8 = f32[128,512]{1,0} get-tuple-element(%custom-call.8), index=0, metadata={op_name="jit(update)/jvp()/dot_general" stack_frame_id=10}
+  ```
+
+### 5.4 constant 指令
+- **功能**：定义常量值
+- **代表性示例**：
+  ```
+  %constant_18_1 = f32[] constant(0)
+  ```
+
+## 6. 指令分类总结
+
+| 指令类别 | 包含指令 | 功能描述 |
+|---------|---------|--------|
+| 数据输入/输出 | parameter, tuple | 处理函数的输入参数和输出结果 |
+| 基本算术操作 | add, subtract, multiply, divide, maximum, negate, exponential | 执行各种算术运算 |
+| 张量操作 | broadcast, reduce, iota | 处理张量的维度变换和归约操作 |
+| 控制流操作 | select, compare | 实现条件判断和选择逻辑 |
+| 特殊操作 | fusion, custom-call, get-tuple-element, constant | 提供特殊功能和优化 |
+
+## 7. 整体分析
+
+本Hlo IR文件描述了一个神经网络模型的前向传播和反向传播过程，主要包含以下步骤：
+
+1. **前向传播**：
+   - 执行矩阵乘法（使用custom-call指令）
+   - 添加偏置（使用add指令）
+   - 应用ReLU激活函数（使用maximum指令）
+   - 执行log_softmax操作（使用exponential、reduce等指令）
+
+2. **反向传播**：
+   - 计算损失函数的梯度
+   - 执行链式法则计算各层的梯度
+   - 更新模型参数（使用subtract指令）
+
+3. **优化技术**：
+   - 使用fusion指令融合多个操作，提高性能
+   - 使用broadcast指令高效处理维度不匹配的操作
+   - 使用reduce指令执行张量归约操作
+
+4. **数据类型**：
+   - 主要使用f32（32位浮点数）进行计算
+   - 使用u8（8位无符号整数）存储标签数据
+   - 使用pred（布尔值）存储比较结果
+
+该Hlo IR文件展示了如何使用XLA的各种指令来高效实现神经网络的训练过程，特别是通过fusion和custom-call等指令来优化计算性能。

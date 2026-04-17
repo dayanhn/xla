@@ -450,7 +450,7 @@ absl::StatusOr<std::unique_ptr<DeviceDescription>> AscendExecutor::CreateDeviceD
   aclrtGetDeviceInfo(device_ordinal(), ACL_DEV_ATTR_L2_CACHE_SIZE, &l2_size);
   desc.set_l2_cache_size(l2_size);
 
-
+  desc.set_threads_per_warp(0xffff);
   return std::make_unique<DeviceDescription>(std::move(desc));
 }
 

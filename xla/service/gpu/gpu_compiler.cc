@@ -1681,9 +1681,11 @@ absl::Status GpuCompiler::OptimizeHloModule(
   {
     HloPassPipeline pipeline("autotune-fusion-emitters");
     pipeline.AddPass<FusionWrapper>(gpu_target_config.device_description);
-    RETURN_IF_ERROR(AddFusionAutotuningPass(
-        &pipeline, hlo_module, options, thread_pool.get_mutable(), stream_exec,
-        &gpu_target_config, ShapeSizeBytesFunction(), options.key_value_store));
+    if (gpu_target_config.platform_name != "ASCEND") {
+      RETURN_IF_ERROR(AddFusionAutotuningPass(
+          &pipeline, hlo_module, options, thread_pool.get_mutable(), stream_exec,
+          &gpu_target_config, ShapeSizeBytesFunction(), options.key_value_store));
+    }
     RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
@@ -1875,8 +1877,12 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     pipeline.AddPass<HloPassFix<ReductionSplitter>>(
         gpu_target_config.device_description,
         /*ignore_small_reduce_dims=*/false);
-    pipeline.AddPass<HloPassFix<TreeReductionRewriter>>(
-        gpu_target_config.device_description);
+    // TreeReductionRewriter is not suitable for Ascend backend due to different
+    // hardware architecture and reduction implementation.
+    if (gpu_target_config.platform_name != "ASCEND") {
+      pipeline.AddPass<HloPassFix<TreeReductionRewriter>>(
+          gpu_target_config.device_description);
+    }
     // Normalization passes might have introduced s4 tensors without bit width
     // annotations, this pass will add the annotations.
     pipeline.AddPass<SubByteNormalization>(
@@ -1902,13 +1908,13 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // Triton compilation needs normalized operations on bf16 (i.e. converted to
   // f32).
   add_float_normalization(pipeline);
-
-  TF_RETURN_IF_ERROR(AddConvAndGemmAutotuningPass(
-      &pipeline, hlo_module, gpu_version, options, autotune_config, thread_pool,
-      stream_exec, &gpu_target_config, options.key_value_store,
-      gpu_target_config.device_description.runtime_version(), alias_info,
-      debug_options, &mlir_context_, ShapeSizeBytesFunction()));
-
+  if (gpu_target_config.platform_name != "ASCEND") {          
+    TF_RETURN_IF_ERROR(AddConvAndGemmAutotuningPass(
+        &pipeline, hlo_module, gpu_version, options, autotune_config, thread_pool,
+        stream_exec, &gpu_target_config, options.key_value_store,
+        gpu_target_config.device_description.runtime_version(), alias_info,
+        debug_options, &mlir_context_, ShapeSizeBytesFunction()));
+  }
   // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
   pipeline.AddPass<GemmBroadcastFoldingRewriter>();
 

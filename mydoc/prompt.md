@@ -60,3 +60,56 @@ google/jax/jax_plugins/ascend/ffi_ops.py
 google/jax/jax_plugins/ascend/__init__.py
 现在需要你参考Matmul的实现，帮我完成aclnnInplaceIndexFillTensor算子，通过ffi能够在jax中调用，
 aclnnInplaceIndexFillTensor使用参考：ascend/ops-nn/docs/zh/context/两段式接口.md，使用示例：ascend/ops-nn/index/index_fill_d/examples/test_aclnn_inplace_index_fill_tensor.cpp
+
+我在为jax,xla增加ascend后端，第一步就是能先通过ffi机制调用aclnn的算子，我已经完成了relu,matmul两个aclnn算子的ffi修饰。对于matmul要作的改动有：
+ffi修饰：
+jax/xla/xla/service/ascend/ffi/ops/nn/matmul/matmul.cc，
+xla侧算子注册：
+jax/xla/xla/service/ascend/ffi/ascend_ffi.cc，jax/xla/xla/service/ascend/ffi/ascend_ffi.h,
+编译配置文件:
+jax/xla/xla/service/ascend/ffi/BUILD
+现在需要你参考Matmul的实现，帮我完成aclnnExpand算子，通过ffi能够在jax中调用，
+aclnnExpand使用参考：ascend/ops-nn/docs/zh/context/两段式接口.md，使用说明：ascend/ops-math/math/expand/docs/aclnnExpand.md
+
+
+------------
+我在为jax,xla增加ascend后端，第一步就是能先通过ffi机制调用aclnn的算子，我已经完成了relu,matmul等部分aclnn算子的ffi修饰。对于matmul要作的改动有：
+ffi修饰：
+google/xla/xla/service/ascend/ffi/ops/nn/matmul/matmul.cc，
+xla侧算子注册：
+google/xla/xla/service/ascend/ffi/ascend_ffi.cc，google/xla/xla/service/ascend/ffi/ascend_ffi.h,
+编译配置文件：
+google/xla/xla/service/ascend/ffi/BUILD
+
+现在需要你参考Matmul或者google/xla/xla/service/ascend/ffi/ops/nn/full/full.cc的实现，帮我完成aclnnCast 、 aclnnRightShift 、和 aclnnCat等算子，通过ffi能够在jax中调用，
+aclnn算子的使用参考：ascend/ops-nn/docs/zh/context/两段式接口.md，
+每个api的使用示例：
+ascend/ops-math/math/cast/docs/aclnnCast.md
+ascend/ops-math/math/right_shift/docs/aclnnRightShift.md
+ascend/ops-math/conversion/concat_d/docs/aclnnCat.md
+
+-------------
+`\data3\zhongzhw\code\uni_ai\google\xla\xla\service\ascend\thunk_emitter.cc#L197-202` 实现了将以下的HLO算子：
+  ROOT %loop_broadcast_fusion = f32[128,128]{1,0} fusion(), kind=kLoop, calls=
+  () -> f32[128,128] {
+    %constant_1_1 = f32[] constant(2)
+    ROOT %broadcast_in_dim.1.1 = f32[128,128]{1,0} broadcast(%constant_1_1), dimensions={}, metadata={op_name="jit(create_full_matrix)/broadcast_in_dim" stack_frame_id=8}
+  }, metadata={op_name="jit(create_full_matrix)/broadcast_in_dim" stack_frame_id=8}
+转换为调用ascend.full.f32算子，此算子的定义和接口注册参考： `/data3/zhongzhw/code/uni_ai/google/xla/xla/service/ascend/ffi/ops/nn/full/full.cc` `\data3\zhongzhw\code\uni_ai\google\xla\xla\service\ascend\ffi\ascend_ffi.cc#L70-75` ，现在我需要你参考其实现再修改函数 `\data3\zhongzhw\code\uni_ai\google\xla\xla\service\ascend\thunk_emitter.cc#L184-184` ，支持识别以下的hlo算子：
+%wrapped_convert.1 = u32[] fusion(%seed.1), kind=kLoop, calls=
+  (param_0.2: s32[]) -> u32[] {
+    %param_0.2 = s32[] parameter(0)
+    ROOT %convert_element_type.3.1 = u32[] convert(%param_0.2), metadata={op_name="jit(_threefry_seed)/convert_element_type" stack_frame_id=8}
+  }, metadata={op_name="jit(_threefry_seed)/convert_element_type" stack_frame_id=8}然后将其转换为调用 `\data3\zhongzhw\code\uni_ai\google\xla\xla\service\ascend\ffi\ascend_ffi.cc#L131-135` ，其定义在 `/data3/zhongzhw/code/uni_ai/google/xla/xla/service/ascend/ffi/ops/math/cast/cast.cc`
+  
+  --------
+我在为jax,xla增加ascend后端，第一步就是能先通过ffi机制调用aclnn的算子，我已经完成了relu,matmul等部分aclnn算子的ffi修饰。对于matmul要作的改动有：
+ffi修饰：
+jax/xla/xla/service/ascend/ffi/ops/nn/matmul/matmul.cc，
+xla侧算子注册：
+jax/xla/xla/service/ascend/ffi/ascend_ffi.cc，jax/xla/xla/service/ascend/ffi/ascend_ffi.h,
+编译配置文件：
+jax/xla/xla/service/ascend/ffi/BUILD
+
+现在需要你参考Matmul或者jax/xla/xla/service/ascend/ffi/ops/nn/full/full.cc或者jax/xla/xla/service/ascend/ffi/ops/math/expand/expand.cc的实现，帮我完成以下算子的实现：
+ `\data3\zhongzhw\code\google\jax\xla\mydoc\hlo_analysis_result.txt#L27-28` `\data3\zhongzhw\code\google\jax\xla\mydoc\hlo_analysis_result.txt#L36-37` `\data3\zhongzhw\code\google\jax\xla\mydoc\hlo_analysis_result.txt#L45-46`

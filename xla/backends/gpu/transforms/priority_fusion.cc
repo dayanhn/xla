@@ -1143,6 +1143,11 @@ FusionDecision PriorityFusion::CanFuseConstant(const HloInstruction* constant,
 absl::StatusOr<bool> PriorityFusion::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  // Debug: Print module content at the beginning of PriorityFusion
+  //std::cerr << "\n========== [PriorityFusion] Module Content (Before Fusion) ==========" << std::endl;
+  //std::cerr << module->ToString(HloPrintOptions::ShortParsable()) << std::endl;
+  //std::cerr << "=====================================================================\n" << std::endl;
+  
   bool dump_enabled =
       DumpingEnabledForHloPass(name(), module->config().debug_options());
   if (dump_enabled) {
@@ -1283,6 +1288,9 @@ absl::StatusOr<bool> PriorityFusion::RunImpl(
                                 module->config().debug_options(),
                                 "priority_fusion_dump");
   }
+  //std::cerr << "\n========== [PriorityFusion] Module Content (After Fusion) ==========" << std::endl;
+  //std::cerr << module->ToString(HloPrintOptions::ShortParsable()) << std::endl;
+  //std::cerr << "=====================================================================\n" << std::endl;
 
   return changed;
 }
