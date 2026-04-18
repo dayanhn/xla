@@ -22,21 +22,6 @@ void RegisterAscendFfiHandlers() {
     LOG(INFO) << "Registered ascend.gelu operator";
   }
 
-  // Register Matmul operator
-  error = Ffi::RegisterStaticHandler(
-      GetXlaFfiApi(),
-      "ascend.matmul",
-      "ASCEND",
-      AscendMatmul);
-  
-  status = TakeStatus(error);
-  if (!status.ok()) {
-    LOG(ERROR) << "Failed to register ascend.matmul operator: " << status.ToString();
-    throw std::runtime_error("Failed to register ascend.matmul operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.matmul operator";
-  }
-
   // Register InplaceIndexFillTensor operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -665,6 +650,201 @@ void RegisterAscendFfiHandlers() {
     throw std::runtime_error("Failed to register ascend.expand.s8 operator: " + status.ToString());
   }else {
     LOG(INFO) << "Registered ascend.expand.s8 operator";
+  }
+
+  // Register Matmul operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.matmul",
+      "ASCEND",
+      AscendMatmul);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.matmul operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.matmul operator: " + status.ToString());
+  }else {
+    LOG(INFO) << "Registered ascend.matmul operator";
+  }
+
+  // Register Matmul F32 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.matmul_f32",
+      "ASCEND",
+      AscendMatmulF32);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.matmul_f32 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.matmul_f32 operator: " + status.ToString());
+  }else {
+    LOG(INFO) << "Registered ascend.matmul_f32 operator";
+  }
+
+  // Register Matmul F16 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.matmul_f16",
+      "ASCEND",
+      AscendMatmulF16);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.matmul_f16 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.matmul_f16 operator: " + status.ToString());
+  }else {
+    LOG(INFO) << "Registered ascend.matmul_f16 operator";
+  }
+
+  // Register Matmul BF16 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.matmul_bf16",
+      "ASCEND",
+      AscendMatmulBF16);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.matmul_bf16 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.matmul_bf16 operator: " + status.ToString());
+  }else {
+    LOG(INFO) << "Registered ascend.matmul_bf16 operator";
+  }
+
+  // Register InplaceIndexFillTensor operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.inplace_index_fill_tensor",
+      "ASCEND",
+      AscendInplaceIndexFillTensor);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.inplace_index_fill_tensor operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.inplace_index_fill_tensor operator: " + status.ToString());
+  }else {
+    LOG(INFO) << "Registered ascend.inplace_index_fill_tensor operator";
+  }
+
+  // Register InplaceIndexFillTensor F32 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.inplace_index_fill_tensor.f32",
+      "ASCEND",
+      AscendInplaceIndexFillTensorF32);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.inplace_index_fill_tensor.f32 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.inplace_index_fill_tensor.f32 operator: " + status.ToString());
+  }else {
+    LOG(INFO) << "Registered ascend.inplace_index_fill_tensor.f32 operator";
+  }
+
+  // Register InplaceIndexFillTensor F16 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.inplace_index_fill_tensor.f16",
+      "ASCEND",
+      AscendInplaceIndexFillTensorF16);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.inplace_index_fill_tensor.f16 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.inplace_index_fill_tensor.f16 operator: " + status.ToString());
+  }else {
+    LOG(INFO) << "Registered ascend.inplace_index_fill_tensor.f16 operator";
+  }
+
+  // Register InplaceIndexFillTensor BF16 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.inplace_index_fill_tensor.bf16",
+      "ASCEND",
+      AscendInplaceIndexFillTensorBF16);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.inplace_index_fill_tensor.bf16 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.inplace_index_fill_tensor.bf16 operator: " + status.ToString());
+  }else {
+    LOG(INFO) << "Registered ascend.inplace_index_fill_tensor.bf16 operator";
+  }
+
+  // Register InplaceIndexFillTensor S32 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.inplace_index_fill_tensor.s32",
+      "ASCEND",
+      AscendInplaceIndexFillTensorS32);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.inplace_index_fill_tensor.s32 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.inplace_index_fill_tensor.s32 operator: " + status.ToString());
+  }else {
+    LOG(INFO) << "Registered ascend.inplace_index_fill_tensor.s32 operator";
+  }
+
+  // Register InplaceIndexFillTensor S64 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.inplace_index_fill_tensor.s64",
+      "ASCEND",
+      AscendInplaceIndexFillTensorS64);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.inplace_index_fill_tensor.s64 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.inplace_index_fill_tensor.s64 operator: " + status.ToString());
+  }else {
+    LOG(INFO) << "Registered ascend.inplace_index_fill_tensor.s64 operator";
+  }
+
+  // Register InplaceIndexFillTensor U8 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.inplace_index_fill_tensor.u8",
+      "ASCEND",
+      AscendInplaceIndexFillTensorU8);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.inplace_index_fill_tensor.u8 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.inplace_index_fill_tensor.u8 operator: " + status.ToString());
+  }else {
+    LOG(INFO) << "Registered ascend.inplace_index_fill_tensor.u8 operator";
+  }
+
+  // Register InplaceIndexFillTensor S8 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.inplace_index_fill_tensor.s8",
+      "ASCEND",
+      AscendInplaceIndexFillTensorS8);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.inplace_index_fill_tensor.s8 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.inplace_index_fill_tensor.s8 operator: " + status.ToString());
+  }else {
+    LOG(INFO) << "Registered ascend.inplace_index_fill_tensor.s8 operator";
+  }
+
+  // Register InplaceIndexFillTensor BOOL operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.inplace_index_fill_tensor.bool",
+      "ASCEND",
+      AscendInplaceIndexFillTensorBOOL);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.inplace_index_fill_tensor.bool operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.inplace_index_fill_tensor.bool operator: " + status.ToString());
+  }else {
+    LOG(INFO) << "Registered ascend.inplace_index_fill_tensor.bool operator";
   }
 
   // Register Expand BOOL operator
@@ -1957,6 +2137,96 @@ void RegisterAscendFfiHandlers() {
     LOG(INFO) << "Registered ascend.reduce_prod.s64 operator";
   }
 
+  // Register ReduceSum operators
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.reduce_sum",
+      "ASCEND",
+      AscendReduceSum);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.reduce_sum operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.reduce_sum operator: " + status.ToString());
+  }else {
+    LOG(INFO) << "Registered ascend.reduce_sum operator";
+  }
+
+  // Register ReduceSum F32 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.reduce_sum_f32",
+      "ASCEND",
+      AscendReduceSumF32);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.reduce_sum_f32 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.reduce_sum_f32 operator: " + status.ToString());
+  }else {
+    LOG(INFO) << "Registered ascend.reduce_sum_f32 operator";
+  }
+
+  // Register ReduceSum F16 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.reduce_sum_f16",
+      "ASCEND",
+      AscendReduceSumF16);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.reduce_sum_f16 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.reduce_sum_f16 operator: " + status.ToString());
+  }else {
+    LOG(INFO) << "Registered ascend.reduce_sum_f16 operator";
+  }
+
+  // Register ReduceSum BF16 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.reduce_sum_bf16",
+      "ASCEND",
+      AscendReduceSumBF16);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.reduce_sum_bf16 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.reduce_sum_bf16 operator: " + status.ToString());
+  }else {
+    LOG(INFO) << "Registered ascend.reduce_sum_bf16 operator";
+  }
+
+  // Register ReduceSum S32 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.reduce_sum_s32",
+      "ASCEND",
+      AscendReduceSumS32);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.reduce_sum_s32 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.reduce_sum_s32 operator: " + status.ToString());
+  }else {
+    LOG(INFO) << "Registered ascend.reduce_sum_s32 operator";
+  }
+
+  // Register ReduceSum S64 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.reduce_sum_s64",
+      "ASCEND",
+      AscendReduceSumS64);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.reduce_sum_s64 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.reduce_sum_s64 operator: " + status.ToString());
+  }else {
+    LOG(INFO) << "Registered ascend.reduce_sum_s64 operator";
+  }
+
   // Register Select operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -2184,36 +2454,20 @@ void RegisterAscendFfiHandlers() {
 
   // Register other operators here in the future
 
-  // Register ReduceSum operators
+  // Register Iota U8 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
-      "ascend.reduce_sum",
+      "ascend.iota.u8",
       "ASCEND",
-      AscendReduceSum);
-  
-  status = TakeStatus(error);
-  if (!status.ok()) {
-    LOG(ERROR) << "Failed to register ascend.reduce_sum operator: " << status.ToString();
-    throw std::runtime_error("Failed to register ascend.reduce_sum operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.reduce_sum operator";
-  }
+      AscendIotaU8);
 
-  // Register Select operators
-  error = Ffi::RegisterStaticHandler(
-      GetXlaFfiApi(),
-      "ascend.select",
-      "ASCEND",
-      AscendSelect);
-  
   status = TakeStatus(error);
   if (!status.ok()) {
-    LOG(ERROR) << "Failed to register ascend.select operator: " << status.ToString();
-    throw std::runtime_error("Failed to register ascend.select operator: " + status.ToString());
+    LOG(ERROR) << "Failed to register ascend.iota.u8 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.iota.u8 operator: " + status.ToString());
   }else {
-    LOG(INFO) << "Registered ascend.select operator";
+    LOG(INFO) << "Registered ascend.iota.u8 operator";
   }
-}
 
 }  // namespace xla::ffi
 

@@ -160,6 +160,7 @@ extern "C" XLA_FFI_Error* AscendReduceSumF16(XLA_FFI_CallFrame* frame);
 extern "C" XLA_FFI_Error* AscendReduceSumBF16(XLA_FFI_CallFrame* frame);
 extern "C" XLA_FFI_Error* AscendReduceSumS32(XLA_FFI_CallFrame* frame);
 extern "C" XLA_FFI_Error* AscendReduceSumS64(XLA_FFI_CallFrame* frame);
+extern "C" XLA_FFI_Error* AscendIotaU8(XLA_FFI_CallFrame* frame);
 
 
 

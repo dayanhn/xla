@@ -90,7 +90,43 @@ class ThunkEmitter {
   // Emit handlers for specific FFI patterns
   absl::StatusOr<xla::gpu::ThunkSequence> EmitBroadcastConstantFusion(
       const HloFusionInstruction* fusion);
-  
+
+  absl::StatusOr<xla::gpu::ThunkSequence> EmitAddFusion(
+      const HloFusionInstruction* fusion);
+
+  absl::StatusOr<xla::gpu::ThunkSequence> EmitMaximumFusion(
+      const HloFusionInstruction* fusion);
+
+  absl::StatusOr<xla::gpu::ThunkSequence> EmitReduceMaxFusion(
+      const HloFusionInstruction* fusion);
+
+  absl::StatusOr<xla::gpu::ThunkSequence> EmitSubtractFusion(
+      const HloFusionInstruction* fusion);
+
+  absl::StatusOr<xla::gpu::ThunkSequence> EmitExponentialFusion(
+      const HloFusionInstruction* fusion);
+
+  absl::StatusOr<xla::gpu::ThunkSequence> EmitReduceSumFusion(
+      const HloFusionInstruction* fusion);
+
+  absl::StatusOr<xla::gpu::ThunkSequence> EmitEqualFusion(
+      const HloFusionInstruction* fusion);
+
+  absl::StatusOr<xla::gpu::ThunkSequence> EmitSelectFusion(
+      const HloFusionInstruction* fusion);
+
+  absl::StatusOr<xla::gpu::ThunkSequence> EmitNegateFusion(
+      const HloFusionInstruction* fusion);
+
+  absl::StatusOr<xla::gpu::ThunkSequence> EmitDivideFusion(
+      const HloFusionInstruction* fusion);
+
+  absl::StatusOr<xla::gpu::ThunkSequence> EmitMultiplyFusion(
+      const HloFusionInstruction* fusion);
+
+  absl::StatusOr<xla::gpu::ThunkSequence> EmitGreaterFusion(
+      const HloFusionInstruction* fusion);
+
   absl::StatusOr<xla::gpu::ThunkSequence> EmitTensorBroadcastFusion(
       const HloFusionInstruction* fusion);
   
@@ -102,6 +138,12 @@ class ThunkEmitter {
   
   absl::StatusOr<xla::gpu::ThunkSequence> EmitConcatenateFusion(
       const HloFusionInstruction* fusion);
+
+  absl::StatusOr<xla::gpu::ThunkSequence> EmitIotaFusion(
+      const HloFusionInstruction* fusion);
+ 
+  absl::StatusOr<xla::gpu::ThunkSequence> EmitGemmThunk(
+      const HloCustomCallInstruction* hlo);
 
   // Context and state
   xla::gpu::IrEmitterContext* ir_emitter_context_;

@@ -113,3 +113,13 @@ jax/xla/xla/service/ascend/ffi/BUILD
 
 现在需要你参考Matmul或者jax/xla/xla/service/ascend/ffi/ops/nn/full/full.cc或者jax/xla/xla/service/ascend/ffi/ops/math/expand/expand.cc的实现，帮我完成以下算子的实现：
  `\data3\zhongzhw\code\google\jax\xla\mydoc\hlo_analysis_result.txt#L27-28` `\data3\zhongzhw\code\google\jax\xla\mydoc\hlo_analysis_result.txt#L36-37` `\data3\zhongzhw\code\google\jax\xla\mydoc\hlo_analysis_result.txt#L45-46`
+
+ ----
+ `/home/zzw/code/uni_ai/xla/xla/service/ascend/thunk_emitter.cc#L422-429` 首先匹配Hlo融合算子，实现了将以下的HLO算子：
+  ROOT %loop_broadcast_fusion = f32[128,128]{1,0} fusion(), kind=kLoop, calls=
+  () -> f32[128,128] {
+    %constant_1_1 = f32[] constant(2)
+    ROOT %broadcast_in_dim.1.1 = f32[128,128]{1,0} broadcast(%constant_1_1), dimensions={}, metadata={op_name="jit(create_full_matrix)/broadcast_in_dim" stack_frame_id=8}
+  }, metadata={op_name="jit(create_full_matrix)/broadcast_in_dim" stack_frame_id=8}识别出为一个常量广播，然后通过 `/home/zzw/code/uni_ai/xla/xla/service/ascend/thunk_emitter.cc#L470-535` 
+转换为调用ascend.full.f32算子： `/home/zzw/code/uni_ai/xla/xla/service/ascend/ffi/ascend_ffi.cc#L70-75` ，此算子的定义和接口注册参考： `/home/zzw/code/uni_ai/xla/xla/service/ascend/ffi/ops/nn/full/full.cc` ，现在我需要你参考其实现再修改函数 thunk_emitter.cc中的absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitFusion函数，识别出以下的Hlo融合指令：
+ `/home/zzw/code/uni_ai/xla/mydoc/hlo_main.txt#L20-25` ，然后将其转换为 `/home/zzw/code/uni_ai/xla/xla/service/ascend/ffi/ops/math/add/add.cc` 中接口，其接口的定义在 `/home/zzw/code/uni_ai/xla/xla/service/ascend/ffi/ascend_ffi.cc#L145-234` ，注意根据数据类型调用相匹配的接口，可以参考 `/home/zzw/code/uni_ai/xla/xla/service/ascend/thunk_emitter.cc#L537-538` 函数

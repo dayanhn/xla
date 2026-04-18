@@ -363,8 +363,780 @@ std::string SerializeBroadcastConstantMetadata(
   
   // Output shape
   absl::StrAppend(&metadata, "output_shape:", fusion->shape().ToString(), ";");
-  
+
   return metadata;
+}
+
+// Helper function to check if a fusion matches the add pattern
+// Pattern: fusion { parameter0 + parameter1 -> add }
+bool IsAddFusion(const HloFusionInstruction* fusion) {
+  auto* computation = fusion->fused_instructions_computation();
+
+  // Must have exactly 3 instructions: parameter0 + parameter1 + add
+  const auto& instructions = computation->instructions();
+  int64_t instruction_count = std::distance(instructions.begin(), instructions.end());
+  if (instruction_count != 3) {
+    VLOG(4) << "AddFusion: expected 3 instructions, got "
+            << instruction_count;
+    return false;
+  }
+
+  // Find the parameters and add instructions
+  const HloInstruction* param0_instr = nullptr;
+  const HloInstruction* param1_instr = nullptr;
+  const HloInstruction* add_instr = nullptr;
+
+  for (const auto* instr : instructions) {
+    if (instr->opcode() == HloOpcode::kParameter) {
+      if (!param0_instr) {
+        param0_instr = instr;
+      } else if (!param1_instr) {
+        param1_instr = instr;
+      } else {
+        VLOG(4) << "AddFusion: too many parameter instructions";
+        return false;
+      }
+    } else if (instr->opcode() == HloOpcode::kAdd) {
+      add_instr = instr;
+    } else {
+      VLOG(4) << "AddFusion: unexpected opcode "
+              << HloOpcodeString(instr->opcode());
+      return false;
+    }
+  }
+
+  // All instructions must be present
+  if (!param0_instr || !param1_instr || !add_instr) {
+    VLOG(4) << "AddFusion: missing parameter or add instruction";
+    return false;
+  }
+
+  // Add must take both parameters as operands
+  if (add_instr->operand_count() != 2 ||
+      (add_instr->operand(0) != param0_instr && add_instr->operand(0) != param1_instr) ||
+      (add_instr->operand(1) != param0_instr && add_instr->operand(1) != param1_instr)) {
+    VLOG(4) << "AddFusion: add does not take both parameters as operands";
+    return false;
+  }
+
+  // Fusion's root must be the add instruction
+  if (computation->root_instruction() != add_instr) {
+    VLOG(4) << "AddFusion: fusion root is not add";
+    return false;
+  }
+
+  return true;
+}
+
+// Helper function to check if a fusion matches the maximum pattern
+// Pattern: fusion { parameter0 + parameter1 -> maximum }
+bool IsMaximumFusion(const HloFusionInstruction* fusion) {
+  auto* computation = fusion->fused_instructions_computation();
+
+  // Must have exactly 3 instructions: parameter0 + parameter1 + maximum
+  const auto& instructions = computation->instructions();
+  int64_t instruction_count = std::distance(instructions.begin(), instructions.end());
+  if (instruction_count != 3) {
+    VLOG(4) << "MaximumFusion: expected 3 instructions, got "
+            << instruction_count;
+    return false;
+  }
+
+  // Find the parameters and maximum instructions
+  const HloInstruction* param0_instr = nullptr;
+  const HloInstruction* param1_instr = nullptr;
+  const HloInstruction* maximum_instr = nullptr;
+
+  for (const auto* instr : instructions) {
+    if (instr->opcode() == HloOpcode::kParameter) {
+      if (!param0_instr) {
+        param0_instr = instr;
+      } else if (!param1_instr) {
+        param1_instr = instr;
+      } else {
+        VLOG(4) << "MaximumFusion: too many parameter instructions";
+        return false;
+      }
+    } else if (instr->opcode() == HloOpcode::kMaximum) {
+      maximum_instr = instr;
+    } else {
+      VLOG(4) << "MaximumFusion: unexpected opcode "
+              << HloOpcodeString(instr->opcode());
+      return false;
+    }
+  }
+
+  // All instructions must be present
+  if (!param0_instr || !param1_instr || !maximum_instr) {
+    VLOG(4) << "MaximumFusion: missing parameter or maximum instruction";
+    return false;
+  }
+
+  // Maximum must take both parameters as operands
+  if (maximum_instr->operand_count() != 2 ||
+      (maximum_instr->operand(0) != param0_instr && maximum_instr->operand(0) != param1_instr) ||
+      (maximum_instr->operand(1) != param0_instr && maximum_instr->operand(1) != param1_instr)) {
+    VLOG(4) << "MaximumFusion: maximum does not take both parameters as operands";
+    return false;
+  }
+
+  // Fusion's root must be the maximum instruction
+  if (computation->root_instruction() != maximum_instr) {
+    VLOG(4) << "MaximumFusion: fusion root is not maximum";
+    return false;
+  }
+
+  return true;
+}
+
+// Helper function to check if a fusion matches the reduce_max pattern
+// Pattern: fusion { parameter -> reduce_max } with maximum reduction function
+bool IsReduceMaxFusion(const HloFusionInstruction* fusion) {
+  auto* computation = fusion->fused_instructions_computation();
+
+  // Must have exactly 3 instructions: parameter + constant + reduce
+  const auto& instructions = computation->instructions();
+  int64_t instruction_count = std::distance(instructions.begin(), instructions.end());
+  if (instruction_count != 3) {
+    VLOG(4) << "ReduceMaxFusion: expected 3 instructions, got "
+            << instruction_count;
+    return false;
+  }
+
+  // Find the parameter, constant, and reduce instructions
+  const HloInstruction* param_instr = nullptr;
+  const HloInstruction* constant_instr = nullptr;
+  const HloInstruction* reduce_instr = nullptr;
+
+  for (const auto* instr : instructions) {
+    if (instr->opcode() == HloOpcode::kParameter) {
+      param_instr = instr;
+    } else if (instr->opcode() == HloOpcode::kConstant) {
+      constant_instr = instr;
+    } else if (instr->opcode() == HloOpcode::kReduce) {
+      reduce_instr = instr;
+    } else {
+      VLOG(4) << "ReduceMaxFusion: unexpected opcode "
+              << HloOpcodeString(instr->opcode());
+      return false;
+    }
+  }
+
+  // All instructions must be present
+  if (!param_instr || !constant_instr || !reduce_instr) {
+    VLOG(4) << "ReduceMaxFusion: missing parameter, constant, or reduce instruction";
+    return false;
+  }
+
+  // Reduce must take parameter and constant as operands
+  if (reduce_instr->operand_count() != 2 ||
+      reduce_instr->operand(0) != param_instr ||
+      reduce_instr->operand(1) != constant_instr) {
+    VLOG(4) << "ReduceMaxFusion: reduce does not take parameter and constant as operands";
+    return false;
+  }
+
+  // Check if the reduction function is maximum
+  const HloComputation* reduction_computation = reduce_instr->to_apply();
+  if (!reduction_computation) {
+    VLOG(4) << "ReduceMaxFusion: no reduction computation found";
+    return false;
+  }
+
+  const HloInstruction* root_instr = reduction_computation->root_instruction();
+  if (!root_instr || root_instr->opcode() != HloOpcode::kMaximum) {
+    VLOG(4) << "ReduceMaxFusion: reduction function is not maximum";
+    return false;
+  }
+
+  // Fusion's root must be the reduce instruction
+  if (computation->root_instruction() != reduce_instr) {
+    VLOG(4) << "ReduceMaxFusion: fusion root is not reduce";
+    return false;
+  }
+
+  return true;
+}
+
+// Helper function to check if a fusion matches the subtract pattern
+// Pattern: fusion { parameter0 + parameter1 -> subtract }
+bool IsSubtractFusion(const HloFusionInstruction* fusion) {
+  auto* computation = fusion->fused_instructions_computation();
+
+  // Must have exactly 3 instructions: parameter0 + parameter1 + subtract
+  const auto& instructions = computation->instructions();
+  int64_t instruction_count = std::distance(instructions.begin(), instructions.end());
+  if (instruction_count != 3) {
+    VLOG(4) << "SubtractFusion: expected 3 instructions, got "
+            << instruction_count;
+    return false;
+  }
+
+  // Find the parameters and subtract instructions
+  const HloInstruction* param0_instr = nullptr;
+  const HloInstruction* param1_instr = nullptr;
+  const HloInstruction* subtract_instr = nullptr;
+
+  for (const auto* instr : instructions) {
+    if (instr->opcode() == HloOpcode::kParameter) {
+      if (!param0_instr) {
+        param0_instr = instr;
+      } else if (!param1_instr) {
+        param1_instr = instr;
+      } else {
+        VLOG(4) << "SubtractFusion: too many parameter instructions";
+        return false;
+      }
+    } else if (instr->opcode() == HloOpcode::kSubtract) {
+      subtract_instr = instr;
+    } else {
+      VLOG(4) << "SubtractFusion: unexpected opcode "
+              << HloOpcodeString(instr->opcode());
+      return false;
+    }
+  }
+
+  // All instructions must be present
+  if (!param0_instr || !param1_instr || !subtract_instr) {
+    VLOG(4) << "SubtractFusion: missing parameter or subtract instruction";
+    return false;
+  }
+
+  // Subtract must take both parameters as operands
+  if (subtract_instr->operand_count() != 2 ||
+      (subtract_instr->operand(0) != param0_instr && subtract_instr->operand(0) != param1_instr) ||
+      (subtract_instr->operand(1) != param0_instr && subtract_instr->operand(1) != param1_instr)) {
+    VLOG(4) << "SubtractFusion: subtract does not take both parameters as operands";
+    return false;
+  }
+
+  // Fusion's root must be the subtract instruction
+  if (computation->root_instruction() != subtract_instr) {
+    VLOG(4) << "SubtractFusion: fusion root is not subtract";
+    return false;
+  }
+
+  return true;
+}
+
+// Helper function to check if a fusion matches the exponential pattern
+// Pattern: fusion { parameter -> exponential }
+bool IsExponentialFusion(const HloFusionInstruction* fusion) {
+  auto* computation = fusion->fused_instructions_computation();
+
+  // Must have exactly 2 instructions: parameter + exponential
+  const auto& instructions = computation->instructions();
+  int64_t instruction_count = std::distance(instructions.begin(), instructions.end());
+  if (instruction_count != 2) {
+    VLOG(4) << "ExponentialFusion: expected 2 instructions, got "
+            << instruction_count;
+    return false;
+  }
+
+  // Find the parameter and exponential instructions
+  const HloInstruction* param_instr = nullptr;
+  const HloInstruction* exponential_instr = nullptr;
+
+  for (const auto* instr : instructions) {
+    if (instr->opcode() == HloOpcode::kParameter) {
+      param_instr = instr;
+    } else if (instr->opcode() == HloOpcode::kExponential) {
+      exponential_instr = instr;
+    } else {
+      VLOG(4) << "ExponentialFusion: unexpected opcode "
+              << HloOpcodeString(instr->opcode());
+      return false;
+    }
+  }
+
+  // Both instructions must be present
+  if (!param_instr || !exponential_instr) {
+    VLOG(4) << "ExponentialFusion: missing parameter or exponential instruction";
+    return false;
+  }
+
+  // Exponential must take parameter as its only operand
+  if (exponential_instr->operand_count() != 1 ||
+      exponential_instr->operand(0) != param_instr) {
+    VLOG(4) << "ExponentialFusion: exponential does not take parameter as operand";
+    return false;
+  }
+
+  // Fusion's root must be the exponential instruction
+  if (computation->root_instruction() != exponential_instr) {
+    VLOG(4) << "ExponentialFusion: fusion root is not exponential";
+    return false;
+  }
+
+  return true;
+}
+
+// Helper function to check if a fusion matches the reduce_sum pattern
+// Pattern: fusion { parameter + constant -> reduce_sum } with add reduction function
+bool IsReduceSumFusion(const HloFusionInstruction* fusion) {
+  auto* computation = fusion->fused_instructions_computation();
+
+  // Must have exactly 3 instructions: parameter + constant + reduce
+  const auto& instructions = computation->instructions();
+  int64_t instruction_count = std::distance(instructions.begin(), instructions.end());
+  if (instruction_count != 3) {
+    VLOG(4) << "ReduceSumFusion: expected 3 instructions, got "
+            << instruction_count;
+    return false;
+  }
+
+  // Find the parameter, constant, and reduce instructions
+  const HloInstruction* param_instr = nullptr;
+  const HloInstruction* constant_instr = nullptr;
+  const HloInstruction* reduce_instr = nullptr;
+
+  for (const auto* instr : instructions) {
+    if (instr->opcode() == HloOpcode::kParameter) {
+      param_instr = instr;
+    } else if (instr->opcode() == HloOpcode::kConstant) {
+      constant_instr = instr;
+    } else if (instr->opcode() == HloOpcode::kReduce) {
+      reduce_instr = instr;
+    } else {
+      VLOG(4) << "ReduceSumFusion: unexpected opcode "
+              << HloOpcodeString(instr->opcode());
+      return false;
+    }
+  }
+
+  // All instructions must be present
+  if (!param_instr || !constant_instr || !reduce_instr) {
+    VLOG(4) << "ReduceSumFusion: missing parameter, constant, or reduce instruction";
+    return false;
+  }
+
+  // Reduce must take parameter and constant as operands
+  if (reduce_instr->operand_count() != 2 ||
+      reduce_instr->operand(0) != param_instr ||
+      reduce_instr->operand(1) != constant_instr) {
+    VLOG(4) << "ReduceSumFusion: reduce does not take parameter and constant as operands";
+    return false;
+  }
+
+  // Check if the reduction function is add
+  const HloComputation* reduction_computation = reduce_instr->to_apply();
+  if (!reduction_computation) {
+    VLOG(4) << "ReduceSumFusion: no reduction computation found";
+    return false;
+  }
+
+  const HloInstruction* root_instr = reduction_computation->root_instruction();
+  if (!root_instr || root_instr->opcode() != HloOpcode::kAdd) {
+    VLOG(4) << "ReduceSumFusion: reduction function is not add";
+    return false;
+  }
+
+  // Fusion's root must be the reduce instruction
+  if (computation->root_instruction() != reduce_instr) {
+    VLOG(4) << "ReduceSumFusion: fusion root is not reduce";
+    return false;
+  }
+
+  return true;
+}
+
+// Helper function to check if a fusion matches the equal pattern
+// Pattern: fusion { parameter0 + parameter1 -> compare with EQ direction }
+bool IsEqualFusion(const HloFusionInstruction* fusion) {
+  auto* computation = fusion->fused_instructions_computation();
+
+  // Must have exactly 3 instructions: parameter0 + parameter1 + compare
+  const auto& instructions = computation->instructions();
+  int64_t instruction_count = std::distance(instructions.begin(), instructions.end());
+  if (instruction_count != 3) {
+    VLOG(4) << "EqualFusion: expected 3 instructions, got "
+            << instruction_count;
+    return false;
+  }
+
+  // Find the parameters and compare instructions
+  const HloInstruction* param0_instr = nullptr;
+  const HloInstruction* param1_instr = nullptr;
+  const HloInstruction* compare_instr = nullptr;
+
+  for (const auto* instr : instructions) {
+    if (instr->opcode() == HloOpcode::kParameter) {
+      if (!param0_instr) {
+        param0_instr = instr;
+      } else if (!param1_instr) {
+        param1_instr = instr;
+      } else {
+        VLOG(4) << "EqualFusion: too many parameter instructions";
+        return false;
+      }
+    } else if (instr->opcode() == HloOpcode::kCompare) {
+      compare_instr = instr;
+    } else {
+      VLOG(4) << "EqualFusion: unexpected opcode "
+              << HloOpcodeString(instr->opcode());
+      return false;
+    }
+  }
+
+  // All instructions must be present
+  if (!param0_instr || !param1_instr || !compare_instr) {
+    VLOG(4) << "EqualFusion: missing parameter or compare instruction";
+    return false;
+  }
+
+  // Compare must take both parameters as operands
+  if (compare_instr->operand_count() != 2 ||
+      (compare_instr->operand(0) != param0_instr && compare_instr->operand(0) != param1_instr) ||
+      (compare_instr->operand(1) != param0_instr && compare_instr->operand(1) != param1_instr)) {
+    VLOG(4) << "EqualFusion: compare does not take both parameters as operands";
+    return false;
+  }
+
+  // Compare must have EQ direction
+  if (compare_instr->comparison_direction() != ComparisonDirection::kEq) {
+    VLOG(4) << "EqualFusion: compare direction is not EQ";
+    return false;
+  }
+
+  // Fusion's root must be the compare instruction
+  if (computation->root_instruction() != compare_instr) {
+    VLOG(4) << "EqualFusion: fusion root is not compare";
+    return false;
+  }
+
+  return true;
+}
+
+// Helper function to check if a fusion matches the select pattern
+// Pattern: fusion { parameter0 + parameter1 + parameter2 -> select }
+bool IsSelectFusion(const HloFusionInstruction* fusion) {
+  auto* computation = fusion->fused_instructions_computation();
+
+  // Must have exactly 4 instructions: parameter0 + parameter1 + parameter2 + select
+  const auto& instructions = computation->instructions();
+  int64_t instruction_count = std::distance(instructions.begin(), instructions.end());
+  if (instruction_count != 4) {
+    VLOG(4) << "SelectFusion: expected 4 instructions, got "
+            << instruction_count;
+    return false;
+  }
+
+  // Find the parameters and select instructions
+  int param_count = 0;
+  const HloInstruction* select_instr = nullptr;
+
+  for (const auto* instr : instructions) {
+    if (instr->opcode() == HloOpcode::kParameter) {
+      param_count++;
+    } else if (instr->opcode() == HloOpcode::kSelect) {
+      select_instr = instr;
+    } else {
+      VLOG(4) << "SelectFusion: unexpected opcode "
+              << HloOpcodeString(instr->opcode());
+      return false;
+    }
+  }
+
+  // Must have exactly 3 parameters and 1 select
+  if (param_count != 3 || !select_instr) {
+    VLOG(4) << "SelectFusion: missing parameters or select instruction";
+    return false;
+  }
+
+  // Select must take 3 operands (condition, x, y)
+  if (select_instr->operand_count() != 3) {
+    VLOG(4) << "SelectFusion: select does not take 3 operands";
+    return false;
+  }
+
+  // Fusion's root must be the select instruction
+  if (computation->root_instruction() != select_instr) {
+    VLOG(4) << "SelectFusion: fusion root is not select";
+    return false;
+  }
+
+  return true;
+}
+
+// Helper function to check if a fusion matches the negate pattern
+// Pattern: fusion { parameter -> negate }
+bool IsNegateFusion(const HloFusionInstruction* fusion) {
+  auto* computation = fusion->fused_instructions_computation();
+
+  // Must have exactly 2 instructions: parameter + negate
+  const auto& instructions = computation->instructions();
+  int64_t instruction_count = std::distance(instructions.begin(), instructions.end());
+  if (instruction_count != 2) {
+    VLOG(4) << "NegateFusion: expected 2 instructions, got "
+            << instruction_count;
+    return false;
+  }
+
+  // Find the parameter and negate instructions
+  const HloInstruction* param_instr = nullptr;
+  const HloInstruction* negate_instr = nullptr;
+
+  for (const auto* instr : instructions) {
+    if (instr->opcode() == HloOpcode::kParameter) {
+      param_instr = instr;
+    } else if (instr->opcode() == HloOpcode::kNegate) {
+      negate_instr = instr;
+    } else {
+      VLOG(4) << "NegateFusion: unexpected opcode "
+              << HloOpcodeString(instr->opcode());
+      return false;
+    }
+  }
+
+  // Both instructions must be present
+  if (!param_instr || !negate_instr) {
+    VLOG(4) << "NegateFusion: missing parameter or negate instruction";
+    return false;
+  }
+
+  // Negate must take parameter as its only operand
+  if (negate_instr->operand_count() != 1 ||
+      negate_instr->operand(0) != param_instr) {
+    VLOG(4) << "NegateFusion: negate does not take parameter as operand";
+    return false;
+  }
+
+  // Fusion's root must be the negate instruction
+  if (computation->root_instruction() != negate_instr) {
+    VLOG(4) << "NegateFusion: fusion root is not negate";
+    return false;
+  }
+
+  return true;
+}
+
+// Helper function to check if a fusion matches the divide pattern
+// Pattern: fusion { parameter0 + parameter1 -> divide }
+bool IsDivideFusion(const HloFusionInstruction* fusion) {
+  auto* computation = fusion->fused_instructions_computation();
+
+  // Must have exactly 3 instructions: parameter0 + parameter1 + divide
+  const auto& instructions = computation->instructions();
+  int64_t instruction_count = std::distance(instructions.begin(), instructions.end());
+  if (instruction_count != 3) {
+    VLOG(4) << "DivideFusion: expected 3 instructions, got "
+            << instruction_count;
+    return false;
+  }
+
+  // Find the parameters and divide instructions
+  const HloInstruction* param0_instr = nullptr;
+  const HloInstruction* param1_instr = nullptr;
+  const HloInstruction* divide_instr = nullptr;
+
+  for (const auto* instr : instructions) {
+    if (instr->opcode() == HloOpcode::kParameter) {
+      if (!param0_instr) {
+        param0_instr = instr;
+      } else if (!param1_instr) {
+        param1_instr = instr;
+      } else {
+        VLOG(4) << "DivideFusion: too many parameter instructions";
+        return false;
+      }
+    } else if (instr->opcode() == HloOpcode::kDivide) {
+      divide_instr = instr;
+    } else {
+      VLOG(4) << "DivideFusion: unexpected opcode "
+              << HloOpcodeString(instr->opcode());
+      return false;
+    }
+  }
+
+  // All instructions must be present
+  if (!param0_instr || !param1_instr || !divide_instr) {
+    VLOG(4) << "DivideFusion: missing parameter or divide instruction";
+    return false;
+  }
+
+  // Divide must take both parameters as operands
+  if (divide_instr->operand_count() != 2 ||
+      (divide_instr->operand(0) != param0_instr && divide_instr->operand(0) != param1_instr) ||
+      (divide_instr->operand(1) != param0_instr && divide_instr->operand(1) != param1_instr)) {
+    VLOG(4) << "DivideFusion: divide does not take both parameters as operands";
+    return false;
+  }
+
+  // Fusion's root must be the divide instruction
+  if (computation->root_instruction() != divide_instr) {
+    VLOG(4) << "DivideFusion: fusion root is not divide";
+    return false;
+  }
+
+  return true;
+}
+
+// Helper function to check if a fusion matches the multiply pattern
+// Pattern: fusion { parameter0 + parameter1 -> multiply }
+bool IsMultiplyFusion(const HloFusionInstruction* fusion) {
+  auto* computation = fusion->fused_instructions_computation();
+
+  // Must have exactly 3 instructions: parameter0 + parameter1 + multiply
+  const auto& instructions = computation->instructions();
+  int64_t instruction_count = std::distance(instructions.begin(), instructions.end());
+  if (instruction_count != 3) {
+    VLOG(4) << "MultiplyFusion: expected 3 instructions, got "
+            << instruction_count;
+    return false;
+  }
+
+  // Find the parameters and multiply instructions
+  const HloInstruction* param0_instr = nullptr;
+  const HloInstruction* param1_instr = nullptr;
+  const HloInstruction* multiply_instr = nullptr;
+
+  for (const auto* instr : instructions) {
+    if (instr->opcode() == HloOpcode::kParameter) {
+      if (!param0_instr) {
+        param0_instr = instr;
+      } else if (!param1_instr) {
+        param1_instr = instr;
+      } else {
+        VLOG(4) << "MultiplyFusion: too many parameter instructions";
+        return false;
+      }
+    } else if (instr->opcode() == HloOpcode::kMultiply) {
+      multiply_instr = instr;
+    } else {
+      VLOG(4) << "MultiplyFusion: unexpected opcode "
+              << HloOpcodeString(instr->opcode());
+      return false;
+    }
+  }
+
+  // All instructions must be present
+  if (!param0_instr || !param1_instr || !multiply_instr) {
+    VLOG(4) << "MultiplyFusion: missing parameter or multiply instruction";
+    return false;
+  }
+
+  // Multiply must take both parameters as operands
+  if (multiply_instr->operand_count() != 2 ||
+      (multiply_instr->operand(0) != param0_instr && multiply_instr->operand(0) != param1_instr) ||
+      (multiply_instr->operand(1) != param0_instr && multiply_instr->operand(1) != param1_instr)) {
+    VLOG(4) << "MultiplyFusion: multiply does not take both parameters as operands";
+    return false;
+  }
+
+  // Fusion's root must be the multiply instruction
+  if (computation->root_instruction() != multiply_instr) {
+    VLOG(4) << "MultiplyFusion: fusion root is not multiply";
+    return false;
+  }
+
+  return true;
+}
+
+// Helper function to check if a fusion matches the greater pattern
+// Pattern: fusion { parameter0 + parameter1 -> compare with GT direction }
+bool IsGreaterFusion(const HloFusionInstruction* fusion) {
+  auto* computation = fusion->fused_instructions_computation();
+
+  // Must have exactly 3 instructions: parameter0 + parameter1 + compare
+  const auto& instructions = computation->instructions();
+  int64_t instruction_count = std::distance(instructions.begin(), instructions.end());
+  if (instruction_count != 3) {
+    VLOG(4) << "GreaterFusion: expected 3 instructions, got "
+            << instruction_count;
+    return false;
+  }
+
+  // Find the parameters and compare instructions
+  const HloInstruction* param0_instr = nullptr;
+  const HloInstruction* param1_instr = nullptr;
+  const HloInstruction* compare_instr = nullptr;
+
+  for (const auto* instr : instructions) {
+    if (instr->opcode() == HloOpcode::kParameter) {
+      if (!param0_instr) {
+        param0_instr = instr;
+      } else if (!param1_instr) {
+        param1_instr = instr;
+      } else {
+        VLOG(4) << "GreaterFusion: too many parameter instructions";
+        return false;
+      }
+    } else if (instr->opcode() == HloOpcode::kCompare) {
+      compare_instr = instr;
+    } else {
+      VLOG(4) << "GreaterFusion: unexpected opcode "
+              << HloOpcodeString(instr->opcode());
+      return false;
+    }
+  }
+
+  // All instructions must be present
+  if (!param0_instr || !param1_instr || !compare_instr) {
+    VLOG(4) << "GreaterFusion: missing parameter or compare instruction";
+    return false;
+  }
+
+  // Compare must take both parameters as operands
+  if (compare_instr->operand_count() != 2 ||
+      (compare_instr->operand(0) != param0_instr && compare_instr->operand(0) != param1_instr) ||
+      (compare_instr->operand(1) != param0_instr && compare_instr->operand(1) != param1_instr)) {
+    VLOG(4) << "GreaterFusion: compare does not take both parameters as operands";
+    return false;
+  }
+
+  // Compare must have GT direction
+  if (compare_instr->comparison_direction() != ComparisonDirection::kGt) {
+    VLOG(4) << "GreaterFusion: compare direction is not GT";
+    return false;
+  }
+
+  // Fusion's root must be the compare instruction
+  if (computation->root_instruction() != compare_instr) {
+    VLOG(4) << "GreaterFusion: fusion root is not compare";
+    return false;
+  }
+
+  return true;
+}
+
+// Helper function to check if a fusion matches the iota pattern
+// Pattern: fusion { -> iota }
+bool IsIotaFusion(const HloFusionInstruction* fusion) {
+  auto* computation = fusion->fused_instructions_computation();
+
+  // Must have exactly 1 instruction: iota
+  const auto& instructions = computation->instructions();
+  int64_t instruction_count = std::distance(instructions.begin(), instructions.end());
+  if (instruction_count != 1) {
+    VLOG(4) << "IotaFusion: expected 1 instruction, got "
+            << instruction_count;
+    return false;
+  }
+
+  // The instruction must be an iota
+  const HloInstruction* iota_instr = nullptr;
+  for (const auto* instr : instructions) {
+    if (instr->opcode() == HloOpcode::kIota) {
+      iota_instr = instr;
+    } else {
+      VLOG(4) << "IotaFusion: unexpected opcode "
+              << HloOpcodeString(instr->opcode());
+      return false;
+    }
+  }
+
+  if (!iota_instr) {
+    VLOG(4) << "IotaFusion: no iota instruction found";
+    return false;
+  }
+
+  // Fusion's root must be the iota instruction
+  if (computation->root_instruction() != iota_instr) {
+    VLOG(4) << "IotaFusion: fusion root is not iota";
+    return false;
+  }
+
+  return true;
 }
 
 }  // namespace
@@ -427,7 +1199,91 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitFusion(
       return thunks;
     }
   }
-  
+
+  if (IsAddFusion(fusion)) {
+    TF_ASSIGN_OR_RETURN(auto thunks, EmitAddFusion(fusion));
+    if (!thunks.empty()) {
+      return thunks;
+    }
+  }
+
+  if (IsMaximumFusion(fusion)) {
+    TF_ASSIGN_OR_RETURN(auto thunks, EmitMaximumFusion(fusion));
+    if (!thunks.empty()) {
+      return thunks;
+    }
+  }
+
+  if (IsReduceMaxFusion(fusion)) {
+    TF_ASSIGN_OR_RETURN(auto thunks, EmitReduceMaxFusion(fusion));
+    if (!thunks.empty()) {
+      return thunks;
+    }
+  }
+
+  if (IsSubtractFusion(fusion)) {
+    TF_ASSIGN_OR_RETURN(auto thunks, EmitSubtractFusion(fusion));
+    if (!thunks.empty()) {
+      return thunks;
+    }
+  }
+
+  if (IsExponentialFusion(fusion)) {
+    TF_ASSIGN_OR_RETURN(auto thunks, EmitExponentialFusion(fusion));
+    if (!thunks.empty()) {
+      return thunks;
+    }
+  }
+
+  if (IsReduceSumFusion(fusion)) {
+    TF_ASSIGN_OR_RETURN(auto thunks, EmitReduceSumFusion(fusion));
+    if (!thunks.empty()) {
+      return thunks;
+    }
+  }
+
+  if (IsEqualFusion(fusion)) {
+    TF_ASSIGN_OR_RETURN(auto thunks, EmitEqualFusion(fusion));
+    if (!thunks.empty()) {
+      return thunks;
+    }
+  }
+
+  if (IsSelectFusion(fusion)) {
+    TF_ASSIGN_OR_RETURN(auto thunks, EmitSelectFusion(fusion));
+    if (!thunks.empty()) {
+      return thunks;
+    }
+  }
+
+  if (IsNegateFusion(fusion)) {
+    TF_ASSIGN_OR_RETURN(auto thunks, EmitNegateFusion(fusion));
+    if (!thunks.empty()) {
+      return thunks;
+    }
+  }
+
+  if (IsDivideFusion(fusion)) {
+    TF_ASSIGN_OR_RETURN(auto thunks, EmitDivideFusion(fusion));
+    if (!thunks.empty()) {
+      return thunks;
+    }
+  }
+
+  if (IsMultiplyFusion(fusion)) {
+    TF_ASSIGN_OR_RETURN(auto thunks, EmitMultiplyFusion(fusion));
+    if (!thunks.empty()) {
+      return thunks;
+    }
+  }
+
+  if (IsGreaterFusion(fusion)) {
+    TF_ASSIGN_OR_RETURN(auto thunks, EmitGreaterFusion(fusion));
+    if (!thunks.empty()) {
+      return thunks;
+    }
+  }
+
   if (IsTensorBroadcastFusion(fusion)) {
     TF_ASSIGN_OR_RETURN(auto thunks, EmitTensorBroadcastFusion(fusion));
     if (!thunks.empty()) {
@@ -459,11 +1315,98 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitFusion(
     }
   }
   
+  if (IsIotaFusion(fusion)) {
+    TF_ASSIGN_OR_RETURN(auto thunks, EmitIotaFusion(fusion));
+    if (!thunks.empty()) {
+      return thunks;
+    }
+  }
+  
   // Add more FFI pattern matching here in the future
   // Pattern 5: ...
   
   VLOG(3) << "Ascend ThunkEmitter: no matching FFI pattern found for fusion";
   return xla::gpu::ThunkSequence{};
+}
+
+absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitIotaFusion(
+    const HloFusionInstruction* fusion) {
+  VLOG(2) << "Emitting iota fusion as ascend.iota: " << fusion->name();
+
+  TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
+
+  auto* computation = fusion->fused_instructions_computation();
+  const HloInstruction* iota_instr = nullptr;
+
+  for (const auto* instr : computation->instructions()) {
+    if (instr->opcode() == HloOpcode::kIota) {
+      iota_instr = instr;
+      break;
+    }
+  }
+
+  if (!iota_instr) {
+    return absl::InternalError("No iota instruction found in iota fusion");
+  }
+
+  // Extract iota dimension
+  int64_t iota_dimension = iota_instr->iota_dimension();
+
+  // Extract shape information
+  const Shape& output_shape = fusion->shape();
+  PrimitiveType element_type = output_shape.element_type();
+  int64_t num_rows = output_shape.dimensions(0);
+  int64_t num_classes = output_shape.dimensions(1);
+
+  VLOG(2) << "Iota fusion: output shape=" << output_shape.ToString()
+          << ", element_type=" << PrimitiveType_Name(element_type)
+          << ", iota_dimension=" << iota_dimension
+          << ", num_rows=" << num_rows
+          << ", num_classes=" << num_classes;
+
+  std::string function_name = "ascend.iota";
+  switch (element_type) {
+    case U8:
+      function_name += ".u8";
+      break;
+    default:
+      VLOG(2) << "Unsupported data type for iota: " << PrimitiveType_Name(element_type);
+      function_name += ".u8";
+      break;
+  }
+
+  VLOG(2) << "Using iota function: " << function_name;
+
+  std::vector<NullableShapedSlice> operands;
+  std::vector<NullableShapedSlice> results;
+
+  results.push_back(output_slice);
+
+  xla::ffi::AttributesMap attributes;
+  attributes["iota_dimension"] = xla::ffi::Scalar(iota_dimension);
+  attributes["num_classes"] = xla::ffi::Scalar(num_classes);
+  attributes["num_rows"] = xla::ffi::Scalar(num_rows);
+
+  const se::GpuComputeCapability& gpu_compute_capability =
+      ir_emitter_context_->gpu_compute_capability();
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::gpu::CustomCallThunk> thunk,
+      xla::gpu::CustomCallThunk::Create(
+          xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
+          function_name,
+          std::move(operands),
+          std::move(results),
+          std::move(attributes),
+          /*called_computation=*/nullptr,
+          "ASCEND",
+          gpu_compute_capability,
+          /*execution_state=*/nullptr));
+
+  xla::gpu::ThunkSequence sequence;
+  sequence.push_back(std::move(thunk));
+
+  return sequence;
 }
 
 // Helper function to emit broadcast-constant fusion as aclnnBroadcast FFI call
@@ -530,6 +1473,1070 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitBroadcastConstantFusio
   xla::gpu::ThunkSequence sequence;
   sequence.push_back(std::move(thunk));
   
+  return sequence;
+}
+
+absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitAddFusion(
+    const HloFusionInstruction* fusion) {
+  VLOG(2) << "Emitting add fusion as ascend.add: " << fusion->name();
+
+  TF_ASSIGN_OR_RETURN(auto input_slice0, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto input_slice1, GetShapedSliceForHlo(fusion->operand(1)));
+  TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
+
+  auto* computation = fusion->fused_instructions_computation();
+  const HloInstruction* add_instr = nullptr;
+
+  for (const auto* instr : computation->instructions()) {
+    if (instr->opcode() == HloOpcode::kAdd) {
+      add_instr = instr;
+      break;
+    }
+  }
+
+  if (!add_instr) {
+    return absl::InternalError("No add instruction found in add fusion");
+  }
+
+  const Shape& input_shape = fusion->operand(0)->shape();
+  PrimitiveType element_type = input_shape.element_type();
+
+  VLOG(2) << "Add fusion: input0 shape=" << input_shape.ToString()
+          << ", input1 shape=" << fusion->operand(1)->shape().ToString()
+          << ", output shape=" << output_slice.shape.ToString()
+          << ", element_type=" << PrimitiveType_Name(element_type);
+
+  std::string function_name = "ascend.add";
+  switch (element_type) {
+    case F32:
+      function_name += ".f32";
+      break;
+    case F16:
+      function_name += ".f16";
+      break;
+    case BF16:
+      function_name += ".bf16";
+      break;
+    case S32:
+      function_name += ".s32";
+      break;
+    case S64:
+      function_name += ".s64";
+      break;
+    default:
+      VLOG(2) << "Unsupported data type for add: " << PrimitiveType_Name(element_type);
+      function_name += ".f32";
+      break;
+  }
+
+  VLOG(2) << "Using add function: " << function_name;
+
+  std::vector<NullableShapedSlice> operands;
+  std::vector<NullableShapedSlice> results;
+
+  operands.push_back(input_slice0);
+  operands.push_back(input_slice1);
+  results.push_back(output_slice);
+
+  xla::ffi::AttributesMap attributes;
+  attributes["alpha"] = xla::ffi::Scalar(1.0f);
+
+  const se::GpuComputeCapability& gpu_compute_capability =
+      ir_emitter_context_->gpu_compute_capability();
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::gpu::CustomCallThunk> thunk,
+      xla::gpu::CustomCallThunk::Create(
+          xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
+          function_name,
+          std::move(operands),
+          std::move(results),
+          std::move(attributes),
+          /*called_computation=*/nullptr,
+          "ASCEND",
+          gpu_compute_capability,
+          /*execution_state=*/nullptr));
+
+  xla::gpu::ThunkSequence sequence;
+  sequence.push_back(std::move(thunk));
+
+  return sequence;
+}
+
+absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitMaximumFusion(
+    const HloFusionInstruction* fusion) {
+  VLOG(2) << "Emitting maximum fusion as ascend.maximum: " << fusion->name();
+
+  TF_ASSIGN_OR_RETURN(auto input_slice0, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto input_slice1, GetShapedSliceForHlo(fusion->operand(1)));
+  TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
+
+  auto* computation = fusion->fused_instructions_computation();
+  const HloInstruction* maximum_instr = nullptr;
+
+  for (const auto* instr : computation->instructions()) {
+    if (instr->opcode() == HloOpcode::kMaximum) {
+      maximum_instr = instr;
+      break;
+    }
+  }
+
+  if (!maximum_instr) {
+    return absl::InternalError("No maximum instruction found in maximum fusion");
+  }
+
+  const Shape& input_shape = fusion->operand(0)->shape();
+  PrimitiveType element_type = input_shape.element_type();
+
+  VLOG(2) << "Maximum fusion: input0 shape=" << input_shape.ToString()
+          << ", input1 shape=" << fusion->operand(1)->shape().ToString()
+          << ", output shape=" << output_slice.shape.ToString()
+          << ", element_type=" << PrimitiveType_Name(element_type);
+
+  std::string function_name = "ascend.maximum";
+  switch (element_type) {
+    case F32:
+      function_name += ".f32";
+      break;
+    case F16:
+      function_name += ".f16";
+      break;
+    case BF16:
+      function_name += ".bf16";
+      break;
+    case S32:
+      function_name += ".s32";
+      break;
+    case S64:
+      function_name += ".s64";
+      break;
+    default:
+      VLOG(2) << "Unsupported data type for maximum: " << PrimitiveType_Name(element_type);
+      function_name += ".f32";
+      break;
+  }
+
+  VLOG(2) << "Using maximum function: " << function_name;
+
+  std::vector<NullableShapedSlice> operands;
+  std::vector<NullableShapedSlice> results;
+
+  operands.push_back(input_slice0);
+  operands.push_back(input_slice1);
+  results.push_back(output_slice);
+
+  xla::ffi::AttributesMap attributes;
+
+  const se::GpuComputeCapability& gpu_compute_capability =
+      ir_emitter_context_->gpu_compute_capability();
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::gpu::CustomCallThunk> thunk,
+      xla::gpu::CustomCallThunk::Create(
+          xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
+          function_name,
+          std::move(operands),
+          std::move(results),
+          std::move(attributes),
+          /*called_computation=*/nullptr,
+          "ASCEND",
+          gpu_compute_capability,
+          /*execution_state=*/nullptr));
+
+  xla::gpu::ThunkSequence sequence;
+  sequence.push_back(std::move(thunk));
+
+  return sequence;
+}
+
+absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitReduceMaxFusion(
+    const HloFusionInstruction* fusion) {
+  VLOG(2) << "Emitting reduce_max fusion as ascend.reduce_max: " << fusion->name();
+
+  TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
+
+  auto* computation = fusion->fused_instructions_computation();
+  const HloInstruction* reduce_instr = nullptr;
+
+  for (const auto* instr : computation->instructions()) {
+    if (instr->opcode() == HloOpcode::kReduce) {
+      reduce_instr = instr;
+      break;
+    }
+  }
+
+  if (!reduce_instr) {
+    return absl::InternalError("No reduce instruction found in reduce_max fusion");
+  }
+
+  // Extract reduction dimensions
+  const std::vector<int64_t>& reduce_dims = reduce_instr->dimensions();
+  bool keep_dims = reduce_instr->keep_dims();
+  bool noop_with_empty_dims = false; // Default value
+
+  const Shape& input_shape = fusion->operand(0)->shape();
+  PrimitiveType element_type = input_shape.element_type();
+
+  VLOG(2) << "ReduceMax fusion: input shape=" << input_shape.ToString()
+          << ", output shape=" << output_slice.shape.ToString()
+          << ", element_type=" << PrimitiveType_Name(element_type)
+          << ", reduce_dims=" << absl::StrJoin(reduce_dims, ",")
+          << ", keep_dims=" << keep_dims;
+
+  std::string function_name = "ascend.reduce_max";
+  switch (element_type) {
+    case F32:
+      function_name += ".f32";
+      break;
+    case F16:
+      function_name += ".f16";
+      break;
+    case BF16:
+      function_name += ".bf16";
+      break;
+    case S32:
+      function_name += ".s32";
+      break;
+    case S64:
+      function_name += ".s64";
+      break;
+    default:
+      VLOG(2) << "Unsupported data type for reduce_max: " << PrimitiveType_Name(element_type);
+      function_name += ".f32";
+      break;
+  }
+
+  VLOG(2) << "Using reduce_max function: " << function_name;
+
+  std::vector<NullableShapedSlice> operands;
+  std::vector<NullableShapedSlice> results;
+
+  operands.push_back(input_slice);
+  results.push_back(output_slice);
+
+  xla::ffi::AttributesMap attributes;
+  attributes["dims"] = xla::ffi::Array(reduce_dims);
+  attributes["keep_dims"] = xla::ffi::Scalar(keep_dims);
+  attributes["noop_with_empty_dims"] = xla::ffi::Scalar(noop_with_empty_dims);
+
+  const se::GpuComputeCapability& gpu_compute_capability =
+      ir_emitter_context_->gpu_compute_capability();
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::gpu::CustomCallThunk> thunk,
+      xla::gpu::CustomCallThunk::Create(
+          xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
+          function_name,
+          std::move(operands),
+          std::move(results),
+          std::move(attributes),
+          /*called_computation=*/nullptr,
+          "ASCEND",
+          gpu_compute_capability,
+          /*execution_state=*/nullptr));
+
+  xla::gpu::ThunkSequence sequence;
+  sequence.push_back(std::move(thunk));
+
+  return sequence;
+}
+
+absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitSubtractFusion(
+    const HloFusionInstruction* fusion) {
+  VLOG(2) << "Emitting subtract fusion as ascend.subtract: " << fusion->name();
+
+  TF_ASSIGN_OR_RETURN(auto input_slice0, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto input_slice1, GetShapedSliceForHlo(fusion->operand(1)));
+  TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
+
+  auto* computation = fusion->fused_instructions_computation();
+  const HloInstruction* subtract_instr = nullptr;
+
+  for (const auto* instr : computation->instructions()) {
+    if (instr->opcode() == HloOpcode::kSubtract) {
+      subtract_instr = instr;
+      break;
+    }
+  }
+
+  if (!subtract_instr) {
+    return absl::InternalError("No subtract instruction found in subtract fusion");
+  }
+
+  const Shape& input_shape = fusion->operand(0)->shape();
+  PrimitiveType element_type = input_shape.element_type();
+
+  VLOG(2) << "Subtract fusion: input0 shape=" << input_shape.ToString()
+          << ", input1 shape=" << fusion->operand(1)->shape().ToString()
+          << ", output shape=" << output_slice.shape.ToString()
+          << ", element_type=" << PrimitiveType_Name(element_type);
+
+  std::string function_name = "ascend.subtract";
+  switch (element_type) {
+    case F32:
+      function_name += ".f32";
+      break;
+    case F16:
+      function_name += ".f16";
+      break;
+    case BF16:
+      function_name += ".bf16";
+      break;
+    case S32:
+      function_name += ".s32";
+      break;
+    case S64:
+      function_name += ".s64";
+      break;
+    default:
+      VLOG(2) << "Unsupported data type for subtract: " << PrimitiveType_Name(element_type);
+      function_name += ".f32";
+      break;
+  }
+
+  VLOG(2) << "Using subtract function: " << function_name;
+
+  std::vector<NullableShapedSlice> operands;
+  std::vector<NullableShapedSlice> results;
+
+  operands.push_back(input_slice0);
+  operands.push_back(input_slice1);
+  results.push_back(output_slice);
+
+  xla::ffi::AttributesMap attributes;
+  attributes["alpha"] = xla::ffi::Scalar(1.0f);
+
+  const se::GpuComputeCapability& gpu_compute_capability =
+      ir_emitter_context_->gpu_compute_capability();
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::gpu::CustomCallThunk> thunk,
+      xla::gpu::CustomCallThunk::Create(
+          xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
+          function_name,
+          std::move(operands),
+          std::move(results),
+          std::move(attributes),
+          /*called_computation=*/nullptr,
+          "ASCEND",
+          gpu_compute_capability,
+          /*execution_state=*/nullptr));
+
+  xla::gpu::ThunkSequence sequence;
+  sequence.push_back(std::move(thunk));
+
+  return sequence;
+}
+
+absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitExponentialFusion(
+    const HloFusionInstruction* fusion) {
+  VLOG(2) << "Emitting exponential fusion as ascend.exponential: " << fusion->name();
+
+  TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
+
+  auto* computation = fusion->fused_instructions_computation();
+  const HloInstruction* exponential_instr = nullptr;
+
+  for (const auto* instr : computation->instructions()) {
+    if (instr->opcode() == HloOpcode::kExponential) {
+      exponential_instr = instr;
+      break;
+    }
+  }
+
+  if (!exponential_instr) {
+    return absl::InternalError("No exponential instruction found in exponential fusion");
+  }
+
+  const Shape& input_shape = fusion->operand(0)->shape();
+  PrimitiveType element_type = input_shape.element_type();
+
+  VLOG(2) << "Exponential fusion: input shape=" << input_shape.ToString()
+          << ", output shape=" << output_slice.shape.ToString()
+          << ", element_type=" << PrimitiveType_Name(element_type);
+
+  std::string function_name = "ascend.exponential";
+  switch (element_type) {
+    case F32:
+      function_name += ".f32";
+      break;
+    case F16:
+      function_name += ".f16";
+      break;
+    case BF16:
+      function_name += ".bf16";
+      break;
+    case S32:
+      function_name += ".s32";
+      break;
+    case S64:
+      function_name += ".s64";
+      break;
+    default:
+      VLOG(2) << "Unsupported data type for exponential: " << PrimitiveType_Name(element_type);
+      function_name += ".f32";
+      break;
+  }
+
+  VLOG(2) << "Using exponential function: " << function_name;
+
+  std::vector<NullableShapedSlice> operands;
+  std::vector<NullableShapedSlice> results;
+
+  operands.push_back(input_slice);
+  results.push_back(output_slice);
+
+  xla::ffi::AttributesMap attributes;
+
+  const se::GpuComputeCapability& gpu_compute_capability =
+      ir_emitter_context_->gpu_compute_capability();
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::gpu::CustomCallThunk> thunk,
+      xla::gpu::CustomCallThunk::Create(
+          xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
+          function_name,
+          std::move(operands),
+          std::move(results),
+          std::move(attributes),
+          /*called_computation=*/nullptr,
+          "ASCEND",
+          gpu_compute_capability,
+          /*execution_state=*/nullptr));
+
+  xla::gpu::ThunkSequence sequence;
+  sequence.push_back(std::move(thunk));
+
+  return sequence;
+}
+
+absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitReduceSumFusion(
+    const HloFusionInstruction* fusion) {
+  VLOG(2) << "Emitting reduce_sum fusion as ascend.reduce_sum: " << fusion->name();
+
+  TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
+
+  auto* computation = fusion->fused_instructions_computation();
+  const HloInstruction* reduce_instr = nullptr;
+
+  for (const auto* instr : computation->instructions()) {
+    if (instr->opcode() == HloOpcode::kReduce) {
+      reduce_instr = instr;
+      break;
+    }
+  }
+
+  if (!reduce_instr) {
+    return absl::InternalError("No reduce instruction found in reduce_sum fusion");
+  }
+
+  // Extract reduction dimensions
+  const std::vector<int64_t>& reduce_dims = reduce_instr->dimensions();
+  bool keep_dims = reduce_instr->keep_dims();
+
+  const Shape& input_shape = fusion->operand(0)->shape();
+  PrimitiveType element_type = input_shape.element_type();
+
+  VLOG(2) << "ReduceSum fusion: input shape=" << input_shape.ToString()
+          << ", output shape=" << output_slice.shape.ToString()
+          << ", element_type=" << PrimitiveType_Name(element_type)
+          << ", reduce_dims=" << absl::StrJoin(reduce_dims, ",")
+          << ", keep_dims=" << keep_dims;
+
+  std::string function_name = "ascend.reduce_sum";
+  switch (element_type) {
+    case F32:
+      function_name += "_f32";
+      break;
+    case F16:
+      function_name += "_f16";
+      break;
+    case BF16:
+      function_name += "_bf16";
+      break;
+    case S32:
+      function_name += "_s32";
+      break;
+    case S64:
+      function_name += "_s64";
+      break;
+    default:
+      VLOG(2) << "Unsupported data type for reduce_sum: " << PrimitiveType_Name(element_type);
+      function_name += "_f32";
+      break;
+  }
+
+  VLOG(2) << "Using reduce_sum function: " << function_name;
+
+  std::vector<NullableShapedSlice> operands;
+  std::vector<NullableShapedSlice> results;
+
+  operands.push_back(input_slice);
+  results.push_back(output_slice);
+
+  xla::ffi::AttributesMap attributes;
+  attributes["dims"] = xla::ffi::Array(reduce_dims);
+  attributes["keep_dims"] = xla::ffi::Scalar(keep_dims);
+
+  const se::GpuComputeCapability& gpu_compute_capability =
+      ir_emitter_context_->gpu_compute_capability();
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::gpu::CustomCallThunk> thunk,
+      xla::gpu::CustomCallThunk::Create(
+          xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
+          function_name,
+          std::move(operands),
+          std::move(results),
+          std::move(attributes),
+          /*called_computation=*/nullptr,
+          "ASCEND",
+          gpu_compute_capability,
+          /*execution_state=*/nullptr));
+
+  xla::gpu::ThunkSequence sequence;
+  sequence.push_back(std::move(thunk));
+
+  return sequence;
+}
+
+absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitEqualFusion(
+    const HloFusionInstruction* fusion) {
+  VLOG(2) << "Emitting equal fusion as ascend.equal: " << fusion->name();
+
+  TF_ASSIGN_OR_RETURN(auto input_slice0, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto input_slice1, GetShapedSliceForHlo(fusion->operand(1)));
+  TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
+
+  auto* computation = fusion->fused_instructions_computation();
+  const HloInstruction* compare_instr = nullptr;
+
+  for (const auto* instr : computation->instructions()) {
+    if (instr->opcode() == HloOpcode::kCompare) {
+      compare_instr = instr;
+      break;
+    }
+  }
+
+  if (!compare_instr) {
+    return absl::InternalError("No compare instruction found in equal fusion");
+  }
+
+  const Shape& input_shape = fusion->operand(0)->shape();
+  PrimitiveType element_type = input_shape.element_type();
+
+  VLOG(2) << "Equal fusion: input0 shape=" << input_shape.ToString()
+          << ", input1 shape=" << fusion->operand(1)->shape().ToString()
+          << ", output shape=" << output_slice.shape.ToString()
+          << ", element_type=" << PrimitiveType_Name(element_type);
+
+  std::string function_name = "ascend.equal";
+  switch (element_type) {
+    case F32:
+      function_name += ".f32";
+      break;
+    case F16:
+      function_name += ".f16";
+      break;
+    case BF16:
+      function_name += ".bf16";
+      break;
+    case S32:
+      function_name += ".s32";
+      break;
+    case S64:
+      function_name += ".s64";
+      break;
+    case U8:
+      function_name += ".u8";
+      break;
+    case S8:
+      function_name += ".s8";
+      break;
+    case PRED:
+      function_name += ".bool";
+      break;
+    default:
+      VLOG(2) << "Unsupported data type for equal: " << PrimitiveType_Name(element_type);
+      function_name += ".f32";
+      break;
+  }
+
+  VLOG(2) << "Using equal function: " << function_name;
+
+  std::vector<NullableShapedSlice> operands;
+  std::vector<NullableShapedSlice> results;
+
+  operands.push_back(input_slice0);
+  operands.push_back(input_slice1);
+  results.push_back(output_slice);
+
+  xla::ffi::AttributesMap attributes;
+
+  const se::GpuComputeCapability& gpu_compute_capability =
+      ir_emitter_context_->gpu_compute_capability();
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::gpu::CustomCallThunk> thunk,
+      xla::gpu::CustomCallThunk::Create(
+          xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
+          function_name,
+          std::move(operands),
+          std::move(results),
+          std::move(attributes),
+          /*called_computation=*/nullptr,
+          "ASCEND",
+          gpu_compute_capability,
+          /*execution_state=*/nullptr));
+
+  xla::gpu::ThunkSequence sequence;
+  sequence.push_back(std::move(thunk));
+
+  return sequence;
+}
+
+absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitSelectFusion(
+    const HloFusionInstruction* fusion) {
+  VLOG(2) << "Emitting select fusion as ascend.select: " << fusion->name();
+
+  TF_ASSIGN_OR_RETURN(auto condition_slice, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto x_slice, GetShapedSliceForHlo(fusion->operand(1)));
+  TF_ASSIGN_OR_RETURN(auto y_slice, GetShapedSliceForHlo(fusion->operand(2)));
+  TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
+
+  auto* computation = fusion->fused_instructions_computation();
+  const HloInstruction* select_instr = nullptr;
+
+  for (const auto* instr : computation->instructions()) {
+    if (instr->opcode() == HloOpcode::kSelect) {
+      select_instr = instr;
+      break;
+    }
+  }
+
+  if (!select_instr) {
+    return absl::InternalError("No select instruction found in select fusion");
+  }
+
+  const Shape& input_shape = fusion->operand(1)->shape();
+  PrimitiveType element_type = input_shape.element_type();
+
+  VLOG(2) << "Select fusion: condition shape=" << fusion->operand(0)->shape().ToString()
+          << ", x shape=" << input_shape.ToString()
+          << ", y shape=" << fusion->operand(2)->shape().ToString()
+          << ", output shape=" << output_slice.shape.ToString()
+          << ", element_type=" << PrimitiveType_Name(element_type);
+
+  std::string function_name = "ascend.select";
+  switch (element_type) {
+    case F32:
+      function_name += ".f32";
+      break;
+    case F16:
+      function_name += ".f16";
+      break;
+    case BF16:
+      function_name += ".bf16";
+      break;
+    case S32:
+      function_name += ".s32";
+      break;
+    case S64:
+      function_name += ".s64";
+      break;
+    case PRED:
+      function_name += ".bool";
+      break;
+    default:
+      VLOG(2) << "Unsupported data type for select: " << PrimitiveType_Name(element_type);
+      function_name += ".f32";
+      break;
+  }
+
+  VLOG(2) << "Using select function: " << function_name;
+
+  std::vector<NullableShapedSlice> operands;
+  std::vector<NullableShapedSlice> results;
+
+  operands.push_back(condition_slice);
+  operands.push_back(x_slice);
+  operands.push_back(y_slice);
+  results.push_back(output_slice);
+
+  xla::ffi::AttributesMap attributes;
+
+  const se::GpuComputeCapability& gpu_compute_capability =
+      ir_emitter_context_->gpu_compute_capability();
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::gpu::CustomCallThunk> thunk,
+      xla::gpu::CustomCallThunk::Create(
+          xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
+          function_name,
+          std::move(operands),
+          std::move(results),
+          std::move(attributes),
+          /*called_computation=*/nullptr,
+          "ASCEND",
+          gpu_compute_capability,
+          /*execution_state=*/nullptr));
+
+  xla::gpu::ThunkSequence sequence;
+  sequence.push_back(std::move(thunk));
+
+  return sequence;
+}
+
+absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitNegateFusion(
+    const HloFusionInstruction* fusion) {
+  VLOG(2) << "Emitting negate fusion as ascend.negate: " << fusion->name();
+
+  TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
+
+  auto* computation = fusion->fused_instructions_computation();
+  const HloInstruction* negate_instr = nullptr;
+
+  for (const auto* instr : computation->instructions()) {
+    if (instr->opcode() == HloOpcode::kNegate) {
+      negate_instr = instr;
+      break;
+    }
+  }
+
+  if (!negate_instr) {
+    return absl::InternalError("No negate instruction found in negate fusion");
+  }
+
+  const Shape& input_shape = fusion->operand(0)->shape();
+  PrimitiveType element_type = input_shape.element_type();
+
+  VLOG(2) << "Negate fusion: input shape=" << input_shape.ToString()
+          << ", output shape=" << output_slice.shape.ToString()
+          << ", element_type=" << PrimitiveType_Name(element_type);
+
+  std::string function_name = "ascend.negate";
+  switch (element_type) {
+    case F32:
+      function_name += ".f32";
+      break;
+    case F16:
+      function_name += ".f16";
+      break;
+    case BF16:
+      function_name += ".bf16";
+      break;
+    case S32:
+      function_name += ".s32";
+      break;
+    case S64:
+      function_name += ".s64";
+      break;
+    default:
+      VLOG(2) << "Unsupported data type for negate: " << PrimitiveType_Name(element_type);
+      function_name += ".f32";
+      break;
+  }
+
+  VLOG(2) << "Using negate function: " << function_name;
+
+  std::vector<NullableShapedSlice> operands;
+  std::vector<NullableShapedSlice> results;
+
+  operands.push_back(input_slice);
+  results.push_back(output_slice);
+
+  xla::ffi::AttributesMap attributes;
+
+  const se::GpuComputeCapability& gpu_compute_capability =
+      ir_emitter_context_->gpu_compute_capability();
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::gpu::CustomCallThunk> thunk,
+      xla::gpu::CustomCallThunk::Create(
+          xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
+          function_name,
+          std::move(operands),
+          std::move(results),
+          std::move(attributes),
+          /*called_computation=*/nullptr,
+          "ASCEND",
+          gpu_compute_capability,
+          /*execution_state=*/nullptr));
+
+  xla::gpu::ThunkSequence sequence;
+  sequence.push_back(std::move(thunk));
+
+  return sequence;
+}
+
+absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitDivideFusion(
+    const HloFusionInstruction* fusion) {
+  VLOG(2) << "Emitting divide fusion as ascend.divide: " << fusion->name();
+
+  TF_ASSIGN_OR_RETURN(auto input_slice0, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto input_slice1, GetShapedSliceForHlo(fusion->operand(1)));
+  TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
+
+  auto* computation = fusion->fused_instructions_computation();
+  const HloInstruction* divide_instr = nullptr;
+
+  for (const auto* instr : computation->instructions()) {
+    if (instr->opcode() == HloOpcode::kDivide) {
+      divide_instr = instr;
+      break;
+    }
+  }
+
+  if (!divide_instr) {
+    return absl::InternalError("No divide instruction found in divide fusion");
+  }
+
+  const Shape& input_shape = fusion->operand(0)->shape();
+  PrimitiveType element_type = input_shape.element_type();
+
+  VLOG(2) << "Divide fusion: input0 shape=" << input_shape.ToString()
+          << ", input1 shape=" << fusion->operand(1)->shape().ToString()
+          << ", output shape=" << output_slice.shape.ToString()
+          << ", element_type=" << PrimitiveType_Name(element_type);
+
+  std::string function_name = "ascend.divide";
+  switch (element_type) {
+    case F32:
+      function_name += ".f32";
+      break;
+    case F16:
+      function_name += ".f16";
+      break;
+    case BF16:
+      function_name += ".bf16";
+      break;
+    case S32:
+      function_name += ".s32";
+      break;
+    case S64:
+      function_name += ".s64";
+      break;
+    default:
+      VLOG(2) << "Unsupported data type for divide: " << PrimitiveType_Name(element_type);
+      function_name += ".f32";
+      break;
+  }
+
+  VLOG(2) << "Using divide function: " << function_name;
+
+  std::vector<NullableShapedSlice> operands;
+  std::vector<NullableShapedSlice> results;
+
+  operands.push_back(input_slice0);
+  operands.push_back(input_slice1);
+  results.push_back(output_slice);
+
+  xla::ffi::AttributesMap attributes;
+
+  const se::GpuComputeCapability& gpu_compute_capability =
+      ir_emitter_context_->gpu_compute_capability();
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::gpu::CustomCallThunk> thunk,
+      xla::gpu::CustomCallThunk::Create(
+          xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
+          function_name,
+          std::move(operands),
+          std::move(results),
+          std::move(attributes),
+          /*called_computation=*/nullptr,
+          "ASCEND",
+          gpu_compute_capability,
+          /*execution_state=*/nullptr));
+
+  xla::gpu::ThunkSequence sequence;
+  sequence.push_back(std::move(thunk));
+
+  return sequence;
+}
+
+absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitMultiplyFusion(
+    const HloFusionInstruction* fusion) {
+  VLOG(2) << "Emitting multiply fusion as ascend.multiply: " << fusion->name();
+
+  TF_ASSIGN_OR_RETURN(auto input_slice0, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto input_slice1, GetShapedSliceForHlo(fusion->operand(1)));
+  TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
+
+  auto* computation = fusion->fused_instructions_computation();
+  const HloInstruction* multiply_instr = nullptr;
+
+  for (const auto* instr : computation->instructions()) {
+    if (instr->opcode() == HloOpcode::kMultiply) {
+      multiply_instr = instr;
+      break;
+    }
+  }
+
+  if (!multiply_instr) {
+    return absl::InternalError("No multiply instruction found in multiply fusion");
+  }
+
+  const Shape& input_shape = fusion->operand(0)->shape();
+  PrimitiveType element_type = input_shape.element_type();
+
+  VLOG(2) << "Multiply fusion: input0 shape=" << input_shape.ToString()
+          << ", input1 shape=" << fusion->operand(1)->shape().ToString()
+          << ", output shape=" << output_slice.shape.ToString()
+          << ", element_type=" << PrimitiveType_Name(element_type);
+
+  std::string function_name = "ascend.multiply";
+  switch (element_type) {
+    case F32:
+      function_name += ".f32";
+      break;
+    case F16:
+      function_name += ".f16";
+      break;
+    case BF16:
+      function_name += ".bf16";
+      break;
+    case S32:
+      function_name += ".s32";
+      break;
+    case S64:
+      function_name += ".s64";
+      break;
+    default:
+      VLOG(2) << "Unsupported data type for multiply: " << PrimitiveType_Name(element_type);
+      function_name += ".f32";
+      break;
+  }
+
+  VLOG(2) << "Using multiply function: " << function_name;
+
+  std::vector<NullableShapedSlice> operands;
+  std::vector<NullableShapedSlice> results;
+
+  operands.push_back(input_slice0);
+  operands.push_back(input_slice1);
+  results.push_back(output_slice);
+
+  xla::ffi::AttributesMap attributes;
+
+  const se::GpuComputeCapability& gpu_compute_capability =
+      ir_emitter_context_->gpu_compute_capability();
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::gpu::CustomCallThunk> thunk,
+      xla::gpu::CustomCallThunk::Create(
+          xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
+          function_name,
+          std::move(operands),
+          std::move(results),
+          std::move(attributes),
+          /*called_computation=*/nullptr,
+          "ASCEND",
+          gpu_compute_capability,
+          /*execution_state=*/nullptr));
+
+  xla::gpu::ThunkSequence sequence;
+  sequence.push_back(std::move(thunk));
+
+  return sequence;
+}
+
+absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitGreaterFusion(
+    const HloFusionInstruction* fusion) {
+  VLOG(2) << "Emitting greater fusion as ascend.greater: " << fusion->name();
+
+  TF_ASSIGN_OR_RETURN(auto input_slice0, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto input_slice1, GetShapedSliceForHlo(fusion->operand(1)));
+  TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
+
+  auto* computation = fusion->fused_instructions_computation();
+  const HloInstruction* compare_instr = nullptr;
+
+  for (const auto* instr : computation->instructions()) {
+    if (instr->opcode() == HloOpcode::kCompare) {
+      compare_instr = instr;
+      break;
+    }
+  }
+
+  if (!compare_instr) {
+    return absl::InternalError("No compare instruction found in greater fusion");
+  }
+
+  const Shape& input_shape = fusion->operand(0)->shape();
+  PrimitiveType element_type = input_shape.element_type();
+
+  VLOG(2) << "Greater fusion: input0 shape=" << input_shape.ToString()
+          << ", input1 shape=" << fusion->operand(1)->shape().ToString()
+          << ", output shape=" << output_slice.shape.ToString()
+          << ", element_type=" << PrimitiveType_Name(element_type);
+
+  std::string function_name = "ascend.greater";
+  switch (element_type) {
+    case F32:
+      function_name += ".f32";
+      break;
+    case F16:
+      function_name += ".f16";
+      break;
+    case BF16:
+      function_name += ".bf16";
+      break;
+    case S32:
+      function_name += ".s32";
+      break;
+    case S64:
+      function_name += ".s64";
+      break;
+    case U8:
+      function_name += ".u8";
+      break;
+    case S8:
+      function_name += ".s8";
+      break;
+    case PRED:
+      function_name += ".bool";
+      break;
+    default:
+      VLOG(2) << "Unsupported data type for greater: " << PrimitiveType_Name(element_type);
+      function_name += ".f32";
+      break;
+  }
+
+  VLOG(2) << "Using greater function: " << function_name;
+
+  std::vector<NullableShapedSlice> operands;
+  std::vector<NullableShapedSlice> results;
+
+  operands.push_back(input_slice0);
+  operands.push_back(input_slice1);
+  results.push_back(output_slice);
+
+  xla::ffi::AttributesMap attributes;
+
+  const se::GpuComputeCapability& gpu_compute_capability =
+      ir_emitter_context_->gpu_compute_capability();
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::gpu::CustomCallThunk> thunk,
+      xla::gpu::CustomCallThunk::Create(
+          xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
+          function_name,
+          std::move(operands),
+          std::move(results),
+          std::move(attributes),
+          /*called_computation=*/nullptr,
+          "ASCEND",
+          gpu_compute_capability,
+          /*execution_state=*/nullptr));
+
+  xla::gpu::ThunkSequence sequence;
+  sequence.push_back(std::move(thunk));
+
   return sequence;
 }
 
@@ -834,6 +2841,73 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitConcatenateFusion(
   return sequence;
 }
 
+absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitGemmThunk(
+    const HloCustomCallInstruction* instr) {
+  VLOG(2) << "Emitting matmul as ascend.matmul: " << instr->name();
+
+  TF_ASSIGN_OR_RETURN(auto a_slice, GetShapedSliceForHlo(instr->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto b_slice, GetShapedSliceForHlo(instr->operand(1)));
+  TF_ASSIGN_OR_RETURN(auto c_slice, GetShapedSliceForHlo(instr));
+
+  const Shape& a_shape = instr->operand(0)->shape();
+  PrimitiveType element_type = a_shape.element_type();
+
+  VLOG(2) << "Matmul: a_shape=" << a_shape.ToString()
+          << ", b_shape=" << instr->operand(1)->shape().ToString()
+          << ", c_shape=" << instr->shape().ToString()
+          << ", element_type=" << PrimitiveType_Name(element_type);
+
+  std::string function_name = "ascend.matmul";
+  switch (element_type) {
+    case F32:
+      function_name += "_f32";
+      break;
+    case F16:
+      function_name += "_f16";
+      break;
+    case BF16:
+      function_name += "_bf16";
+      break;
+    default:
+      VLOG(2) << "Unsupported data type for matmul: " << PrimitiveType_Name(element_type);
+      function_name += "_f32";
+      break;
+  }
+
+  VLOG(2) << "Using matmul function: " << function_name;
+
+  std::vector<NullableShapedSlice> operands;
+  std::vector<NullableShapedSlice> results;
+
+  operands.push_back(a_slice);
+  operands.push_back(b_slice);
+  results.push_back(c_slice);
+
+  xla::ffi::AttributesMap attributes;
+
+  const se::GpuComputeCapability& gpu_compute_capability =
+      ir_emitter_context_->gpu_compute_capability();
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::gpu::CustomCallThunk> thunk,
+      xla::gpu::CustomCallThunk::Create(
+          xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(instr, ir_emitter_context_->GetNextThunkId()),
+          function_name,
+          std::move(operands),
+          std::move(results),
+          std::move(attributes),
+          /*called_computation=*/nullptr,
+          "ASCEND",
+          gpu_compute_capability,
+          /*execution_state=*/nullptr));
+
+  xla::gpu::ThunkSequence sequence;
+  sequence.push_back(std::move(thunk));
+
+  return sequence;
+}
+
+
 absl::StatusOr<std::optional<xla::gpu::ThunkSequence>> ThunkEmitter::EmitHloInstruction(
     const HloInstruction* hlo) {
   
@@ -861,6 +2935,12 @@ absl::StatusOr<std::optional<xla::gpu::ThunkSequence>> ThunkEmitter::EmitHloInst
       }
       
       return thunks;
+    }
+    case HloOpcode::kCustomCall: {
+      auto* custom_call = Cast<HloCustomCallInstruction>(hlo);
+      if (IsLegacyCublasMatmul(*hlo)) {
+        return EmitGemmThunk(custom_call);
+      }
     }
     
     // Add more cases here as needed for top-level instructions
