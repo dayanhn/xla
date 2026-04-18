@@ -64,7 +64,7 @@ ffi::Error SelectHandlerImpl(aclrtStream stream, ffi::Buffer<DType> condition, f
   if (workspace_size > 0) {
     aclrtFree(workspaceAddr);
   }
-  aclDestroyOpExecutor(executor);
+  aclDestroyAclOpExecutor(executor);
 
   return ffi::Error::Success();
 }
@@ -75,7 +75,7 @@ template ffi::Error SelectHandlerImpl<ffi::DataType::F16>(aclrtStream stream, ff
 template ffi::Error SelectHandlerImpl<ffi::DataType::BF16>(aclrtStream stream, ffi::Buffer<ffi::DataType::BF16> condition, ffi::Buffer<ffi::DataType::BF16> x, ffi::Buffer<ffi::DataType::BF16> y, ffi::ResultBuffer<ffi::DataType::BF16> out);
 template ffi::Error SelectHandlerImpl<ffi::DataType::S32>(aclrtStream stream, ffi::Buffer<ffi::DataType::S32> condition, ffi::Buffer<ffi::DataType::S32> x, ffi::Buffer<ffi::DataType::S32> y, ffi::ResultBuffer<ffi::DataType::S32> out);
 template ffi::Error SelectHandlerImpl<ffi::DataType::S64>(aclrtStream stream, ffi::Buffer<ffi::DataType::S64> condition, ffi::Buffer<ffi::DataType::S64> x, ffi::Buffer<ffi::DataType::S64> y, ffi::ResultBuffer<ffi::DataType::S64> out);
-template ffi::Error SelectHandlerImpl<ffi::DataType::BOOL>(aclrtStream stream, ffi::Buffer<ffi::DataType::BOOL> condition, ffi::Buffer<ffi::DataType::BOOL> x, ffi::Buffer<ffi::DataType::BOOL> y, ffi::ResultBuffer<ffi::DataType::BOOL> out);
+template ffi::Error SelectHandlerImpl<ffi::DataType::PRED>(aclrtStream stream, ffi::Buffer<ffi::DataType::PRED> condition, ffi::Buffer<ffi::DataType::PRED> x, ffi::Buffer<ffi::DataType::PRED> y, ffi::ResultBuffer<ffi::DataType::PRED> out);
 
 // F32 specialization
 ffi::Error SelectHandlerF32(aclrtStream stream, ffi::Buffer<ffi::F32> condition, ffi::Buffer<ffi::F32> x, ffi::Buffer<ffi::F32> y, ffi::ResultBuffer<ffi::F32> out) {
@@ -102,9 +102,9 @@ ffi::Error SelectHandlerS64(aclrtStream stream, ffi::Buffer<ffi::S64> condition,
   return SelectHandlerImpl<ffi::DataType::S64>(stream, condition, x, y, out);
 }
 
-// BOOL specialization
-ffi::Error SelectHandlerBOOL(aclrtStream stream, ffi::Buffer<ffi::BOOL> condition, ffi::Buffer<ffi::BOOL> x, ffi::Buffer<ffi::BOOL> y, ffi::ResultBuffer<ffi::BOOL> out) {
-  return SelectHandlerImpl<ffi::DataType::BOOL>(stream, condition, x, y, out);
+// PRED specialization
+ffi::Error SelectHandlerPRED(aclrtStream stream, ffi::Buffer<ffi::PRED> condition, ffi::Buffer<ffi::PRED> x, ffi::Buffer<ffi::PRED> y, ffi::ResultBuffer<ffi::PRED> out) {
+  return SelectHandlerImpl<ffi::DataType::PRED>(stream, condition, x, y, out);
 }
 
 // Register Select operator FFI functions for different data types
@@ -175,14 +175,14 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
     {ffi::Traits::kCmdBufferCompatible});
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
-    AscendSelectBOOL,
-    SelectHandlerBOOL,
+    AscendSelectPRED,
+    SelectHandlerPRED,
     ffi::Ffi::Bind()
         .Ctx<ffi::PlatformStream<aclrtStream>>()
-        .Arg<ffi::Buffer<ffi::BOOL>>()
-        .Arg<ffi::Buffer<ffi::BOOL>>()
-        .Arg<ffi::Buffer<ffi::BOOL>>()
-        .Ret<ffi::Buffer<ffi::BOOL>>(),
+        .Arg<ffi::Buffer<ffi::PRED>>()
+        .Arg<ffi::Buffer<ffi::PRED>>()
+        .Arg<ffi::Buffer<ffi::PRED>>()
+        .Ret<ffi::Buffer<ffi::PRED>>(),
     {ffi::Traits::kCmdBufferCompatible});
 
 }  // namespace xla::ffi

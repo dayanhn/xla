@@ -120,7 +120,8 @@ ffi::Error FullHandlerF32(
   if (workspace_size_add > 0) {
     aclrtFree(workspaceAddr_add);
   }
-
+  aclDestroyAclOpExecutor(executor_zero);
+  aclDestroyAclOpExecutor(executor_add);
   return ffi::Error::Success();
 }
 
@@ -254,7 +255,8 @@ ffi::Error FullHandlerS32(
   if (workspace_size_add > 0) {
     aclrtFree(workspaceAddr_add);
   }
-
+  aclDestroyAclOpExecutor(executor_zero);
+  aclDestroyAclOpExecutor(executor_add);
   return ffi::Error::Success();
 }
 
@@ -388,7 +390,8 @@ ffi::Error FullHandlerS64(
   if (workspace_size_add > 0) {
     aclrtFree(workspaceAddr_add);
   }
-
+  aclDestroyAclOpExecutor(executor_zero);
+  aclDestroyAclOpExecutor(executor_add);
   return ffi::Error::Success();
 }
 

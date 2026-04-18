@@ -123,7 +123,7 @@ ffi::Error GeluHandlerImpl(aclrtStream stream, ffi::Buffer<DType> self, ffi::Res
   if (workspaceSize > 0) {
     aclrtFree(workspaceAddr);
   }
-
+  aclDestroyAclOpExecutor(executor);
   return ffi::Error::Success();
 }
 

@@ -151,6 +151,7 @@ ffi::Error CatHandler(
   aclDestroyTensor(input1_tensor);
   aclDestroyTensor(input2_tensor);
   aclDestroyTensor(output_tensor);
+  aclDestroyAclOpExecutor(executor);
   if (workspace_size > 0) {
     aclrtFree(workspaceAddr);
   }

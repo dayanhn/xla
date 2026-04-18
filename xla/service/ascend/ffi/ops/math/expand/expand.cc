@@ -6,6 +6,7 @@
 #include "third_party/acl/inc/aclnnop/aclnn_expand.h"
 #include "absl/strings/str_cat.h"
 #include "absl/status/status.h"
+#include <cstdint>
 
 namespace ffi = xla::ffi;
 
@@ -13,14 +14,15 @@ namespace xla::ffi {
 
 // Template version of Expand operator FFI handler
 template <ffi::DataType DType>
-ffi::Error ExpandHandlerImpl(aclrtStream stream, ffi::Buffer<DType> self, ffi::Array<int64_t> size, ffi::ResultBuffer<DType> out) {
+ffi::Error ExpandHandlerImpl(aclrtStream stream, ffi::Buffer<DType> self, ffi::Span<const int64_t> size, ffi::ResultBuffer<DType> out) {
   // Convert XLA Buffer to Ascend Tensor using utility function
   aclTensor* self_tensor = ConvertToAclTensor(self);
   aclTensor* out_tensor = ConvertToAclTensor(*out);
   LOG(INFO) << "Converted XLA buffers to Ascend tensors for Expand operation on stream: " << stream ;
 
-  // Create size array
-  aclIntArray* size_array = aclCreateIntArray(size.data(), size.size());
+  // Create size array directly from int64_t span (no conversion needed)
+  aclIntArray* size_array = nullptr;
+  size_array = aclCreateIntArray(size.begin(), size.size());
   if (size_array == nullptr) {
     aclDestroyTensor(self_tensor);
     aclDestroyTensor(out_tensor);
@@ -70,58 +72,58 @@ ffi::Error ExpandHandlerImpl(aclrtStream stream, ffi::Buffer<DType> self, ffi::A
   if (workspace_size > 0) {
     aclrtFree(workspaceAddr);
   }
-
+  aclDestroyAclOpExecutor(executor);
   return ffi::Error::Success();
 }
 
 // Explicit instantiations for supported data types
-template ffi::Error ExpandHandlerImpl<ffi::DataType::F32>(aclrtStream stream, ffi::Buffer<ffi::DataType::F32> self, ffi::Array<int64_t> size, ffi::ResultBuffer<ffi::DataType::F32> out);
-template ffi::Error ExpandHandlerImpl<ffi::DataType::F16>(aclrtStream stream, ffi::Buffer<ffi::DataType::F16> self, ffi::Array<int64_t> size, ffi::ResultBuffer<ffi::DataType::F16> out);
-template ffi::Error ExpandHandlerImpl<ffi::DataType::BF16>(aclrtStream stream, ffi::Buffer<ffi::DataType::BF16> self, ffi::Array<int64_t> size, ffi::ResultBuffer<ffi::DataType::BF16> out);
-template ffi::Error ExpandHandlerImpl<ffi::DataType::S32>(aclrtStream stream, ffi::Buffer<ffi::DataType::S32> self, ffi::Array<int64_t> size, ffi::ResultBuffer<ffi::DataType::S32> out);
-template ffi::Error ExpandHandlerImpl<ffi::DataType::S64>(aclrtStream stream, ffi::Buffer<ffi::DataType::S64> self, ffi::Array<int64_t> size, ffi::ResultBuffer<ffi::DataType::S64> out);
-template ffi::Error ExpandHandlerImpl<ffi::DataType::U8>(aclrtStream stream, ffi::Buffer<ffi::DataType::U8> self, ffi::Array<int64_t> size, ffi::ResultBuffer<ffi::DataType::U8> out);
-template ffi::Error ExpandHandlerImpl<ffi::DataType::S8>(aclrtStream stream, ffi::Buffer<ffi::DataType::S8> self, ffi::Array<int64_t> size, ffi::ResultBuffer<ffi::DataType::S8> out);
-template ffi::Error ExpandHandlerImpl<ffi::DataType::BOOL>(aclrtStream stream, ffi::Buffer<ffi::DataType::BOOL> self, ffi::Array<int64_t> size, ffi::ResultBuffer<ffi::DataType::BOOL> out);
+template ffi::Error ExpandHandlerImpl<ffi::DataType::F32>(aclrtStream stream, ffi::Buffer<ffi::DataType::F32> self, ffi::Span<const int64_t> size, ffi::ResultBuffer<ffi::DataType::F32> out);
+template ffi::Error ExpandHandlerImpl<ffi::DataType::F16>(aclrtStream stream, ffi::Buffer<ffi::DataType::F16> self, ffi::Span<const int64_t> size, ffi::ResultBuffer<ffi::DataType::F16> out);
+template ffi::Error ExpandHandlerImpl<ffi::DataType::BF16>(aclrtStream stream, ffi::Buffer<ffi::DataType::BF16> self, ffi::Span<const int64_t> size, ffi::ResultBuffer<ffi::DataType::BF16> out);
+template ffi::Error ExpandHandlerImpl<ffi::DataType::S32>(aclrtStream stream, ffi::Buffer<ffi::DataType::S32> self, ffi::Span<const int64_t> size, ffi::ResultBuffer<ffi::DataType::S32> out);
+template ffi::Error ExpandHandlerImpl<ffi::DataType::S64>(aclrtStream stream, ffi::Buffer<ffi::DataType::S64> self, ffi::Span<const int64_t> size, ffi::ResultBuffer<ffi::DataType::S64> out);
+template ffi::Error ExpandHandlerImpl<ffi::DataType::U8>(aclrtStream stream, ffi::Buffer<ffi::DataType::U8> self, ffi::Span<const int64_t> size, ffi::ResultBuffer<ffi::DataType::U8> out);
+template ffi::Error ExpandHandlerImpl<ffi::DataType::S8>(aclrtStream stream, ffi::Buffer<ffi::DataType::S8> self, ffi::Span<const int64_t> size, ffi::ResultBuffer<ffi::DataType::S8> out);
+template ffi::Error ExpandHandlerImpl<ffi::DataType::PRED>(aclrtStream stream, ffi::Buffer<ffi::DataType::PRED> self, ffi::Span<const int64_t> size, ffi::ResultBuffer<ffi::DataType::PRED> out);
 
 // F32 specialization
-ffi::Error ExpandHandlerF32(aclrtStream stream, ffi::Buffer<ffi::F32> self, ffi::Array<int64_t> size, ffi::ResultBuffer<ffi::F32> out) {
+ffi::Error ExpandHandlerF32(aclrtStream stream, ffi::Buffer<ffi::F32> self, ffi::Span<const int64_t> size, ffi::ResultBuffer<ffi::F32> out) {
   return ExpandHandlerImpl<ffi::DataType::F32>(stream, self, size, out);
 }
 
 // F16 specialization
-ffi::Error ExpandHandlerF16(aclrtStream stream, ffi::Buffer<ffi::F16> self, ffi::Array<int64_t> size, ffi::ResultBuffer<ffi::F16> out) {
+ffi::Error ExpandHandlerF16(aclrtStream stream, ffi::Buffer<ffi::F16> self, ffi::Span<const int64_t> size, ffi::ResultBuffer<ffi::F16> out) {
   return ExpandHandlerImpl<ffi::DataType::F16>(stream, self, size, out);
 }
 
 // BF16 specialization
-ffi::Error ExpandHandlerBF16(aclrtStream stream, ffi::Buffer<ffi::BF16> self, ffi::Array<int64_t> size, ffi::ResultBuffer<ffi::BF16> out) {
+ffi::Error ExpandHandlerBF16(aclrtStream stream, ffi::Buffer<ffi::BF16> self, ffi::Span<const int64_t> size, ffi::ResultBuffer<ffi::BF16> out) {
   return ExpandHandlerImpl<ffi::DataType::BF16>(stream, self, size, out);
 }
 
 // S32 specialization
-ffi::Error ExpandHandlerS32(aclrtStream stream, ffi::Buffer<ffi::S32> self, ffi::Array<int64_t> size, ffi::ResultBuffer<ffi::S32> out) {
+ffi::Error ExpandHandlerS32(aclrtStream stream, ffi::Buffer<ffi::S32> self, ffi::Span<const int64_t> size, ffi::ResultBuffer<ffi::S32> out) {
   return ExpandHandlerImpl<ffi::DataType::S32>(stream, self, size, out);
 }
 
 // S64 specialization
-ffi::Error ExpandHandlerS64(aclrtStream stream, ffi::Buffer<ffi::S64> self, ffi::Array<int64_t> size, ffi::ResultBuffer<ffi::S64> out) {
+ffi::Error ExpandHandlerS64(aclrtStream stream, ffi::Buffer<ffi::S64> self, ffi::Span<const int64_t> size, ffi::ResultBuffer<ffi::S64> out) {
   return ExpandHandlerImpl<ffi::DataType::S64>(stream, self, size, out);
 }
 
 // U8 specialization
-ffi::Error ExpandHandlerU8(aclrtStream stream, ffi::Buffer<ffi::U8> self, ffi::Array<int64_t> size, ffi::ResultBuffer<ffi::U8> out) {
+ffi::Error ExpandHandlerU8(aclrtStream stream, ffi::Buffer<ffi::U8> self, ffi::Span<const int64_t> size, ffi::ResultBuffer<ffi::U8> out) {
   return ExpandHandlerImpl<ffi::DataType::U8>(stream, self, size, out);
 }
 
 // S8 specialization
-ffi::Error ExpandHandlerS8(aclrtStream stream, ffi::Buffer<ffi::S8> self, ffi::Array<int64_t> size, ffi::ResultBuffer<ffi::S8> out) {
+ffi::Error ExpandHandlerS8(aclrtStream stream, ffi::Buffer<ffi::S8> self, ffi::Span<const int64_t> size, ffi::ResultBuffer<ffi::S8> out) {
   return ExpandHandlerImpl<ffi::DataType::S8>(stream, self, size, out);
 }
 
-// BOOL specialization
-ffi::Error ExpandHandlerBOOL(aclrtStream stream, ffi::Buffer<ffi::BOOL> self, ffi::Array<int64_t> size, ffi::ResultBuffer<ffi::BOOL> out) {
-  return ExpandHandlerImpl<ffi::DataType::BOOL>(stream, self, size, out);
+// PRED specialization
+ffi::Error ExpandHandlerPRED(aclrtStream stream, ffi::Buffer<ffi::PRED> self, ffi::Span<const int64_t> size, ffi::ResultBuffer<ffi::PRED> out) {
+  return ExpandHandlerImpl<ffi::DataType::PRED>(stream, self, size, out);
 }
 
 // Register Expand operator FFI functions for different data types
@@ -131,7 +133,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
     ffi::Ffi::Bind()
         .Ctx<ffi::PlatformStream<aclrtStream>>()
         .Arg<ffi::Buffer<ffi::F32>>()
-        .Arg<ffi::Array<int64_t>>()
+        .Attr<ffi::Span<const int64_t>>("size")
         .Ret<ffi::Buffer<ffi::F32>>(),
     {ffi::Traits::kCmdBufferCompatible});
 
@@ -141,7 +143,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
     ffi::Ffi::Bind()
         .Ctx<ffi::PlatformStream<aclrtStream>>()
         .Arg<ffi::Buffer<ffi::F32>>()
-        .Arg<ffi::Array<int64_t>>()
+        .Attr<ffi::Span<const int64_t>>("size")
         .Ret<ffi::Buffer<ffi::F32>>(),
     {ffi::Traits::kCmdBufferCompatible});
 
@@ -151,7 +153,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
     ffi::Ffi::Bind()
         .Ctx<ffi::PlatformStream<aclrtStream>>()
         .Arg<ffi::Buffer<ffi::F16>>()
-        .Arg<ffi::Array<int64_t>>()
+        .Attr<ffi::Span<const int64_t>>("size")
         .Ret<ffi::Buffer<ffi::F16>>(),
     {ffi::Traits::kCmdBufferCompatible});
 
@@ -161,7 +163,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
     ffi::Ffi::Bind()
         .Ctx<ffi::PlatformStream<aclrtStream>>()
         .Arg<ffi::Buffer<ffi::BF16>>()
-        .Arg<ffi::Array<int64_t>>()
+        .Attr<ffi::Span<const int64_t>>("size")
         .Ret<ffi::Buffer<ffi::BF16>>(),
     {ffi::Traits::kCmdBufferCompatible});
 
@@ -171,7 +173,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
     ffi::Ffi::Bind()
         .Ctx<ffi::PlatformStream<aclrtStream>>()
         .Arg<ffi::Buffer<ffi::S32>>()
-        .Arg<ffi::Array<int64_t>>()
+        .Attr<ffi::Span<const int64_t>>("size")
         .Ret<ffi::Buffer<ffi::S32>>(),
     {ffi::Traits::kCmdBufferCompatible});
 
@@ -181,7 +183,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
     ffi::Ffi::Bind()
         .Ctx<ffi::PlatformStream<aclrtStream>>()
         .Arg<ffi::Buffer<ffi::S64>>()
-        .Arg<ffi::Array<int64_t>>()
+        .Attr<ffi::Span<const int64_t>>("size")
         .Ret<ffi::Buffer<ffi::S64>>(),
     {ffi::Traits::kCmdBufferCompatible});
 
@@ -191,7 +193,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
     ffi::Ffi::Bind()
         .Ctx<ffi::PlatformStream<aclrtStream>>()
         .Arg<ffi::Buffer<ffi::U8>>()
-        .Arg<ffi::Array<int64_t>>()
+        .Attr<ffi::Span<const int64_t>>("size")
         .Ret<ffi::Buffer<ffi::U8>>(),
     {ffi::Traits::kCmdBufferCompatible});
 
@@ -201,18 +203,18 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
     ffi::Ffi::Bind()
         .Ctx<ffi::PlatformStream<aclrtStream>>()
         .Arg<ffi::Buffer<ffi::S8>>()
-        .Arg<ffi::Array<int64_t>>()
+        .Attr<ffi::Span<const int64_t>>("size")
         .Ret<ffi::Buffer<ffi::S8>>(),
     {ffi::Traits::kCmdBufferCompatible});
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
-    AscendExpandBOOL,
-    ExpandHandlerBOOL,
+    AscendExpandPRED,
+    ExpandHandlerPRED,
     ffi::Ffi::Bind()
         .Ctx<ffi::PlatformStream<aclrtStream>>()
-        .Arg<ffi::Buffer<ffi::BOOL>>()
-        .Arg<ffi::Array<int64_t>>()
-        .Ret<ffi::Buffer<ffi::BOOL>>(),
+        .Arg<ffi::Buffer<ffi::PRED>>()
+        .Attr<ffi::Span<const int64_t>>("size")
+        .Ret<ffi::Buffer<ffi::PRED>>(),
     {ffi::Traits::kCmdBufferCompatible});
 
 }  // namespace xla::ffi

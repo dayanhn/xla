@@ -447,7 +447,7 @@ void RegisterAscendFfiHandlers() {
       GetXlaFfiApi(),
       "ascend.equal.bool",
       "ASCEND",
-      AscendEqualBOOL);
+      AscendEqualPRED);
   
   status = TakeStatus(error);
   if (!status.ok()) {
@@ -672,7 +672,7 @@ void RegisterAscendFfiHandlers() {
       GetXlaFfiApi(),
       "ascend.expand.bool",
       "ASCEND",
-      AscendExpandBOOL);
+      AscendExpandPRED);
   
   status = TakeStatus(error);
   if (!status.ok()) {
@@ -807,7 +807,7 @@ void RegisterAscendFfiHandlers() {
       GetXlaFfiApi(),
       "ascend.greater.bool",
       "ASCEND",
-      AscendGreaterBOOL);
+      AscendGreaterPRED);
   
   status = TakeStatus(error);
   if (!status.ok()) {
@@ -942,7 +942,7 @@ void RegisterAscendFfiHandlers() {
       GetXlaFfiApi(),
       "ascend.greater_equal.bool",
       "ASCEND",
-      AscendGreaterEqualBOOL);
+      AscendGreaterEqualPRED);
   
   status = TakeStatus(error);
   if (!status.ok()) {
@@ -1077,7 +1077,7 @@ void RegisterAscendFfiHandlers() {
       GetXlaFfiApi(),
       "ascend.less.bool",
       "ASCEND",
-      AscendLessBOOL);
+      AscendLessPRED);
   
   status = TakeStatus(error);
   if (!status.ok()) {
@@ -1212,7 +1212,7 @@ void RegisterAscendFfiHandlers() {
       GetXlaFfiApi(),
       "ascend.less_equal.bool",
       "ASCEND",
-      AscendLessEqualBOOL);
+      AscendLessEqualPRED);
   
   status = TakeStatus(error);
   if (!status.ok()) {
@@ -1617,7 +1617,7 @@ void RegisterAscendFfiHandlers() {
       GetXlaFfiApi(),
       "ascend.not_equal.bool",
       "ASCEND",
-      AscendNotEqualBOOL);
+      AscendNotEqualPRED);
   
   status = TakeStatus(error);
   if (!status.ok()) {
@@ -1697,7 +1697,7 @@ void RegisterAscendFfiHandlers() {
   status = TakeStatus(error);
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.reduce_max.s32 operator: " << status.ToString();
-    throw std2::runtime_error("Failed to register ascend.reduce_max.s32 operator: " + status.ToString());
+    throw std::runtime_error("Failed to register ascend.reduce_max.s32 operator: " + status.ToString());
   }else {
     LOG(INFO) << "Registered ascend.reduce_max.s32 operator";
   }
@@ -2052,7 +2052,7 @@ void RegisterAscendFfiHandlers() {
       GetXlaFfiApi(),
       "ascend.select.bool",
       "ASCEND",
-      AscendSelectBOOL);
+      AscendSelectPRED);
   
   status = TakeStatus(error);
   if (!status.ok()) {
@@ -2197,66 +2197,6 @@ void RegisterAscendFfiHandlers() {
     throw std::runtime_error("Failed to register ascend.reduce_sum operator: " + status.ToString());
   }else {
     LOG(INFO) << "Registered ascend.reduce_sum operator";
-  }
-
-  // Register ReduceMean operators
-  error = Ffi::RegisterStaticHandler(
-      GetXlaFfiApi(),
-      "ascend.reduce_mean",
-      "ASCEND",
-      AscendReduceMean);
-  
-  status = TakeStatus(error);
-  if (!status.ok()) {
-    LOG(ERROR) << "Failed to register ascend.reduce_mean operator: " << status.ToString();
-    throw std::runtime_error("Failed to register ascend.reduce_mean operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.reduce_mean operator";
-  }
-
-  // Register ReduceMax operators
-  error = Ffi::RegisterStaticHandler(
-      GetXlaFfiApi(),
-      "ascend.reduce_max",
-      "ASCEND",
-      AscendReduceMax);
-  
-  status = TakeStatus(error);
-  if (!status.ok()) {
-    LOG(ERROR) << "Failed to register ascend.reduce_max operator: " << status.ToString();
-    throw std::runtime_error("Failed to register ascend.reduce_max operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.reduce_max operator";
-  }
-
-  // Register ReduceMin operators
-  error = Ffi::RegisterStaticHandler(
-      GetXlaFfiApi(),
-      "ascend.reduce_min",
-      "ASCEND",
-      AscendReduceMin);
-  
-  status = TakeStatus(error);
-  if (!status.ok()) {
-    LOG(ERROR) << "Failed to register ascend.reduce_min operator: " << status.ToString();
-    throw std::runtime_error("Failed to register ascend.reduce_min operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.reduce_min operator";
-  }
-
-  // Register ReduceProd operators
-  error = Ffi::RegisterStaticHandler(
-      GetXlaFfiApi(),
-      "ascend.reduce_prod",
-      "ASCEND",
-      AscendReduceProd);
-  
-  status = TakeStatus(error);
-  if (!status.ok()) {
-    LOG(ERROR) << "Failed to register ascend.reduce_prod operator: " << status.ToString();
-    throw std::runtime_error("Failed to register ascend.reduce_prod operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.reduce_prod operator";
   }
 
   // Register Select operators

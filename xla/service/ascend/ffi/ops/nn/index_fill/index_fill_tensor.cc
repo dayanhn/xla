@@ -295,6 +295,7 @@ ffi::Error InplaceIndexFillTensorHandlerS32(
   aclDestroyTensor(self_tensor);
   aclDestroyIntArray(index_int_array);
   aclDestroyScalar(value_scalar);
+  aclDestroyAclOpExecutor(executor);
 
   return ffi::Error::Success();
 }

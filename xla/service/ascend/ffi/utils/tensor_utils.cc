@@ -71,6 +71,31 @@ aclDataType ConvertToAclDataType<DataType::U64>() {
   return ACL_UINT64;
 }
 
+template <>
+aclDataType ConvertToAclDataType<DataType::PRED>() {
+  return ACL_BOOL;
+}
+
+template <>
+aclDataType ConvertToAclDataType<DataType::S8>() {
+  return ACL_INT8;
+}
+
+template <>
+aclDataType ConvertToAclDataType<DataType::U8>() {
+  return ACL_UINT8;
+}
+
+template <>
+aclDataType ConvertToAclDataType<DataType::S16>() {
+  return ACL_INT16;
+}
+
+template <>
+aclDataType ConvertToAclDataType<DataType::U16>() {
+  return ACL_UINT16;
+}
+
 // Explicit instantiations for common types
 template aclTensor* ConvertToAclTensor<DataType::F32, 0>(const Buffer<DataType::F32, 0>&);
 template aclTensor* ConvertToAclTensor<DataType::F32, 1>(const Buffer<DataType::F32, 1>&);
@@ -115,6 +140,11 @@ template aclTensor* ConvertToAclTensor<DataType::BF16, std::numeric_limits<size_
 template aclTensor* ConvertToAclTensor<DataType::S32, std::numeric_limits<size_t>::max()>(const Buffer<DataType::S32, std::numeric_limits<size_t>::max()>&);
 template aclTensor* ConvertToAclTensor<DataType::S64, std::numeric_limits<size_t>::max()>(const Buffer<DataType::S64, std::numeric_limits<size_t>::max()>&);
 template aclTensor* ConvertToAclTensor<DataType::U32, std::numeric_limits<size_t>::max()>(const Buffer<DataType::U32, std::numeric_limits<size_t>::max()>&);
+template aclTensor* ConvertToAclTensor<DataType::PRED, std::numeric_limits<size_t>::max()>(const Buffer<DataType::PRED, std::numeric_limits<size_t>::max()>&);
+template aclTensor* ConvertToAclTensor<DataType::S8, std::numeric_limits<size_t>::max()>(const Buffer<DataType::S8, std::numeric_limits<size_t>::max()>&);
+template aclTensor* ConvertToAclTensor<DataType::U8, std::numeric_limits<size_t>::max()>(const Buffer<DataType::U8, std::numeric_limits<size_t>::max()>&);
+template aclTensor* ConvertToAclTensor<DataType::S16, std::numeric_limits<size_t>::max()>(const Buffer<DataType::S16, std::numeric_limits<size_t>::max()>&);
+template aclTensor* ConvertToAclTensor<DataType::U16, std::numeric_limits<size_t>::max()>(const Buffer<DataType::U16, std::numeric_limits<size_t>::max()>&);
 
 aclDataType ConvertToAclDataType(PrimitiveType type) {
   switch (type) {
@@ -132,6 +162,16 @@ aclDataType ConvertToAclDataType(PrimitiveType type) {
       return ACL_INT64;
     case PrimitiveType::U64:
       return ACL_UINT64;
+    case PrimitiveType::PRED:
+      return ACL_BOOL;
+    case PrimitiveType::S8:
+      return ACL_INT8;
+    case PrimitiveType::U8:
+      return ACL_UINT8;
+    case PrimitiveType::S16:
+      return ACL_INT16;
+    case PrimitiveType::U16:
+      return ACL_UINT16;
     default:
       LOG(FATAL) << "Unsupported data type: " << type;
   }
@@ -153,6 +193,16 @@ aclDataType ConvertToAclDataType(DataType type) {
       return ACL_INT64;
     case DataType::U64:
       return ACL_UINT64;
+    case DataType::PRED:
+      return ACL_BOOL;
+    case DataType::S8:
+      return ACL_INT8;
+    case DataType::U8:
+      return ACL_UINT8;
+    case DataType::S16:
+      return ACL_INT16;
+    case DataType::U16:
+      return ACL_UINT16;
     default:
       LOG(FATAL) << "Unsupported data type: " << static_cast<int>(type);
   }

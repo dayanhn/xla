@@ -136,6 +136,7 @@ ffi::Error RightShiftHandler(
   if (workspace_size > 0) {
     aclrtFree(workspaceAddr);
   }
+  aclDestroyAclOpExecutor(executor);
 
   return ffi::Error::Success();
 }

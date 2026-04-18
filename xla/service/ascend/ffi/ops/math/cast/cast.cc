@@ -63,7 +63,6 @@ ffi::Error CastS32ToU32Handler(
     return ffi::Error::Internal(
         absl::StrCat("aclnnCast failed: ", status));
   }
-
   // Synchronize stream
   status = aclrtSynchronizeStream(stream);
   if(status != ACL_SUCCESS){
@@ -82,7 +81,7 @@ ffi::Error CastS32ToU32Handler(
   if (workspace_size > 0) {
     aclrtFree(workspaceAddr);
   }
-
+  aclDestroyAclOpExecutor(executor);
   return ffi::Error::Success();
 }
 

@@ -13,7 +13,7 @@ namespace xla::ffi {
 
 // Template version of NotEqual operator FFI handler
 template <ffi::DataType DType>
-ffi::Error NotEqualHandlerImpl(aclrtStream stream, ffi::Buffer<DType> self, ffi::Buffer<DType> other, ffi::ResultBuffer<ffi::BOOL> out) {
+ffi::Error NotEqualHandlerImpl(aclrtStream stream, ffi::Buffer<DType> self, ffi::Buffer<DType> other, ffi::ResultBuffer<ffi::PRED> out) {
   // Convert XLA Buffer to Ascend Tensor using utility function
   aclTensor* self_tensor = ConvertToAclTensor(self);
   aclTensor* other_tensor = ConvertToAclTensor(other);
@@ -68,53 +68,53 @@ ffi::Error NotEqualHandlerImpl(aclrtStream stream, ffi::Buffer<DType> self, ffi:
 }
 
 // Explicit instantiations for supported data types
-template ffi::Error NotEqualHandlerImpl<ffi::DataType::F32>(aclrtStream stream, ffi::Buffer<ffi::DataType::F32> self, ffi::Buffer<ffi::DataType::F32> other, ffi::ResultBuffer<ffi::BOOL> out);
-template ffi::Error NotEqualHandlerImpl<ffi::DataType::F16>(aclrtStream stream, ffi::Buffer<ffi::DataType::F16> self, ffi::Buffer<ffi::DataType::F16> other, ffi::ResultBuffer<ffi::BOOL> out);
-template ffi::Error NotEqualHandlerImpl<ffi::DataType::BF16>(aclrtStream stream, ffi::Buffer<ffi::DataType::BF16> self, ffi::Buffer<ffi::DataType::BF16> other, ffi::ResultBuffer<ffi::BOOL> out);
-template ffi::Error NotEqualHandlerImpl<ffi::DataType::S32>(aclrtStream stream, ffi::Buffer<ffi::DataType::S32> self, ffi::Buffer<ffi::DataType::S32> other, ffi::ResultBuffer<ffi::BOOL> out);
-template ffi::Error NotEqualHandlerImpl<ffi::DataType::S64>(aclrtStream stream, ffi::Buffer<ffi::DataType::S64> self, ffi::Buffer<ffi::DataType::S64> other, ffi::ResultBuffer<ffi::BOOL> out);
-template ffi::Error NotEqualHandlerImpl<ffi::DataType::U8>(aclrtStream stream, ffi::Buffer<ffi::DataType::U8> self, ffi::Buffer<ffi::DataType::U8> other, ffi::ResultBuffer<ffi::BOOL> out);
-template ffi::Error NotEqualHandlerImpl<ffi::DataType::S8>(aclrtStream stream, ffi::Buffer<ffi::DataType::S8> self, ffi::Buffer<ffi::DataType::S8> other, ffi::ResultBuffer<ffi::BOOL> out);
-template ffi::Error NotEqualHandlerImpl<ffi::DataType::BOOL>(aclrtStream stream, ffi::Buffer<ffi::DataType::BOOL> self, ffi::Buffer<ffi::DataType::BOOL> other, ffi::ResultBuffer<ffi::BOOL> out);
+template ffi::Error NotEqualHandlerImpl<ffi::DataType::F32>(aclrtStream stream, ffi::Buffer<ffi::DataType::F32> self, ffi::Buffer<ffi::DataType::F32> other, ffi::ResultBuffer<ffi::PRED> out);
+template ffi::Error NotEqualHandlerImpl<ffi::DataType::F16>(aclrtStream stream, ffi::Buffer<ffi::DataType::F16> self, ffi::Buffer<ffi::DataType::F16> other, ffi::ResultBuffer<ffi::PRED> out);
+template ffi::Error NotEqualHandlerImpl<ffi::DataType::BF16>(aclrtStream stream, ffi::Buffer<ffi::DataType::BF16> self, ffi::Buffer<ffi::DataType::BF16> other, ffi::ResultBuffer<ffi::PRED> out);
+template ffi::Error NotEqualHandlerImpl<ffi::DataType::S32>(aclrtStream stream, ffi::Buffer<ffi::DataType::S32> self, ffi::Buffer<ffi::DataType::S32> other, ffi::ResultBuffer<ffi::PRED> out);
+template ffi::Error NotEqualHandlerImpl<ffi::DataType::S64>(aclrtStream stream, ffi::Buffer<ffi::DataType::S64> self, ffi::Buffer<ffi::DataType::S64> other, ffi::ResultBuffer<ffi::PRED> out);
+template ffi::Error NotEqualHandlerImpl<ffi::DataType::U8>(aclrtStream stream, ffi::Buffer<ffi::DataType::U8> self, ffi::Buffer<ffi::DataType::U8> other, ffi::ResultBuffer<ffi::PRED> out);
+template ffi::Error NotEqualHandlerImpl<ffi::DataType::S8>(aclrtStream stream, ffi::Buffer<ffi::DataType::S8> self, ffi::Buffer<ffi::DataType::S8> other, ffi::ResultBuffer<ffi::PRED> out);
+template ffi::Error NotEqualHandlerImpl<ffi::DataType::PRED>(aclrtStream stream, ffi::Buffer<ffi::DataType::PRED> self, ffi::Buffer<ffi::DataType::PRED> other, ffi::ResultBuffer<ffi::PRED> out);
 
 // F32 specialization
-ffi::Error NotEqualHandlerF32(aclrtStream stream, ffi::Buffer<ffi::F32> self, ffi::Buffer<ffi::F32> other, ffi::ResultBuffer<ffi::BOOL> out) {
+ffi::Error NotEqualHandlerF32(aclrtStream stream, ffi::Buffer<ffi::F32> self, ffi::Buffer<ffi::F32> other, ffi::ResultBuffer<ffi::PRED> out) {
   return NotEqualHandlerImpl<ffi::DataType::F32>(stream, self, other, out);
 }
 
 // F16 specialization
-ffi::Error NotEqualHandlerF16(aclrtStream stream, ffi::Buffer<ffi::F16> self, ffi::Buffer<ffi::F16> other, ffi::ResultBuffer<ffi::BOOL> out) {
+ffi::Error NotEqualHandlerF16(aclrtStream stream, ffi::Buffer<ffi::F16> self, ffi::Buffer<ffi::F16> other, ffi::ResultBuffer<ffi::PRED> out) {
   return NotEqualHandlerImpl<ffi::DataType::F16>(stream, self, other, out);
 }
 
 // BF16 specialization
-ffi::Error NotEqualHandlerBF16(aclrtStream stream, ffi::Buffer<ffi::BF16> self, ffi::Buffer<ffi::BF16> other, ffi::ResultBuffer<ffi::BOOL> out) {
+ffi::Error NotEqualHandlerBF16(aclrtStream stream, ffi::Buffer<ffi::BF16> self, ffi::Buffer<ffi::BF16> other, ffi::ResultBuffer<ffi::PRED> out) {
   return NotEqualHandlerImpl<ffi::DataType::BF16>(stream, self, other, out);
 }
 
 // S32 specialization
-ffi::Error NotEqualHandlerS32(aclrtStream stream, ffi::Buffer<ffi::S32> self, ffi::Buffer<ffi::S32> other, ffi::ResultBuffer<ffi::BOOL> out) {
+ffi::Error NotEqualHandlerS32(aclrtStream stream, ffi::Buffer<ffi::S32> self, ffi::Buffer<ffi::S32> other, ffi::ResultBuffer<ffi::PRED> out) {
   return NotEqualHandlerImpl<ffi::DataType::S32>(stream, self, other, out);
 }
 
 // S64 specialization
-ffi::Error NotEqualHandlerS64(aclrtStream stream, ffi::Buffer<ffi::S64> self, ffi::Buffer<ffi::S64> other, ffi::ResultBuffer<ffi::BOOL> out) {
+ffi::Error NotEqualHandlerS64(aclrtStream stream, ffi::Buffer<ffi::S64> self, ffi::Buffer<ffi::S64> other, ffi::ResultBuffer<ffi::PRED> out) {
   return NotEqualHandlerImpl<ffi::DataType::S64>(stream, self, other, out);
 }
 
 // U8 specialization
-ffi::Error NotEqualHandlerU8(aclrtStream stream, ffi::Buffer<ffi::U8> self, ffi::Buffer<ffi::U8> other, ffi::ResultBuffer<ffi::BOOL> out) {
+ffi::Error NotEqualHandlerU8(aclrtStream stream, ffi::Buffer<ffi::U8> self, ffi::Buffer<ffi::U8> other, ffi::ResultBuffer<ffi::PRED> out) {
   return NotEqualHandlerImpl<ffi::DataType::U8>(stream, self, other, out);
 }
 
 // S8 specialization
-ffi::Error NotEqualHandlerS8(aclrtStream stream, ffi::Buffer<ffi::S8> self, ffi::Buffer<ffi::S8> other, ffi::ResultBuffer<ffi::BOOL> out) {
+ffi::Error NotEqualHandlerS8(aclrtStream stream, ffi::Buffer<ffi::S8> self, ffi::Buffer<ffi::S8> other, ffi::ResultBuffer<ffi::PRED> out) {
   return NotEqualHandlerImpl<ffi::DataType::S8>(stream, self, other, out);
 }
 
-// BOOL specialization
-ffi::Error NotEqualHandlerBOOL(aclrtStream stream, ffi::Buffer<ffi::BOOL> self, ffi::Buffer<ffi::BOOL> other, ffi::ResultBuffer<ffi::BOOL> out) {
-  return NotEqualHandlerImpl<ffi::DataType::BOOL>(stream, self, other, out);
+// PRED specialization
+ffi::Error NotEqualHandlerPRED(aclrtStream stream, ffi::Buffer<ffi::PRED> self, ffi::Buffer<ffi::PRED> other, ffi::ResultBuffer<ffi::PRED> out) {
+  return NotEqualHandlerImpl<ffi::DataType::PRED>(stream, self, other, out);
 }
 
 // Register NotEqual operator FFI functions for different data types
@@ -125,7 +125,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Ctx<ffi::PlatformStream<aclrtStream>>()
         .Arg<ffi::Buffer<ffi::F32>>()
         .Arg<ffi::Buffer<ffi::F32>>()
-        .Ret<ffi::Buffer<ffi::BOOL>>(),
+        .Ret<ffi::Buffer<ffi::PRED>>(),
     {ffi::Traits::kCmdBufferCompatible});
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
@@ -135,7 +135,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Ctx<ffi::PlatformStream<aclrtStream>>()
         .Arg<ffi::Buffer<ffi::F32>>()
         .Arg<ffi::Buffer<ffi::F32>>()
-        .Ret<ffi::Buffer<ffi::BOOL>>(),
+        .Ret<ffi::Buffer<ffi::PRED>>(),
     {ffi::Traits::kCmdBufferCompatible});
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
@@ -145,7 +145,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Ctx<ffi::PlatformStream<aclrtStream>>()
         .Arg<ffi::Buffer<ffi::F16>>()
         .Arg<ffi::Buffer<ffi::F16>>()
-        .Ret<ffi::Buffer<ffi::BOOL>>(),
+        .Ret<ffi::Buffer<ffi::PRED>>(),
     {ffi::Traits::kCmdBufferCompatible});
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
@@ -155,7 +155,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Ctx<ffi::PlatformStream<aclrtStream>>()
         .Arg<ffi::Buffer<ffi::BF16>>()
         .Arg<ffi::Buffer<ffi::BF16>>()
-        .Ret<ffi::Buffer<ffi::BOOL>>(),
+        .Ret<ffi::Buffer<ffi::PRED>>(),
     {ffi::Traits::kCmdBufferCompatible});
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
@@ -165,7 +165,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Ctx<ffi::PlatformStream<aclrtStream>>()
         .Arg<ffi::Buffer<ffi::S32>>()
         .Arg<ffi::Buffer<ffi::S32>>()
-        .Ret<ffi::Buffer<ffi::BOOL>>(),
+        .Ret<ffi::Buffer<ffi::PRED>>(),
     {ffi::Traits::kCmdBufferCompatible});
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
@@ -175,7 +175,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Ctx<ffi::PlatformStream<aclrtStream>>()
         .Arg<ffi::Buffer<ffi::S64>>()
         .Arg<ffi::Buffer<ffi::S64>>()
-        .Ret<ffi::Buffer<ffi::BOOL>>(),
+        .Ret<ffi::Buffer<ffi::PRED>>(),
     {ffi::Traits::kCmdBufferCompatible});
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
@@ -185,7 +185,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Ctx<ffi::PlatformStream<aclrtStream>>()
         .Arg<ffi::Buffer<ffi::U8>>()
         .Arg<ffi::Buffer<ffi::U8>>()
-        .Ret<ffi::Buffer<ffi::BOOL>>(),
+        .Ret<ffi::Buffer<ffi::PRED>>(),
     {ffi::Traits::kCmdBufferCompatible});
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
@@ -195,17 +195,17 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Ctx<ffi::PlatformStream<aclrtStream>>()
         .Arg<ffi::Buffer<ffi::S8>>()
         .Arg<ffi::Buffer<ffi::S8>>()
-        .Ret<ffi::Buffer<ffi::BOOL>>(),
+        .Ret<ffi::Buffer<ffi::PRED>>(),
     {ffi::Traits::kCmdBufferCompatible});
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
-    AscendNotEqualBOOL,
-    NotEqualHandlerBOOL,
+    AscendNotEqualPRED,
+    NotEqualHandlerPRED,
     ffi::Ffi::Bind()
         .Ctx<ffi::PlatformStream<aclrtStream>>()
-        .Arg<ffi::Buffer<ffi::BOOL>>()
-        .Arg<ffi::Buffer<ffi::BOOL>>()
-        .Ret<ffi::Buffer<ffi::BOOL>>(),
+        .Arg<ffi::Buffer<ffi::PRED>>()
+        .Arg<ffi::Buffer<ffi::PRED>>()
+        .Ret<ffi::Buffer<ffi::PRED>>(),
     {ffi::Traits::kCmdBufferCompatible});
 
 }  // namespace xla::ffi

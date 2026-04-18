@@ -568,9 +568,15 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitTensorBroadcastFusion(
   std::vector<NullableShapedSlice> operands;
   std::vector<NullableShapedSlice> results;
   
-  // Add input and output slices
+  // Add input as operand
   operands.push_back(input_slice);
+  // Add output as result
   results.push_back(output_slice);
+  
+  // Create attributes map with size array
+  xla::ffi::AttributesMap attributes;
+  std::vector<int64_t> size_vec(size.begin(), size.end());
+  attributes["size"] = xla::ffi::Array(size_vec);
   
   // Get GPU compute capability
   const se::GpuComputeCapability& gpu_compute_capability = 
@@ -614,21 +620,19 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitTensorBroadcastFusion(
   
   VLOG(2) << "Using expand function: " << function_name;
   
-  // Create CustomCallThunk with size as additional argument
-  auto thunk_builder = xla::gpu::CustomCallThunk::Builder(
-      xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
-      function_name,
-      std::move(operands),
-      std::move(results),
-      "ASCEND");
-  
-  // Add size as an argument
-  thunk_builder.AddArg(xla::ffi::Array<int64_t>(size));
-  
-  // Create the thunk
+  // Create CustomCallThunk
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<xla::gpu::CustomCallThunk> thunk,
-      thunk_builder.Build(gpu_compute_capability));
+      xla::gpu::CustomCallThunk::Create(
+          xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
+          function_name,
+          std::move(operands),
+          std::move(results),
+          std::move(attributes),
+          /*called_computation=*/nullptr,
+          "ASCEND",
+          gpu_compute_capability,
+          /*execution_state=*/nullptr));
 
   
   // Add the thunk to the sequence

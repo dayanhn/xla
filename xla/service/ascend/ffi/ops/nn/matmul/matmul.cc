@@ -63,7 +63,7 @@ ffi::Error MatmulHandlerImpl(aclrtStream stream, ffi::Buffer<DType> self, ffi::B
   if (workspace_size > 0) {
     aclrtFree(workspaceAddr);
   }
-
+  aclDestroyAclOpExecutor(executor);
   return ffi::Error::Success();
 }
 

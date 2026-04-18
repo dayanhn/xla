@@ -13,21 +13,26 @@ namespace xla::ffi {
 
 // Template version of ReduceMean operator FFI handler
 template <ffi::DataType DType>
-ffi::Error ReduceMeanHandlerImpl(aclrtStream stream, ffi::Buffer<DType> self, std::vector<int64_t> dims, bool keep_dims, ffi::ResultBuffer<DType> out) {
+ffi::Error ReduceMeanHandlerImpl(aclrtStream stream, ffi::Buffer<DType> self, ffi::Span<const int64_t> dims, bool keep_dims, ffi::ResultBuffer<DType> out) {
   // Convert XLA Buffer to Ascend Tensor using utility function
   aclTensor* self_tensor = ConvertToAclTensor(self);
   aclTensor* out_tensor = ConvertToAclTensor(*out);
   LOG(INFO) << "Converted XLA buffers to Ascend tensors for ReduceMean operation on stream: " << stream ;
 
-  // Create dims array
+  // Create dims array directly from int64_t span (no conversion needed)
   aclIntArray* dims_array = nullptr;
-  aclCreateIntArray(dims.size(), dims.data(), &dims_array);
+  dims_array = aclCreateIntArray(dims.begin(), dims.size());
+  if (dims_array == nullptr) {
+    aclDestroyTensor(self_tensor);
+    aclDestroyTensor(out_tensor);
+    return ffi::Error::Internal("aclCreateIntArray failed");
+  }
 
   // Call first stage interface to get workspace size and executor
   uint64_t workspace_size = 0;
   aclOpExecutor* executor = nullptr;
   aclnnStatus status = aclnnMeanGetWorkspaceSize(
-      self_tensor, dims_array, keep_dims, out_tensor, &workspace_size, &executor);
+      self_tensor, dims_array, keep_dims, static_cast<aclDataType>(0), out_tensor, &workspace_size, &executor);
   if (status != ACL_SUCCESS) {
     aclDestroyTensor(self_tensor);
     aclDestroyTensor(out_tensor);
@@ -51,6 +56,10 @@ ffi::Error ReduceMeanHandlerImpl(aclrtStream stream, ffi::Buffer<DType> self, st
     aclDestroyTensor(self_tensor);
     aclDestroyTensor(out_tensor);
     aclDestroyIntArray(dims_array);
+    if (workspace_size > 0) {
+      aclrtFree(workspaceAddr);
+    }
+    aclDestroyAclOpExecutor(executor);
     return ffi::Error::Internal(
         absl::StrCat("aclnnMean failed: ", status));
   }
@@ -63,28 +72,28 @@ ffi::Error ReduceMeanHandlerImpl(aclrtStream stream, ffi::Buffer<DType> self, st
   if (workspace_size > 0) {
     aclrtFree(workspaceAddr);
   }
-  aclDestroyOpExecutor(executor);
+  aclDestroyAclOpExecutor(executor);
 
   return ffi::Error::Success();
 }
 
 // Explicit instantiations for supported data types
-template ffi::Error ReduceMeanHandlerImpl<ffi::DataType::F32>(aclrtStream stream, ffi::Buffer<ffi::DataType::F32> self, std::vector<int64_t> dims, bool keep_dims, ffi::ResultBuffer<ffi::DataType::F32> out);
-template ffi::Error ReduceMeanHandlerImpl<ffi::DataType::F16>(aclrtStream stream, ffi::Buffer<ffi::DataType::F16> self, std::vector<int64_t> dims, bool keep_dims, ffi::ResultBuffer<ffi::DataType::F16> out);
-template ffi::Error ReduceMeanHandlerImpl<ffi::DataType::BF16>(aclrtStream stream, ffi::Buffer<ffi::DataType::BF16> self, std::vector<int64_t> dims, bool keep_dims, ffi::ResultBuffer<ffi::DataType::BF16> out);
+template ffi::Error ReduceMeanHandlerImpl<ffi::DataType::F32>(aclrtStream stream, ffi::Buffer<ffi::DataType::F32> self, ffi::Span<const int64_t> dims, bool keep_dims, ffi::ResultBuffer<ffi::DataType::F32> out);
+template ffi::Error ReduceMeanHandlerImpl<ffi::DataType::F16>(aclrtStream stream, ffi::Buffer<ffi::DataType::F16> self, ffi::Span<const int64_t> dims, bool keep_dims, ffi::ResultBuffer<ffi::DataType::F16> out);
+template ffi::Error ReduceMeanHandlerImpl<ffi::DataType::BF16>(aclrtStream stream, ffi::Buffer<ffi::DataType::BF16> self, ffi::Span<const int64_t> dims, bool keep_dims, ffi::ResultBuffer<ffi::DataType::BF16> out);
 
 // F32 specialization
-ffi::Error ReduceMeanHandlerF32(aclrtStream stream, ffi::Buffer<ffi::F32> self, std::vector<int64_t> dims, bool keep_dims, ffi::ResultBuffer<ffi::F32> out) {
+ffi::Error ReduceMeanHandlerF32(aclrtStream stream, ffi::Buffer<ffi::F32> self, ffi::Span<const int64_t> dims, bool keep_dims, ffi::ResultBuffer<ffi::F32> out) {
   return ReduceMeanHandlerImpl<ffi::DataType::F32>(stream, self, dims, keep_dims, out);
 }
 
 // F16 specialization
-ffi::Error ReduceMeanHandlerF16(aclrtStream stream, ffi::Buffer<ffi::F16> self, std::vector<int64_t> dims, bool keep_dims, ffi::ResultBuffer<ffi::F16> out) {
+ffi::Error ReduceMeanHandlerF16(aclrtStream stream, ffi::Buffer<ffi::F16> self, ffi::Span<const int64_t> dims, bool keep_dims, ffi::ResultBuffer<ffi::F16> out) {
   return ReduceMeanHandlerImpl<ffi::DataType::F16>(stream, self, dims, keep_dims, out);
 }
 
 // BF16 specialization
-ffi::Error ReduceMeanHandlerBF16(aclrtStream stream, ffi::Buffer<ffi::BF16> self, std::vector<int64_t> dims, bool keep_dims, ffi::ResultBuffer<ffi::BF16> out) {
+ffi::Error ReduceMeanHandlerBF16(aclrtStream stream, ffi::Buffer<ffi::BF16> self, ffi::Span<const int64_t> dims, bool keep_dims, ffi::ResultBuffer<ffi::BF16> out) {
   return ReduceMeanHandlerImpl<ffi::DataType::BF16>(stream, self, dims, keep_dims, out);
 }
 
@@ -95,8 +104,8 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
     ffi::Ffi::Bind()
         .Ctx<ffi::PlatformStream<aclrtStream>>()
         .Arg<ffi::Buffer<ffi::F32>>()
-        .Arg<ffi::Array<int64_t>>()
-        .Arg<ffi::Bool>()
+        .Attr<ffi::Span<const int64_t>>("dims")
+        .Attr<bool>("keep_dims")
         .Ret<ffi::Buffer<ffi::F32>>(),
     {ffi::Traits::kCmdBufferCompatible});
 
@@ -106,8 +115,8 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
     ffi::Ffi::Bind()
         .Ctx<ffi::PlatformStream<aclrtStream>>()
         .Arg<ffi::Buffer<ffi::F32>>()
-        .Arg<ffi::Array<int64_t>>()
-        .Arg<ffi::Bool>()
+        .Attr<ffi::Span<const int64_t>>("dims")
+        .Attr<bool>("keep_dims")
         .Ret<ffi::Buffer<ffi::F32>>(),
     {ffi::Traits::kCmdBufferCompatible});
 
@@ -117,8 +126,8 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
     ffi::Ffi::Bind()
         .Ctx<ffi::PlatformStream<aclrtStream>>()
         .Arg<ffi::Buffer<ffi::F16>>()
-        .Arg<ffi::Array<int64_t>>()
-        .Arg<ffi::Bool>()
+        .Attr<ffi::Span<const int64_t>>("dims")
+        .Attr<bool>("keep_dims")
         .Ret<ffi::Buffer<ffi::F16>>(),
     {ffi::Traits::kCmdBufferCompatible});
 
@@ -128,8 +137,8 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
     ffi::Ffi::Bind()
         .Ctx<ffi::PlatformStream<aclrtStream>>()
         .Arg<ffi::Buffer<ffi::BF16>>()
-        .Arg<ffi::Array<int64_t>>()
-        .Arg<ffi::Bool>()
+        .Attr<ffi::Span<const int64_t>>("dims")
+        .Attr<bool>("keep_dims")
         .Ret<ffi::Buffer<ffi::BF16>>(),
     {ffi::Traits::kCmdBufferCompatible});
 
