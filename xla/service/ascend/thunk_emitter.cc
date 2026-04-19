@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -640,7 +641,7 @@ bool IsExponentialFusion(const HloFusionInstruction* fusion) {
   for (const auto* instr : instructions) {
     if (instr->opcode() == HloOpcode::kParameter) {
       param_instr = instr;
-    } else if (instr->opcode() == HloOpcode::kExponential) {
+    } else if (instr->opcode() == HloOpcode::kExp) {
       exponential_instr = instr;
     } else {
       VLOG(4) << "ExponentialFusion: unexpected opcode "
@@ -1350,7 +1351,7 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitIotaFusion(
   }
 
   // Extract iota dimension
-  int64_t iota_dimension = iota_instr->iota_dimension();
+  int64_t iota_dimension = Cast<HloIotaInstruction>(iota_instr)->iota_dimension();
 
   // Extract shape information
   const Shape& output_shape = fusion->shape();
@@ -1671,8 +1672,8 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitReduceMaxFusion(
   }
 
   // Extract reduction dimensions
-  const std::vector<int64_t>& reduce_dims = reduce_instr->dimensions();
-  bool keep_dims = reduce_instr->keep_dims();
+  absl::Span<const int64_t> reduce_dims = reduce_instr->dimensions();
+  bool keep_dims = false; // Default value, actual keep_dims behavior is handled by the shape
   bool noop_with_empty_dims = false; // Default value
 
   const Shape& input_shape = fusion->operand(0)->shape();
@@ -1716,7 +1717,8 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitReduceMaxFusion(
   results.push_back(output_slice);
 
   xla::ffi::AttributesMap attributes;
-  attributes["dims"] = xla::ffi::Array(reduce_dims);
+  std::vector<int64_t> dims_vector(reduce_dims.begin(), reduce_dims.end());
+  attributes["dims"] = xla::ffi::Array(dims_vector);
   attributes["keep_dims"] = xla::ffi::Scalar(keep_dims);
   attributes["noop_with_empty_dims"] = xla::ffi::Scalar(noop_with_empty_dims);
 
@@ -1840,7 +1842,7 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitExponentialFusion(
   const HloInstruction* exponential_instr = nullptr;
 
   for (const auto* instr : computation->instructions()) {
-    if (instr->opcode() == HloOpcode::kExponential) {
+    if (instr->opcode() == HloOpcode::kExp) {
       exponential_instr = instr;
       break;
     }
@@ -1934,8 +1936,8 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitReduceSumFusion(
   }
 
   // Extract reduction dimensions
-  const std::vector<int64_t>& reduce_dims = reduce_instr->dimensions();
-  bool keep_dims = reduce_instr->keep_dims();
+  absl::Span<const int64_t> reduce_dims = reduce_instr->dimensions();
+  bool keep_dims = false; // Default value, actual keep_dims behavior is handled by the shape
 
   const Shape& input_shape = fusion->operand(0)->shape();
   PrimitiveType element_type = input_shape.element_type();
@@ -1978,7 +1980,8 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitReduceSumFusion(
   results.push_back(output_slice);
 
   xla::ffi::AttributesMap attributes;
-  attributes["dims"] = xla::ffi::Array(reduce_dims);
+  std::vector<int64_t> dims_vector(reduce_dims.begin(), reduce_dims.end());
+  attributes["dims"] = xla::ffi::Array(dims_vector);
   attributes["keep_dims"] = xla::ffi::Scalar(keep_dims);
 
   const se::GpuComputeCapability& gpu_compute_capability =
@@ -2938,7 +2941,7 @@ absl::StatusOr<std::optional<xla::gpu::ThunkSequence>> ThunkEmitter::EmitHloInst
     }
     case HloOpcode::kCustomCall: {
       auto* custom_call = Cast<HloCustomCallInstruction>(hlo);
-      if (IsLegacyCublasMatmul(*hlo)) {
+      if (xla::gpu::IsLegacyCublasMatmul(*hlo)) {
         return EmitGemmThunk(custom_call);
       }
     }

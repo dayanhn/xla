@@ -11,7 +11,15 @@ void RegisterAscendFfiHandlers();
 // Declare external symbols for FFI handlers
 extern "C" XLA_FFI_Error* AscendGelu(XLA_FFI_CallFrame* frame);
 extern "C" XLA_FFI_Error* AscendMatmul(XLA_FFI_CallFrame* frame);
+extern "C" XLA_FFI_Error* AscendMatmulF32(XLA_FFI_CallFrame* frame);
+extern "C" XLA_FFI_Error* AscendMatmulF16(XLA_FFI_CallFrame* frame);
+extern "C" XLA_FFI_Error* AscendMatmulBF16(XLA_FFI_CallFrame* frame);
 extern "C" XLA_FFI_Error* AscendInplaceIndexFillTensor(XLA_FFI_CallFrame* frame);
+extern "C" XLA_FFI_Error* AscendInplaceIndexFillTensorF32(XLA_FFI_CallFrame* frame);
+extern "C" XLA_FFI_Error* AscendInplaceIndexFillTensorF16(XLA_FFI_CallFrame* frame);
+extern "C" XLA_FFI_Error* AscendInplaceIndexFillTensorBF16(XLA_FFI_CallFrame* frame);
+extern "C" XLA_FFI_Error* AscendInplaceIndexFillTensorS32(XLA_FFI_CallFrame* frame);
+extern "C" XLA_FFI_Error* AscendInplaceIndexFillTensorS64(XLA_FFI_CallFrame* frame);
 extern "C" XLA_FFI_Error* AscendFull(XLA_FFI_CallFrame* frame);
 extern "C" XLA_FFI_Error* AscendFullF32(XLA_FFI_CallFrame* frame);
 extern "C" XLA_FFI_Error* AscendFullS32(XLA_FFI_CallFrame* frame);
