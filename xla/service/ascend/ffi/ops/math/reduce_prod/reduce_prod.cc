@@ -71,7 +71,7 @@ ffi::Error ReduceProdHandlerImpl(aclrtStream stream, ffi::Buffer<DType> self, ff
       if (workspace_size > 0) {
         aclrtFree(workspaceAddr);
       }
-      aclDestroyAclOpExecutor(executor);
+      //aclDestroyAclOpExecutor(executor);
       return ffi::Error::Internal(
           absl::StrCat("aclnnProd failed: ", status));
     }
@@ -88,7 +88,7 @@ ffi::Error ReduceProdHandlerImpl(aclrtStream stream, ffi::Buffer<DType> self, ff
       if (workspace_size > 0) {
         aclrtFree(workspaceAddr);
       }
-      aclDestroyAclOpExecutor(executor);
+      //aclDestroyAclOpExecutor(executor);
       return ffi::Error::Internal(
           absl::StrCat("aclnnProdDim failed: ", status));
     }
@@ -102,7 +102,7 @@ ffi::Error ReduceProdHandlerImpl(aclrtStream stream, ffi::Buffer<DType> self, ff
   if (workspace_size > 0) {
     aclrtFree(workspaceAddr);
   }
-  aclDestroyAclOpExecutor(executor);
+  //aclDestroyAclOpExecutor(executor);
 
   return ffi::Error::Success();
 }

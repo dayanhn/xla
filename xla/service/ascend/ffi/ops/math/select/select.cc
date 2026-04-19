@@ -64,7 +64,7 @@ ffi::Error SelectHandlerImpl(aclrtStream stream, ffi::Buffer<DType> condition, f
   if (workspace_size > 0) {
     aclrtFree(workspaceAddr);
   }
-  aclDestroyAclOpExecutor(executor);
+  //aclDestroyAclOpExecutor(executor);
 
   return ffi::Error::Success();
 }

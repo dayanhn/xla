@@ -56,7 +56,7 @@ ffi::Error ReduceMinHandlerImpl(aclrtStream stream, ffi::Buffer<DType> self, ffi
   if (workspace_size > 0) {
     aclrtFree(workspaceAddr);
   }
-  aclDestroyAclOpExecutor(executor);
+  //aclDestroyAclOpExecutor(executor);
 
   return ffi::Error::Success();
 }

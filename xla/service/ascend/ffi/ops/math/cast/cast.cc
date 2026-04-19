@@ -81,7 +81,7 @@ ffi::Error CastS32ToU32Handler(
   if (workspace_size > 0) {
     aclrtFree(workspaceAddr);
   }
-  aclDestroyAclOpExecutor(executor);
+  //aclDestroyAclOpExecutor(executor);
   return ffi::Error::Success();
 }
 

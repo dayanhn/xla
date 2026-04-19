@@ -92,7 +92,7 @@ ffi::Error IotaHandlerU8(aclrtStream stream, int64_t iota_dimension, int64_t num
   if (workspace_size_arange > 0) {
     aclrtFree(workspaceAddr_arange);
   }
-  aclDestroyAclOpExecutor(executor_arange);
+  //aclDestroyAclOpExecutor(executor_arange);
 
   std::vector<int64_t> repeat_out_shape = {num_rows, num_classes};
   std::vector<int64_t> repeat_out_strides(2, 1);
@@ -159,7 +159,7 @@ ffi::Error IotaHandlerU8(aclrtStream stream, int64_t iota_dimension, int64_t num
   if (workspace_size_repeat > 0) {
     aclrtFree(workspaceAddr_repeat);
   }
-  aclDestroyAclOpExecutor(executor_repeat);
+  //aclDestroyAclOpExecutor(executor_repeat);
   aclDestroyTensor(arange_tensor);
   aclDestroyIntArray(repeats);
   aclrtFree(arange_buffer_addr);
@@ -218,7 +218,7 @@ ffi::Error IotaHandlerU8(aclrtStream stream, int64_t iota_dimension, int64_t num
   if (workspace_size_cast > 0) {
     aclrtFree(workspaceAddr_cast);
   }
-  aclDestroyAclOpExecutor(executor_cast);
+  //aclDestroyAclOpExecutor(executor_cast);
   aclrtFree(repeat_buffer_addr);
 
   return ffi::Error::Success();

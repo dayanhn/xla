@@ -59,7 +59,7 @@ ffi::Error ReduceMeanHandlerImpl(aclrtStream stream, ffi::Buffer<DType> self, ff
     if (workspace_size > 0) {
       aclrtFree(workspaceAddr);
     }
-    aclDestroyAclOpExecutor(executor);
+    //aclDestroyAclOpExecutor(executor);
     return ffi::Error::Internal(
         absl::StrCat("aclnnMean failed: ", status));
   }
@@ -72,7 +72,7 @@ ffi::Error ReduceMeanHandlerImpl(aclrtStream stream, ffi::Buffer<DType> self, ff
   if (workspace_size > 0) {
     aclrtFree(workspaceAddr);
   }
-  aclDestroyAclOpExecutor(executor);
+  //aclDestroyAclOpExecutor(executor);
 
   return ffi::Error::Success();
 }

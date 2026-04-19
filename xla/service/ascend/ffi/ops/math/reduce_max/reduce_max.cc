@@ -59,7 +59,7 @@ ffi::Error ReduceMaxHandlerImpl(aclrtStream stream, ffi::Buffer<DType> self, ffi
     if (workspace_size > 0) {
       aclrtFree(workspaceAddr);
     }
-    aclDestroyAclOpExecutor(executor);
+    //aclDestroyAclOpExecutor(executor);
     return ffi::Error::Internal(
         absl::StrCat("aclnnMaxV2 failed: ", status));
   }
@@ -72,7 +72,7 @@ ffi::Error ReduceMaxHandlerImpl(aclrtStream stream, ffi::Buffer<DType> self, ffi
   if (workspace_size > 0) {
     aclrtFree(workspaceAddr);
   }
-  aclDestroyAclOpExecutor(executor);
+  //aclDestroyAclOpExecutor(executor);
 
   return ffi::Error::Success();
 }

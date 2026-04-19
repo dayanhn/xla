@@ -72,7 +72,7 @@ ffi::Error ExpandHandlerImpl(aclrtStream stream, ffi::Buffer<DType> self, ffi::S
   if (workspace_size > 0) {
     aclrtFree(workspaceAddr);
   }
-  aclDestroyAclOpExecutor(executor);
+  //aclDestroyAclOpExecutor(executor);
   return ffi::Error::Success();
 }
 
