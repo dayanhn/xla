@@ -223,7 +223,7 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
     std::unique_ptr<ffi::ExecutionState> execution_state) {
   TF_ASSIGN_OR_RETURN(ffi::HandlerRegistration registration,
                       ffi::FindHandler(target_name, platform_name));
-
+  //std::cerr << ">>>>>>>>>>>>>>>>Using typed FFI for custom call " << target_name << "\n";
   return Create(thunk_info, std::move(target_name),
                 std::move(registration.bundle), std::move(operands),
                 std::move(results), std::move(attributes), called_computation,

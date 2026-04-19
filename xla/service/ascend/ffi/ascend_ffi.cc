@@ -18,8 +18,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.gelu operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.gelu operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.gelu operator";
   }
 
   // Register InplaceIndexFillTensor operator
@@ -33,10 +31,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.inplace_index_fill_tensor operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.inplace_index_fill_tensor operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.inplace_index_fill_tensor operator";
   }
-
   // Register Full operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -48,8 +43,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.full operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.full operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.full operator";
   }
 
   // Register FullF32 operator
@@ -63,10 +56,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.full.f32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.full.f32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.full.f32 operator";
   }
-
   // Register FullS32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -78,10 +68,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.full.s32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.full.s32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.full.s32 operator";
   }
-
   // Register FullS64 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -93,8 +80,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.full.s64 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.full.s64 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.full.s64 operator";
   }
 
   // Register Cast S32 to U32 operator
@@ -108,8 +93,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.cast.s32_to_u32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.cast.s32_to_u32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.cast.s32_to_u32 operator";
   }
 
   // Register Cast operator (default to S32 to U32)
@@ -123,8 +106,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.cast operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.cast operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.cast operator";
   }
 
   // Register Add operator
@@ -138,8 +119,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.add operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.add operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.add operator";
   }
 
   // Register Add F32 operator
@@ -153,10 +132,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.add.f32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.add.f32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.add.f32 operator";
   }
-
   // Register Add F16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -168,8 +144,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.add.f16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.add.f16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.add.f16 operator";
   }
 
   // Register Add BF16 operator
@@ -183,10 +157,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.add.bf16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.add.bf16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.add.bf16 operator";
   }
-
   // Register Add S32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -198,8 +169,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.add.s32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.add.s32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.add.s32 operator";
   }
 
   // Register Add S64 operator
@@ -213,10 +182,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.add.s64 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.add.s64 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.add.s64 operator";
   }
-
   // Register Divide operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -228,8 +194,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.divide operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.divide operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.divide operator";
   }
 
   // Register Divide F32 operator
@@ -243,8 +207,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.divide.f32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.divide.f32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.divide.f32 operator";
   }
 
   // Register Divide F16 operator
@@ -258,8 +220,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.divide.f16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.divide.f16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.divide.f16 operator";
   }
 
   // Register Divide BF16 operator
@@ -273,8 +233,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.divide.bf16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.divide.bf16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.divide.bf16 operator";
   }
 
   // Register Divide S32 operator
@@ -288,8 +246,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.divide.s32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.divide.s32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.divide.s32 operator";
   }
 
   // Register Divide S64 operator
@@ -303,8 +259,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.divide.s64 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.divide.s64 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.divide.s64 operator";
   }
 
   // Register Equal operator
@@ -318,8 +272,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.equal operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.equal operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.equal operator";
   }
 
   // Register Equal F32 operator
@@ -333,10 +285,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.equal.f32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.equal.f32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.equal.f32 operator";
   }
-
   // Register Equal F16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -348,8 +297,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.equal.f16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.equal.f16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.equal.f16 operator";
   }
 
   // Register Equal BF16 operator
@@ -363,8 +310,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.equal.bf16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.equal.bf16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.equal.bf16 operator";
   }
 
   // Register Equal S32 operator
@@ -378,8 +323,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.equal.s32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.equal.s32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.equal.s32 operator";
   }
 
   // Register Equal S64 operator
@@ -393,8 +336,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.equal.s64 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.equal.s64 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.equal.s64 operator";
   }
 
   // Register Equal U8 operator
@@ -408,10 +349,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.equal.u8 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.equal.u8 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.equal.u8 operator";
   }
-
   // Register Equal S8 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -423,8 +361,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.equal.s8 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.equal.s8 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.equal.s8 operator";
   }
 
   // Register Equal BOOL operator
@@ -438,8 +374,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.equal.bool operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.equal.bool operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.equal.bool operator";
   }
 
   // Register Exponential operator
@@ -453,8 +387,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.exponential operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.exponential operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.exponential operator";
   }
 
   // Register Exponential F32 operator
@@ -468,8 +400,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.exponential.f32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.exponential.f32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.exponential.f32 operator";
   }
 
   // Register Exponential F16 operator
@@ -483,8 +413,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.exponential.f16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.exponential.f16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.exponential.f16 operator";
   }
 
   // Register Exponential BF16 operator
@@ -498,8 +426,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.exponential.bf16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.exponential.bf16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.exponential.bf16 operator";
   }
 
   // Register Exponential S32 operator
@@ -513,8 +439,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.exponential.s32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.exponential.s32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.exponential.s32 operator";
   }
 
   // Register Exponential S64 operator
@@ -528,8 +452,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.exponential.s64 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.exponential.s64 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.exponential.s64 operator";
   }
 
   // Register Expand operator
@@ -543,8 +465,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.expand operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.expand operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.expand operator";
   }
 
   // Register Expand F32 operator
@@ -558,8 +478,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.expand.f32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.expand.f32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.expand.f32 operator";
   }
 
   // Register Expand F16 operator
@@ -573,8 +491,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.expand.f16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.expand.f16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.expand.f16 operator";
   }
 
   // Register Expand BF16 operator
@@ -588,8 +504,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.expand.bf16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.expand.bf16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.expand.bf16 operator";
   }
 
   // Register Expand S32 operator
@@ -603,8 +517,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.expand.s32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.expand.s32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.expand.s32 operator";
   }
 
   // Register Expand S64 operator
@@ -618,8 +530,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.expand.s64 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.expand.s64 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.expand.s64 operator";
   }
 
   // Register Expand U8 operator
@@ -633,8 +543,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.expand.u8 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.expand.u8 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.expand.u8 operator";
   }
 
   // Register Expand S8 operator
@@ -648,8 +556,6 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.expand.s8 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.expand.s8 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.expand.s8 operator";
   }
 
   // Register Matmul operator
@@ -663,10 +569,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.matmul operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.matmul operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.matmul operator";
   }
-
   // Register Matmul F32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -678,10 +581,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.matmul_f32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.matmul_f32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.matmul_f32 operator";
   }
-
   // Register Matmul F16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -693,10 +593,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.matmul_f16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.matmul_f16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.matmul_f16 operator";
   }
-
   // Register Matmul BF16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -708,8 +605,55 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.matmul_bf16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.matmul_bf16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.matmul_bf16 operator";
+  }
+
+   // Register Matmul operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.matmulcublas",
+      "ASCEND",
+      AscendMatmulCublas);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.matmul operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.matmul operator: " + status.ToString());
+  }
+  // Register Matmul F32 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.matmulcublas.f32",
+      "ASCEND",
+      AscendMatmulCublasF32);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.matmul_f32 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.matmul_f32 operator: " + status.ToString());
+  }
+  // Register Matmul F16 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.matmulcublas.f16",
+      "ASCEND",
+      AscendMatmulCublasF16);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.matmul_f16 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.matmul_f16 operator: " + status.ToString());
+  }
+  // Register Matmul BF16 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.matmulcublas.bf16",
+      "ASCEND",
+      AscendMatmulCublasBF16);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.matmul_bf16 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.matmul_bf16 operator: " + status.ToString());
   }
 
   // Register InplaceIndexFillTensor operator
@@ -723,10 +667,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.inplace_index_fill_tensor operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.inplace_index_fill_tensor operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.inplace_index_fill_tensor operator";
   }
-
   // Register InplaceIndexFillTensor F32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -738,10 +679,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.inplace_index_fill_tensor.f32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.inplace_index_fill_tensor.f32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.inplace_index_fill_tensor.f32 operator";
   }
-
   // Register InplaceIndexFillTensor F16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -753,10 +691,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.inplace_index_fill_tensor.f16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.inplace_index_fill_tensor.f16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.inplace_index_fill_tensor.f16 operator";
   }
-
   // Register InplaceIndexFillTensor BF16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -768,10 +703,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.inplace_index_fill_tensor.bf16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.inplace_index_fill_tensor.bf16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.inplace_index_fill_tensor.bf16 operator";
   }
-
   // Register InplaceIndexFillTensor S32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -783,10 +715,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.inplace_index_fill_tensor.s32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.inplace_index_fill_tensor.s32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.inplace_index_fill_tensor.s32 operator";
   }
-
   // Register InplaceIndexFillTensor S64 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -798,10 +727,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.inplace_index_fill_tensor.s64 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.inplace_index_fill_tensor.s64 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.inplace_index_fill_tensor.s64 operator";
   }
-
   // Register Expand BOOL operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -813,10 +739,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.expand.bool operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.expand.bool operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.expand.bool operator";
   }
-
   // Register Greater operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -828,10 +751,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.greater operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.greater operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.greater operator";
   }
-
   // Register Greater F32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -843,10 +763,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.greater.f32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.greater.f32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.greater.f32 operator";
   }
-
   // Register Greater F16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -858,10 +775,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.greater.f16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.greater.f16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.greater.f16 operator";
   }
-
   // Register Greater BF16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -873,10 +787,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.greater.bf16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.greater.bf16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.greater.bf16 operator";
   }
-
   // Register Greater S32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -888,10 +799,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.greater.s32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.greater.s32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.greater.s32 operator";
   }
-
   // Register Greater S64 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -903,10 +811,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.greater.s64 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.greater.s64 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.greater.s64 operator";
   }
-
   // Register Greater U8 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -918,10 +823,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.greater.u8 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.greater.u8 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.greater.u8 operator";
   }
-
   // Register Greater S8 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -933,10 +835,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.greater.s8 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.greater.s8 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.greater.s8 operator";
   }
-
   // Register Greater BOOL operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -948,10 +847,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.greater.bool operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.greater.bool operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.greater.bool operator";
   }
-
   // Register GreaterEqual operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -963,10 +859,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.greater_equal operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.greater_equal operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.greater_equal operator";
   }
-
   // Register GreaterEqual F32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -978,10 +871,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.greater_equal.f32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.greater_equal.f32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.greater_equal.f32 operator";
   }
-
   // Register GreaterEqual F16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -993,10 +883,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.greater_equal.f16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.greater_equal.f16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.greater_equal.f16 operator";
   }
-
   // Register GreaterEqual BF16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1008,10 +895,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.greater_equal.bf16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.greater_equal.bf16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.greater_equal.bf16 operator";
   }
-
   // Register GreaterEqual S32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1023,10 +907,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.greater_equal.s32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.greater_equal.s32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.greater_equal.s32 operator";
   }
-
   // Register GreaterEqual S64 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1038,10 +919,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.greater_equal.s64 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.greater_equal.s64 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.greater_equal.s64 operator";
   }
-
   // Register GreaterEqual U8 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1053,10 +931,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.greater_equal.u8 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.greater_equal.u8 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.greater_equal.u8 operator";
   }
-
   // Register GreaterEqual S8 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1068,10 +943,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.greater_equal.s8 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.greater_equal.s8 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.greater_equal.s8 operator";
   }
-
   // Register GreaterEqual BOOL operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1083,10 +955,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.greater_equal.bool operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.greater_equal.bool operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.greater_equal.bool operator";
   }
-
   // Register Less operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1098,10 +967,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.less operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.less operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.less operator";
   }
-
   // Register Less F32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1113,10 +979,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.less.f32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.less.f32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.less.f32 operator";
   }
-
   // Register Less F16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1128,10 +991,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.less.f16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.less.f16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.less.f16 operator";
   }
-
   // Register Less BF16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1143,10 +1003,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.less.bf16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.less.bf16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.less.bf16 operator";
   }
-
   // Register Less S32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1158,10 +1015,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.less.s32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.less.s32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.less.s32 operator";
   }
-
   // Register Less S64 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1173,10 +1027,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.less.s64 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.less.s64 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.less.s64 operator";
   }
-
   // Register Less U8 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1188,10 +1039,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.less.u8 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.less.u8 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.less.u8 operator";
   }
-
   // Register Less S8 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1203,10 +1051,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.less.s8 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.less.s8 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.less.s8 operator";
   }
-
   // Register Less BOOL operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1218,10 +1063,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.less.bool operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.less.bool operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.less.bool operator";
   }
-
   // Register LessEqual operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1233,10 +1075,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.less_equal operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.less_equal operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.less_equal operator";
   }
-
   // Register LessEqual F32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1248,10 +1087,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.less_equal.f32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.less_equal.f32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.less_equal.f32 operator";
   }
-
   // Register LessEqual F16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1263,10 +1099,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.less_equal.f16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.less_equal.f16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.less_equal.f16 operator";
   }
-
   // Register LessEqual BF16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1278,10 +1111,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.less_equal.bf16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.less_equal.bf16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.less_equal.bf16 operator";
   }
-
   // Register LessEqual S32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1293,10 +1123,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.less_equal.s32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.less_equal.s32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.less_equal.s32 operator";
   }
-
   // Register LessEqual S64 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1308,10 +1135,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.less_equal.s64 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.less_equal.s64 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.less_equal.s64 operator";
   }
-
   // Register LessEqual U8 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1323,10 +1147,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.less_equal.u8 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.less_equal.u8 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.less_equal.u8 operator";
   }
-
   // Register LessEqual S8 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1338,10 +1159,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.less_equal.s8 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.less_equal.s8 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.less_equal.s8 operator";
   }
-
   // Register LessEqual BOOL operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1353,10 +1171,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.less_equal.bool operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.less_equal.bool operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.less_equal.bool operator";
   }
-
   // Register Maximum operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1368,10 +1183,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.maximum operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.maximum operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.maximum operator";
   }
-
   // Register Maximum F32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1383,10 +1195,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.maximum.f32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.maximum.f32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.maximum.f32 operator";
   }
-
   // Register Maximum F16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1398,10 +1207,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.maximum.f16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.maximum.f16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.maximum.f16 operator";
   }
-
   // Register Maximum BF16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1413,10 +1219,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.maximum.bf16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.maximum.bf16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.maximum.bf16 operator";
   }
-
   // Register Maximum S32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1428,10 +1231,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.maximum.s32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.maximum.s32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.maximum.s32 operator";
   }
-
   // Register Maximum S64 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1443,10 +1243,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.maximum.s64 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.maximum.s64 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.maximum.s64 operator";
   }
-
   // Register Multiply operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1458,10 +1255,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.multiply operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.multiply operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.multiply operator";
   }
-
   // Register Multiply F32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1473,10 +1267,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.multiply.f32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.multiply.f32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.multiply.f32 operator";
   }
-
   // Register Multiply F16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1488,10 +1279,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.multiply.f16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.multiply.f16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.multiply.f16 operator";
   }
-
   // Register Multiply BF16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1503,10 +1291,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.multiply.bf16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.multiply.bf16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.multiply.bf16 operator";
   }
-
   // Register Multiply S32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1518,10 +1303,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.multiply.s32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.multiply.s32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.multiply.s32 operator";
   }
-
   // Register Multiply S64 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1533,10 +1315,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.multiply.s64 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.multiply.s64 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.multiply.s64 operator";
   }
-
   // Register Negate operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1548,10 +1327,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.negate operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.negate operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.negate operator";
   }
-
   // Register Negate F32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1563,10 +1339,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.negate.f32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.negate.f32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.negate.f32 operator";
   }
-
   // Register Negate F16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1578,10 +1351,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.negate.f16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.negate.f16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.negate.f16 operator";
   }
-
   // Register Negate BF16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1593,10 +1363,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.negate.bf16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.negate.bf16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.negate.bf16 operator";
   }
-
   // Register Negate S32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1608,10 +1375,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.negate.s32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.negate.s32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.negate.s32 operator";
   }
-
   // Register Negate S64 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1623,10 +1387,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.negate.s64 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.negate.s64 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.negate.s64 operator";
   }
-
   // Register NotEqual operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1638,10 +1399,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.not_equal operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.not_equal operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.not_equal operator";
   }
-
   // Register NotEqual F32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1653,10 +1411,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.not_equal.f32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.not_equal.f32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.not_equal.f32 operator";
   }
-
   // Register NotEqual F16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1668,10 +1423,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.not_equal.f16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.not_equal.f16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.not_equal.f16 operator";
   }
-
   // Register NotEqual BF16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1683,10 +1435,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.not_equal.bf16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.not_equal.bf16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.not_equal.bf16 operator";
   }
-
   // Register NotEqual S32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1698,10 +1447,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.not_equal.s32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.not_equal.s32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.not_equal.s32 operator";
   }
-
   // Register NotEqual S64 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1713,10 +1459,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.not_equal.s64 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.not_equal.s64 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.not_equal.s64 operator";
   }
-
   // Register NotEqual U8 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1728,10 +1471,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.not_equal.u8 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.not_equal.u8 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.not_equal.u8 operator";
   }
-
   // Register NotEqual S8 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1743,10 +1483,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.not_equal.s8 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.not_equal.s8 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.not_equal.s8 operator";
   }
-
   // Register NotEqual BOOL operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1758,10 +1495,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.not_equal.bool operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.not_equal.bool operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.not_equal.bool operator";
   }
-
   // Register ReduceMax operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1773,10 +1507,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.reduce_max operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.reduce_max operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.reduce_max operator";
   }
-
   // Register ReduceMax F32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1788,10 +1519,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.reduce_max.f32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.reduce_max.f32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.reduce_max.f32 operator";
   }
-
   // Register ReduceMax F16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1803,10 +1531,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.reduce_max.f16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.reduce_max.f16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.reduce_max.f16 operator";
   }
-
   // Register ReduceMax BF16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1818,10 +1543,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.reduce_max.bf16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.reduce_max.bf16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.reduce_max.bf16 operator";
   }
-
   // Register ReduceMax S32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1833,10 +1555,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.reduce_max.s32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.reduce_max.s32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.reduce_max.s32 operator";
   }
-
   // Register ReduceMax S64 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1848,10 +1567,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.reduce_max.s64 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.reduce_max.s64 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.reduce_max.s64 operator";
   }
-
   // Register ReduceMean operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1863,10 +1579,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.reduce_mean operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.reduce_mean operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.reduce_mean operator";
   }
-
   // Register ReduceMean F32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1878,10 +1591,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.reduce_mean.f32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.reduce_mean.f32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.reduce_mean.f32 operator";
   }
-
   // Register ReduceMean F16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1893,10 +1603,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.reduce_mean.f16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.reduce_mean.f16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.reduce_mean.f16 operator";
   }
-
   // Register ReduceMean BF16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1908,10 +1615,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.reduce_mean.bf16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.reduce_mean.bf16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.reduce_mean.bf16 operator";
   }
-
   // Register ReduceMin operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1923,10 +1627,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.reduce_min operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.reduce_min operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.reduce_min operator";
   }
-
   // Register ReduceMin F32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1938,10 +1639,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.reduce_min.f32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.reduce_min.f32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.reduce_min.f32 operator";
   }
-
   // Register ReduceMin F16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1953,10 +1651,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.reduce_min.f16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.reduce_min.f16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.reduce_min.f16 operator";
   }
-
   // Register ReduceMin BF16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1968,10 +1663,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.reduce_min.bf16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.reduce_min.bf16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.reduce_min.bf16 operator";
   }
-
   // Register ReduceMin S32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1983,10 +1675,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.reduce_min.s32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.reduce_min.s32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.reduce_min.s32 operator";
   }
-
   // Register ReduceMin S64 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -1998,10 +1687,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.reduce_min.s64 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.reduce_min.s64 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.reduce_min.s64 operator";
   }
-
   // Register ReduceProd operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -2013,10 +1699,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.reduce_prod operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.reduce_prod operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.reduce_prod operator";
   }
-
   // Register ReduceProd F32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -2028,10 +1711,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.reduce_prod.f32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.reduce_prod.f32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.reduce_prod.f32 operator";
   }
-
   // Register ReduceProd F16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -2043,10 +1723,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.reduce_prod.f16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.reduce_prod.f16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.reduce_prod.f16 operator";
   }
-
   // Register ReduceProd BF16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -2058,10 +1735,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.reduce_prod.bf16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.reduce_prod.bf16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.reduce_prod.bf16 operator";
   }
-
   // Register ReduceProd S32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -2073,10 +1747,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.reduce_prod.s32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.reduce_prod.s32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.reduce_prod.s32 operator";
   }
-
   // Register ReduceProd S64 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -2088,10 +1759,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.reduce_prod.s64 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.reduce_prod.s64 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.reduce_prod.s64 operator";
   }
-
   // Register ReduceSum operators
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -2103,10 +1771,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.reduce_sum operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.reduce_sum operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.reduce_sum operator";
   }
-
   // Register ReduceSum F32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -2118,10 +1783,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.reduce_sum_f32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.reduce_sum_f32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.reduce_sum_f32 operator";
   }
-
   // Register ReduceSum F16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -2133,10 +1795,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.reduce_sum_f16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.reduce_sum_f16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.reduce_sum_f16 operator";
   }
-
   // Register ReduceSum BF16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -2148,10 +1807,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.reduce_sum_bf16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.reduce_sum_bf16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.reduce_sum_bf16 operator";
   }
-
   // Register ReduceSum S32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -2163,10 +1819,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.reduce_sum_s32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.reduce_sum_s32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.reduce_sum_s32 operator";
   }
-
   // Register ReduceSum S64 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -2178,10 +1831,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.reduce_sum_s64 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.reduce_sum_s64 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.reduce_sum_s64 operator";
   }
-
   // Register Select operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -2193,10 +1843,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.select operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.select operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.select operator";
   }
-
   // Register Select F32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -2208,10 +1855,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.select.f32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.select.f32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.select.f32 operator";
   }
-
   // Register Select F16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -2223,10 +1867,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.select.f16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.select.f16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.select.f16 operator";
   }
-
   // Register Select BF16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -2238,10 +1879,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.select.bf16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.select.bf16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.select.bf16 operator";
   }
-
   // Register Select S32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -2253,10 +1891,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.select.s32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.select.s32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.select.s32 operator";
   }
-
   // Register Select S64 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -2268,10 +1903,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.select.s64 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.select.s64 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.select.s64 operator";
   }
-
   // Register Select BOOL operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -2283,10 +1915,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.select.bool operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.select.bool operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.select.bool operator";
   }
-
   // Register Subtract operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -2298,10 +1927,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.subtract operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.subtract operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.subtract operator";
   }
-
   // Register Subtract F32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -2313,10 +1939,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.subtract.f32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.subtract.f32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.subtract.f32 operator";
   }
-
   // Register Subtract F16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -2328,10 +1951,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.subtract.f16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.subtract.f16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.subtract.f16 operator";
   }
-
   // Register Subtract BF16 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -2343,10 +1963,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.subtract.bf16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.subtract.bf16 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.subtract.bf16 operator";
   }
-
   // Register Subtract S32 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -2358,10 +1975,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.subtract.s32 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.subtract.s32 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.subtract.s32 operator";
   }
-
   // Register Subtract S64 operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -2373,10 +1987,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.subtract.s64 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.subtract.s64 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.subtract.s64 operator";
   }
-
   // Register RightShift operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -2388,10 +1999,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.right_shift operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.right_shift operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.right_shift operator";
   }
-
   // Register Cat operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -2403,10 +2011,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.cat operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.cat operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.cat operator";
   }
-
   // Register other operators here in the future
 
   // Register Iota U8 operator
@@ -2420,10 +2025,7 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.iota.u8 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.iota.u8 operator: " + status.ToString());
-  }else {
-    LOG(INFO) << "Registered ascend.iota.u8 operator";
-  }
-}
+  }}
 
 }  // namespace xla::ffi
 

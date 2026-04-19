@@ -2850,7 +2850,14 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitGemmThunk(
 
   TF_ASSIGN_OR_RETURN(auto a_slice, GetShapedSliceForHlo(instr->operand(0)));
   TF_ASSIGN_OR_RETURN(auto b_slice, GetShapedSliceForHlo(instr->operand(1)));
-  TF_ASSIGN_OR_RETURN(auto c_slice, GetShapedSliceForHlo(instr));
+  
+  // Handle tuple return value (result + workspace)
+  TF_ASSIGN_OR_RETURN(auto c_slice, GetShapedSliceForHlo(instr, {0}));
+  std::optional<xla::ShapedSlice> workspace_slice;
+  if (instr->shape().IsTuple() && instr->shape().tuple_shapes_size() > 1) {
+    TF_ASSIGN_OR_RETURN(auto ws, GetShapedSliceForHlo(instr, {1}));
+    workspace_slice = ws;
+  }
 
   const Shape& a_shape = instr->operand(0)->shape();
   PrimitiveType element_type = a_shape.element_type();
@@ -2860,20 +2867,20 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitGemmThunk(
           << ", c_shape=" << instr->shape().ToString()
           << ", element_type=" << PrimitiveType_Name(element_type);
 
-  std::string function_name = "ascend.matmul";
+  std::string function_name = "ascend.matmulcublas";
   switch (element_type) {
     case F32:
-      function_name += "_f32";
+      function_name += ".f32";
       break;
     case F16:
-      function_name += "_f16";
+      function_name += ".f16";
       break;
     case BF16:
-      function_name += "_bf16";
+      function_name += ".bf16";
       break;
     default:
       VLOG(2) << "Unsupported data type for matmul: " << PrimitiveType_Name(element_type);
-      function_name += "_f32";
+      function_name += ".f32";
       break;
   }
 
@@ -2885,6 +2892,11 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitGemmThunk(
   operands.push_back(a_slice);
   operands.push_back(b_slice);
   results.push_back(c_slice);
+  
+  // Add workspace to results to maintain tuple structure
+  if (workspace_slice) {
+    results.push_back(*workspace_slice);
+  }
 
   xla::ffi::AttributesMap attributes;
 
