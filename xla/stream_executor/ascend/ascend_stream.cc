@@ -326,10 +326,9 @@ void AscendStream::SetName(std::string name) {
 AscendStream::AscendStream(StreamExecutor* executor, std::unique_ptr<Event> completed_event,
                           std::optional<std::variant<StreamPriority, int>> priority,
                           aclrtStream stream_handle)
-    : StreamCommon(executor),
+    : StreamCommon(executor,priority),
       executor_(executor),
       completed_event_(std::move(completed_event)),
-      priority_(priority),
       stream_handle_(stream_handle) {}
 
 }  // namespace ascend

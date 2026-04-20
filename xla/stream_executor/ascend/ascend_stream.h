@@ -79,9 +79,6 @@ class AscendStream : public StreamCommon {
   // Event used to track stream completion for inter-stream synchronization.
   std::unique_ptr<Event> completed_event_;
 
-  // The priority of the stream.
-  std::optional<std::variant<StreamPriority, int>> priority_;
-
   // Counter for pending host callbacks.
   std::atomic<int> num_pending_host_callbacks_{0};
   absl::Mutex mutex_;
