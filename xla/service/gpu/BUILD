@@ -768,7 +768,6 @@ cc_library(
         "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/stream_executor/rocm:rocm_platform_id",
         "//xla/stream_executor/sycl:sycl_platform_id",
-        "//xla/stream_executor/ascend:ascend_platform_id",
         "//xla/tsl/platform:env_time",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status_macros",
@@ -793,7 +792,12 @@ cc_library(
         "@tsl//tsl/platform:random",
         "@tsl//tsl/profiler/lib:scoped_annotation",
         "@tsl//tsl/profiler/lib:traceme",
-    ],
+    ] + if_ascend_is_configured([
+        "//xla/stream_executor/ascend:ascend_platform_id",
+    ]),
+    defines = if_ascend_is_configured([
+        "XLA_ENABLE_ASCEND",
+    ]),
 )
 
 tf_proto_library(
