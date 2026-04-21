@@ -95,7 +95,7 @@ absl::Status SequentialThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   for (size_t i = 0; i < thunks_.size(); ++i) {
     const std::unique_ptr<Thunk>& thunk = thunks_[i];
-
+    //std::cerr << "start execute thunk " << i << "/" << thunks_.size() << " " << thunk->profile_annotation() << std::endl;
     tsl::profiler::TraceMe trace(thunk->profile_annotation());
 
     std::optional<tsl::profiler::ScopedAnnotation> annotation =

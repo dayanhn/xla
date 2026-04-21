@@ -95,6 +95,201 @@ void RegisterAscendFfiHandlers() {
     throw std::runtime_error("Failed to register ascend.cast.s32_to_u32 operator: " + status.ToString());
   }
 
+  // Register Cast U8 to S32 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.cast.u8_to_s32",
+      "ASCEND",
+      AscendCastU8ToS32);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.cast.u8_to_s32 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.cast.u8_to_s32 operator: " + status.ToString());
+  }
+
+  // Register Cast F32 to F16 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.cast.f32_to_f16",
+      "ASCEND",
+      AscendCastF32ToF16);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.cast.f32_to_f16 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.cast.f32_to_f16 operator: " + status.ToString());
+  }
+
+  // Register Cast F16 to F32 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.cast.f16_to_f32",
+      "ASCEND",
+      AscendCastF16ToF32);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.cast.f16_to_f32 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.cast.f16_to_f32 operator: " + status.ToString());
+  }
+
+  // Register Cast F32 to BF16 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.cast.f32_to_bf16",
+      "ASCEND",
+      AscendCastF32ToBF16);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.cast.f32_to_bf16 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.cast.f32_to_bf16 operator: " + status.ToString());
+  }
+
+  // Register Cast BF16 to F32 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.cast.bf16_to_f32",
+      "ASCEND",
+      AscendCastBF16ToF32);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.cast.bf16_to_f32 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.cast.bf16_to_f32 operator: " + status.ToString());
+  }
+
+  // Register Cast S32 to F32 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.cast.s32_to_f32",
+      "ASCEND",
+      AscendCastS32ToF32);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.cast.s32_to_f32 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.cast.s32_to_f32 operator: " + status.ToString());
+  }
+
+  // Register Cast F32 to S32 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.cast.f32_to_s32",
+      "ASCEND",
+      AscendCastF32ToS32);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.cast.f32_to_s32 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.cast.f32_to_s32 operator: " + status.ToString());
+  }
+
+  // Register Cast U32 to F32 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.cast.u32_to_f32",
+      "ASCEND",
+      AscendCastU32ToF32);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.cast.u32_to_f32 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.cast.u32_to_f32 operator: " + status.ToString());
+  }
+
+  // Register Cast F32 to U32 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.cast.f32_to_u32",
+      "ASCEND",
+      AscendCastF32ToU32);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.cast.f32_to_u32 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.cast.f32_to_u32 operator: " + status.ToString());
+  }
+
+  // Register Cast S8 to S32 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.cast.s8_to_s32",
+      "ASCEND",
+      AscendCastS8ToS32);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.cast.s8_to_s32 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.cast.s8_to_s32 operator: " + status.ToString());
+  }
+
+  // Register Cast S32 to S8 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.cast.s32_to_s8",
+      "ASCEND",
+      AscendCastS32ToS8);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.cast.s32_to_s8 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.cast.s32_to_s8 operator: " + status.ToString());
+  }
+
+  // Register Cast U8 to U32 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.cast.u8_to_u32",
+      "ASCEND",
+      AscendCastU8ToU32);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.cast.u8_to_u32 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.cast.u8_to_u32 operator: " + status.ToString());
+  }
+
+  // Register Cast U32 to U8 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.cast.u32_to_u8",
+      "ASCEND",
+      AscendCastU32ToU8);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.cast.u32_to_u8 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.cast.u32_to_u8 operator: " + status.ToString());
+  }
+
+  // Register Cast BOOL to S32 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.cast.bool_to_s32",
+      "ASCEND",
+      AscendCastBoolToS32);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.cast.bool_to_s32 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.cast.bool_to_s32 operator: " + status.ToString());
+  }
+
+  // Register Cast S32 to BOOL operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.cast.s32_to_bool",
+      "ASCEND",
+      AscendCastS32ToBool);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.cast.s32_to_bool operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.cast.s32_to_bool operator: " + status.ToString());
+  }
+
   // Register Cast operator (default to S32 to U32)
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -183,6 +378,72 @@ void RegisterAscendFfiHandlers() {
     LOG(ERROR) << "Failed to register ascend.add.s64 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.add.s64 operator: " + status.ToString());
   }
+
+  // Register Muls operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.muls",
+      "ASCEND",
+      AscendMuls);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.muls operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.muls operator: " + status.ToString());
+  }
+
+  // Register Muls F32 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.muls.f32",
+      "ASCEND",
+      AscendMulsF32);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.muls.f32 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.muls.f32 operator: " + status.ToString());
+  }
+
+  // Register Muls F16 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.muls.f16",
+      "ASCEND",
+      AscendMulsF16);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.muls.f16 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.muls.f16 operator: " + status.ToString());
+  }
+
+  // Register Muls BF16 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.muls.bf16",
+      "ASCEND",
+      AscendMulsBF16);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.muls.bf16 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.muls.bf16 operator: " + status.ToString());
+  }
+
+  // Register Muls S32 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.muls.s32",
+      "ASCEND",
+      AscendMulsS32);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.muls.s32 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.muls.s32 operator: " + status.ToString());
+  }
+
   // Register Divide operator
   error = Ffi::RegisterStaticHandler(
       GetXlaFfiApi(),
@@ -654,6 +915,55 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.matmul_bf16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.matmul_bf16 operator: " + status.ToString());
+  }
+
+  // Register Gemm operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.gemm",
+      "ASCEND",
+      AscendGemm);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.gemm operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.gemm operator: " + status.ToString());
+  }
+  // Register Gemm F32 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.gemm.f32",
+      "ASCEND",
+      AscendGemmF32);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.gemm.f32 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.gemm.f32 operator: " + status.ToString());
+  }
+  // Register Gemm F16 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.gemm.f16",
+      "ASCEND",
+      AscendGemmF16);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.gemm.f16 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.gemm.f16 operator: " + status.ToString());
+  }
+  // Register Gemm BF16 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.gemm.bf16",
+      "ASCEND",
+      AscendGemmBF16);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.gemm.bf16 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.gemm.bf16 operator: " + status.ToString());
   }
 
   // Register InplaceIndexFillTensor operator
@@ -2020,11 +2330,73 @@ void RegisterAscendFfiHandlers() {
       "ascend.iota.u8",
       "ASCEND",
       AscendIotaU8);
-
+  
   status = TakeStatus(error);
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.iota.u8 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.iota.u8 operator: " + status.ToString());
+  }
+
+  // Register Iota S32 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.iota.s32",
+      "ASCEND",
+      AscendIotaS32);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.iota.s32 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.iota.s32 operator: " + status.ToString());
+  }
+
+  // Register MaxDim operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.max_dim",
+      "ASCEND",
+      AscendMaxDim);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.max_dim operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.max_dim operator: " + status.ToString());
+  }
+  // Register MaxDim F32 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.max_dim.f32",
+      "ASCEND",
+      AscendMaxDimF32);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.max_dim.f32 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.max_dim.f32 operator: " + status.ToString());
+  }
+  // Register MaxDim F16 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.max_dim.f16",
+      "ASCEND",
+      AscendMaxDimF16);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.max_dim.f16 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.max_dim.f16 operator: " + status.ToString());
+  }
+  // Register MaxDim BF16 operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend.max_dim.bf16",
+      "ASCEND",
+      AscendMaxDimBF16);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend.max_dim.bf16 operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend.max_dim.bf16 operator: " + status.ToString());
   }}
 
 }  // namespace xla::ffi

@@ -38,7 +38,6 @@ ffi::Error FullHandlerF32(
       tensor_list, &workspace_size_zero, &executor_zero);
   if (status != ACL_SUCCESS) {
     aclDestroyTensorList(tensor_list);
-    aclDestroyTensor(self_tensor);
     return ffi::Error::Internal(
         absl::StrCat("aclnnForeachZeroInplaceGetWorkspaceSize failed: ", status));
   }
@@ -55,9 +54,28 @@ ffi::Error FullHandlerF32(
       stream);
   if (status != ACL_SUCCESS) {
     aclDestroyTensorList(tensor_list);
-    aclDestroyTensor(self_tensor);
     return ffi::Error::Internal(
         absl::StrCat("aclnnForeachZeroInplace failed: ", status));
+  }
+
+  // If value is 0, skip step 2 since tensor is already zeroed
+  if (value == 0.0f) {
+    status = aclrtSynchronizeStream(stream);
+    if(status != ACL_SUCCESS){
+      aclDestroyTensorList(tensor_list);
+      if (workspace_size_zero > 0) {
+        aclrtFree(workspaceAddr_zero);
+      }
+      return ffi::Error::Internal(
+          absl::StrCat("aclrtSynchronizeStream failed: ", status));
+    }
+
+    // Release resources
+    aclDestroyTensorList(tensor_list);
+    if (workspace_size_zero > 0) {
+      aclrtFree(workspaceAddr_zero);
+    }
+    return ffi::Error::Success();
   }
 
   // Step 2: Call aclnnForeachAddScalarV2 to add the scalar value
@@ -65,7 +83,6 @@ ffi::Error FullHandlerF32(
   aclScalar* scalar_value = aclCreateScalar(&value, ACL_FLOAT);
   if (scalar_value == nullptr) {
     aclDestroyTensorList(tensor_list);
-    aclDestroyTensor(self_tensor);
     return ffi::Error::Internal("Failed to create aclScalar");
   }
   
@@ -78,7 +95,6 @@ ffi::Error FullHandlerF32(
   if (status != ACL_SUCCESS) {
     aclDestroyScalar(scalar_value);
     aclDestroyTensorList(tensor_list);
-    aclDestroyTensor(self_tensor);
     return ffi::Error::Internal(
         absl::StrCat("aclnnForeachAddScalarV2GetWorkspaceSize failed: ", status));
   }
@@ -96,7 +112,6 @@ ffi::Error FullHandlerF32(
   if (status != ACL_SUCCESS) {
     aclDestroyScalar(scalar_value);
     aclDestroyTensorList(tensor_list);
-    aclDestroyTensor(self_tensor);
     return ffi::Error::Internal(
         absl::StrCat("aclnnForeachAddScalarV2 failed: ", status));
   }
@@ -105,7 +120,6 @@ ffi::Error FullHandlerF32(
   if(status != ACL_SUCCESS){
     aclDestroyScalar(scalar_value);
     aclDestroyTensorList(tensor_list);
-    aclDestroyTensor(self_tensor);
     return ffi::Error::Internal(
         absl::StrCat("aclrtSynchronizeStream failed: ", status));
   }
@@ -113,7 +127,6 @@ ffi::Error FullHandlerF32(
   // Release resources
   aclDestroyScalar(scalar_value);
   aclDestroyTensorList(tensor_list);
-  aclDestroyTensor(self_tensor);
   if (workspace_size_zero > 0) {
     aclrtFree(workspaceAddr_zero);
   }
@@ -151,7 +164,6 @@ ffi::Error FullHandlerS32(
       tensor_list, &workspace_size_zero, &executor_zero);
   if (status != ACL_SUCCESS) {
     aclDestroyTensorList(tensor_list);
-    aclDestroyTensor(self_tensor);
     return ffi::Error::Internal(
         absl::StrCat("aclnnForeachZeroInplaceGetWorkspaceSize failed: ", status));
   }
@@ -168,7 +180,6 @@ ffi::Error FullHandlerS32(
       stream);
   if (status != ACL_SUCCESS) {
     aclDestroyTensorList(tensor_list);
-    aclDestroyTensor(self_tensor);
     if (workspace_size_zero > 0) {
       aclrtFree(workspaceAddr_zero);
     }
@@ -176,12 +187,33 @@ ffi::Error FullHandlerS32(
         absl::StrCat("aclnnForeachZeroInplace failed: ", status));
   }
 
+  // If value is 0, skip step 2 since tensor is already zeroed
+  if (value == 0) {
+    std::cerr << "[DEBUG] FullHandlerS32: value is 0, skipping add operation" << std::endl;
+    
+    status = aclrtSynchronizeStream(stream);
+    if(status != ACL_SUCCESS){
+      aclDestroyTensorList(tensor_list);
+      if (workspace_size_zero > 0) {
+        aclrtFree(workspaceAddr_zero);
+      }
+      return ffi::Error::Internal(
+          absl::StrCat("aclrtSynchronizeStream failed: ", status));
+    }
+
+    // Release resources
+    aclDestroyTensorList(tensor_list);
+    if (workspace_size_zero > 0) {
+      aclrtFree(workspaceAddr_zero);
+    }
+    return ffi::Error::Success();
+  }
+
   // Step 2: Call aclnnForeachAddScalarV2 to add the scalar value
   // Create scalar value
   aclScalar* scalar_value = aclCreateScalar(&value, ACL_INT32);
   if (scalar_value == nullptr) {
     aclDestroyTensorList(tensor_list);
-    aclDestroyTensor(self_tensor);
     if (workspace_size_zero > 0) {
       aclrtFree(workspaceAddr_zero);
     }
@@ -197,7 +229,6 @@ ffi::Error FullHandlerS32(
   if (status != ACL_SUCCESS) {
     aclDestroyScalar(scalar_value);
     aclDestroyTensorList(tensor_list);
-    aclDestroyTensor(self_tensor);
     if (workspace_size_zero > 0) {
       aclrtFree(workspaceAddr_zero);
     }
@@ -219,7 +250,6 @@ ffi::Error FullHandlerS32(
   if (status != ACL_SUCCESS) {
     aclDestroyScalar(scalar_value);
     aclDestroyTensorList(tensor_list);
-    aclDestroyTensor(self_tensor);
     if (workspace_size_zero > 0) {
       aclrtFree(workspaceAddr_zero);
     }
@@ -234,7 +264,6 @@ ffi::Error FullHandlerS32(
   if(status != ACL_SUCCESS){
     aclDestroyScalar(scalar_value);
     aclDestroyTensorList(tensor_list);
-    aclDestroyTensor(self_tensor);
     if (workspace_size_zero > 0) {
       aclrtFree(workspaceAddr_zero);
     }
@@ -248,7 +277,6 @@ ffi::Error FullHandlerS32(
   // Release resources
   aclDestroyScalar(scalar_value);
   aclDestroyTensorList(tensor_list);
-  aclDestroyTensor(self_tensor);
   if (workspace_size_zero > 0) {
     aclrtFree(workspaceAddr_zero);
   }
@@ -286,7 +314,6 @@ ffi::Error FullHandlerS64(
       tensor_list, &workspace_size_zero, &executor_zero);
   if (status != ACL_SUCCESS) {
     aclDestroyTensorList(tensor_list);
-    aclDestroyTensor(self_tensor);
     return ffi::Error::Internal(
         absl::StrCat("aclnnForeachZeroInplaceGetWorkspaceSize failed: ", status));
   }
@@ -303,7 +330,6 @@ ffi::Error FullHandlerS64(
       stream);
   if (status != ACL_SUCCESS) {
     aclDestroyTensorList(tensor_list);
-    aclDestroyTensor(self_tensor);
     if (workspace_size_zero > 0) {
       aclrtFree(workspaceAddr_zero);
     }
@@ -311,12 +337,34 @@ ffi::Error FullHandlerS64(
         absl::StrCat("aclnnForeachZeroInplace failed: ", status));
   }
 
+  // If value is 0, skip step 2 since tensor is already zeroed
+  if (value == 0) {
+    std::cerr << "[DEBUG] FullHandlerS64: value is 0, skipping add operation" << std::endl;
+    
+    status = aclrtSynchronizeStream(stream);
+    if(status != ACL_SUCCESS){
+      aclDestroyTensorList(tensor_list);
+
+      if (workspace_size_zero > 0) {
+        aclrtFree(workspaceAddr_zero);
+      }
+      return ffi::Error::Internal(
+          absl::StrCat("aclrtSynchronizeStream failed: ", status));
+    }
+
+    // Release resources
+    aclDestroyTensorList(tensor_list);
+    if (workspace_size_zero > 0) {
+      aclrtFree(workspaceAddr_zero);
+    }
+    return ffi::Error::Success();
+  }
+
   // Step 2: Call aclnnForeachAddScalarV2 to add the scalar value
   // Create scalar value
   aclScalar* scalar_value = aclCreateScalar(&value, ACL_INT64);
   if (scalar_value == nullptr) {
     aclDestroyTensorList(tensor_list);
-    aclDestroyTensor(self_tensor);
     if (workspace_size_zero > 0) {
       aclrtFree(workspaceAddr_zero);
     }
@@ -332,7 +380,6 @@ ffi::Error FullHandlerS64(
   if (status != ACL_SUCCESS) {
     aclDestroyScalar(scalar_value);
     aclDestroyTensorList(tensor_list);
-    aclDestroyTensor(self_tensor);
     if (workspace_size_zero > 0) {
       aclrtFree(workspaceAddr_zero);
     }
@@ -354,7 +401,6 @@ ffi::Error FullHandlerS64(
   if (status != ACL_SUCCESS) {
     aclDestroyScalar(scalar_value);
     aclDestroyTensorList(tensor_list);
-    aclDestroyTensor(self_tensor);
     if (workspace_size_zero > 0) {
       aclrtFree(workspaceAddr_zero);
     }
@@ -369,7 +415,6 @@ ffi::Error FullHandlerS64(
   if(status != ACL_SUCCESS){
     aclDestroyScalar(scalar_value);
     aclDestroyTensorList(tensor_list);
-    aclDestroyTensor(self_tensor);
     if (workspace_size_zero > 0) {
       aclrtFree(workspaceAddr_zero);
     }
@@ -383,7 +428,6 @@ ffi::Error FullHandlerS64(
   // Release resources
   aclDestroyScalar(scalar_value);
   aclDestroyTensorList(tensor_list);
-  aclDestroyTensor(self_tensor);
   if (workspace_size_zero > 0) {
     aclrtFree(workspaceAddr_zero);
   }

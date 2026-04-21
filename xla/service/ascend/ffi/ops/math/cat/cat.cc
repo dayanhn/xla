@@ -92,8 +92,6 @@ ffi::Error CatHandler(
   
   if (status != ACL_SUCCESS) {
     aclDestroyTensorList(input_tensor_list);
-    aclDestroyTensor(input1_tensor);
-    aclDestroyTensor(input2_tensor);
     aclDestroyTensor(output_tensor);
     return ffi::Error::Internal(
         absl::StrCat("aclnnCatGetWorkspaceSize failed: ", status));
@@ -105,8 +103,6 @@ ffi::Error CatHandler(
     aclError alloc_status = aclrtMalloc(&workspaceAddr, workspace_size, ACL_MEM_MALLOC_HUGE_FIRST);
     if (alloc_status != ACL_SUCCESS) {
       aclDestroyTensorList(input_tensor_list);
-      aclDestroyTensor(input1_tensor);
-      aclDestroyTensor(input2_tensor);
       aclDestroyTensor(output_tensor);
       return ffi::Error::Internal(
           absl::StrCat("aclrtMalloc failed: ", alloc_status));
@@ -122,8 +118,6 @@ ffi::Error CatHandler(
   
   if (status != ACL_SUCCESS) {
     aclDestroyTensorList(input_tensor_list);
-    aclDestroyTensor(input1_tensor);
-    aclDestroyTensor(input2_tensor);
     aclDestroyTensor(output_tensor);
     if (workspace_size > 0) {
       aclrtFree(workspaceAddr);
@@ -136,8 +130,6 @@ ffi::Error CatHandler(
   status = aclrtSynchronizeStream(stream);
   if(status != ACL_SUCCESS){
     aclDestroyTensorList(input_tensor_list);
-    aclDestroyTensor(input1_tensor);
-    aclDestroyTensor(input2_tensor);
     aclDestroyTensor(output_tensor);
     if (workspace_size > 0) {
       aclrtFree(workspaceAddr);
@@ -148,8 +140,6 @@ ffi::Error CatHandler(
 
   // Release resources
   aclDestroyTensorList(input_tensor_list);
-  aclDestroyTensor(input1_tensor);
-  aclDestroyTensor(input2_tensor);
   aclDestroyTensor(output_tensor);
   //aclDestroyAclOpExecutor(executor);
   if (workspace_size > 0) {

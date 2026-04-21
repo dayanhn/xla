@@ -141,6 +141,12 @@ class ThunkEmitter {
 
   absl::StatusOr<xla::gpu::ThunkSequence> EmitIotaFusion(
       const HloFusionInstruction* fusion);
+
+  absl::StatusOr<xla::gpu::ThunkSequence> EmitArgMaxFusion(
+      const HloFusionInstruction* fusion);
+  
+  absl::StatusOr<xla::gpu::ThunkSequence> EmitScalarMultiplyFusion(
+      const HloFusionInstruction* fusion);
  
   absl::StatusOr<xla::gpu::ThunkSequence> EmitGemmThunk(
       const HloCustomCallInstruction* hlo);

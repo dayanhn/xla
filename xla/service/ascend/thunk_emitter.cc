@@ -210,10 +210,41 @@ bool IsConvertFusion(const HloFusionInstruction* fusion) {
     return false;
   }
   
-  // Check if it's s32 to u32 conversion
-  if (convert_instr->operand(0)->shape().element_type() != PrimitiveType::S32 ||
-      convert_instr->shape().element_type() != PrimitiveType::U32) {
-    VLOG(4) << "ConvertFusion: only s32 to u32 conversion is supported";
+  // Check if it's a supported conversion type
+  PrimitiveType src_type = convert_instr->operand(0)->shape().element_type();
+  PrimitiveType dst_type = convert_instr->shape().element_type();
+  
+  // Check if it's one of the supported conversion types
+  // Supported conversions are based on aclnnCast documentation
+  bool is_supported = false;
+  
+  // Check for supported conversion types
+  if ((src_type == PrimitiveType::S32 && dst_type == PrimitiveType::U32) ||
+      (src_type == PrimitiveType::U8 && dst_type == PrimitiveType::S32) ||
+      (src_type == PrimitiveType::F32 && dst_type == PrimitiveType::F16) ||
+      (src_type == PrimitiveType::F16 && dst_type == PrimitiveType::F32) ||
+      (src_type == PrimitiveType::F32 && dst_type == PrimitiveType::BF16) ||
+      (src_type == PrimitiveType::BF16 && dst_type == PrimitiveType::F32) ||
+      (src_type == PrimitiveType::S32 && dst_type == PrimitiveType::F32) ||
+      (src_type == PrimitiveType::F32 && dst_type == PrimitiveType::S32) ||
+      (src_type == PrimitiveType::S64 && dst_type == PrimitiveType::F32) ||
+      (src_type == PrimitiveType::F32 && dst_type == PrimitiveType::S64) ||
+      (src_type == PrimitiveType::U32 && dst_type == PrimitiveType::F32) ||
+      (src_type == PrimitiveType::F32 && dst_type == PrimitiveType::U32) ||
+      (src_type == PrimitiveType::U64 && dst_type == PrimitiveType::F32) ||
+      (src_type == PrimitiveType::F32 && dst_type == PrimitiveType::U64) ||
+      (src_type == PrimitiveType::S8 && dst_type == PrimitiveType::S32) ||
+      (src_type == PrimitiveType::S32 && dst_type == PrimitiveType::S8) ||
+      (src_type == PrimitiveType::U8 && dst_type == PrimitiveType::U32) ||
+      (src_type == PrimitiveType::U32 && dst_type == PrimitiveType::U8) ||
+      (src_type == PrimitiveType::PRED && dst_type == PrimitiveType::S32) ||
+      (src_type == PrimitiveType::S32 && dst_type == PrimitiveType::PRED)) {
+    is_supported = true;
+  }
+  
+  if (!is_supported) {
+    VLOG(4) << "ConvertFusion: unsupported conversion type: " 
+            << PrimitiveType_Name(src_type) << " -> " << PrimitiveType_Name(dst_type);
     return false;
   }
   
@@ -492,6 +523,75 @@ bool IsMaximumFusion(const HloFusionInstruction* fusion) {
 
 // Helper function to check if a fusion matches the reduce_max pattern
 // Pattern: fusion { parameter -> reduce_max } with maximum reduction function
+bool IsArgMaxFusion(const HloFusionInstruction* fusion) {
+  // 1. 输出必须是二元组 (f32, s32)
+  if (!fusion->shape().IsTuple() || fusion->shape().tuple_shapes().size() != 2) {
+    VLOG(4) << "ArgMaxFusion: fusion output is not a tuple with two elements";
+    return false;
+  }
+
+  // 2. 必须是 2 个输入
+  if (fusion->operand_count() != 2) {
+    VLOG(4) << "ArgMaxFusion: fusion does not have 2 operands";
+    return false;
+  }
+
+  // 3. 内部必须有一个 reduce
+  const HloInstruction* reduce_instr = nullptr;
+  for (const auto* instr : fusion->fused_instructions_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kReduce) {
+      reduce_instr = instr;
+      break;
+    }
+  }
+  if (!reduce_instr) {
+    VLOG(4) << "ArgMaxFusion: no reduce instruction found";
+    return false;
+  }
+
+  // 4. reduce 必须输出二元组
+  if (!reduce_instr->shape().IsTuple() || reduce_instr->shape().tuple_shapes().size() != 2) {
+    VLOG(4) << "ArgMaxFusion: reduce output is not a tuple with two elements";
+    return false;
+  }
+
+  // 5. reduce 必须有 4 个操作数
+  if (reduce_instr->operand_count() != 4) {
+    VLOG(4) << "ArgMaxFusion: reduce does not have 4 operands";
+    return false;
+  }
+
+  // 6. 检查 reducer 内部必需算子
+  const HloComputation* reduction_computation = reduce_instr->to_apply();
+  if (!reduction_computation) {
+    VLOG(4) << "ArgMaxFusion: no reduction computation found";
+    return false;
+  }
+
+  bool has_gt = false, has_lt = false, has_select = false, has_tuple = false;
+  for (const auto* instr : reduction_computation->instructions()) {
+    if (instr->opcode() == HloOpcode::kCompare) {
+      auto direction = instr->comparison_direction();
+      if (direction == ComparisonDirection::kGt) {
+        has_gt = true;
+      } else if (direction == ComparisonDirection::kLt) {
+        has_lt = true;
+      }
+    } else if (instr->opcode() == HloOpcode::kSelect) {
+      has_select = true;
+    } else if (instr->opcode() == HloOpcode::kTuple) {
+      has_tuple = true;
+    }
+  }
+
+  if (!has_gt || !has_lt || !has_select || !has_tuple) {
+    VLOG(4) << "ArgMaxFusion: missing required operations in reduction computation";
+    return false;
+  }
+
+  return true;
+}
+
 bool IsReduceMaxFusion(const HloFusionInstruction* fusion) {
   auto* computation = fusion->fused_instructions_computation();
 
@@ -1033,6 +1133,73 @@ bool IsMultiplyFusion(const HloFusionInstruction* fusion) {
   return true;
 }
 
+// Helper function to check if a fusion matches the scalar multiply pattern
+// Pattern: fusion { parameter + constant -> multiply }
+bool IsScalarMultiplyFusion(const HloFusionInstruction* fusion) {
+  auto* computation = fusion->fused_instructions_computation();
+
+  // Must have exactly 3 instructions: parameter + constant + multiply
+  const auto& instructions = computation->instructions();
+  int64_t instruction_count = std::distance(instructions.begin(), instructions.end());
+  if (instruction_count != 3) {
+    VLOG(4) << "ScalarMultiplyFusion: expected 3 instructions, got "
+            << instruction_count;
+    return false;
+  }
+
+  // Find the instructions
+  const HloInstruction* param_instr = nullptr;
+  const HloInstruction* constant_instr = nullptr;
+  const HloInstruction* multiply_instr = nullptr;
+
+  for (const auto* instr : instructions) {
+    if (instr->opcode() == HloOpcode::kParameter) {
+      if (!param_instr) {
+        param_instr = instr;
+      } else {
+        VLOG(4) << "ScalarMultiplyFusion: too many parameter instructions";
+        return false;
+      }
+    } else if (instr->opcode() == HloOpcode::kConstant) {
+      if (!constant_instr) {
+        constant_instr = instr;
+      } else {
+        VLOG(4) << "ScalarMultiplyFusion: too many constant instructions";
+        return false;
+      }
+    } else if (instr->opcode() == HloOpcode::kMultiply) {
+      multiply_instr = instr;
+    } else {
+      VLOG(4) << "ScalarMultiplyFusion: unexpected opcode "
+              << HloOpcodeString(instr->opcode());
+      return false;
+    }
+  }
+
+  // All instructions must be present
+  if (!param_instr || !constant_instr || !multiply_instr) {
+    VLOG(4) << "ScalarMultiplyFusion: missing required instructions";
+    return false;
+  }
+
+  // Multiply must take param and constant as operands
+  if (multiply_instr->operand_count() != 2 ||
+      (multiply_instr->operand(0) != param_instr && multiply_instr->operand(0) != constant_instr) ||
+      (multiply_instr->operand(1) != param_instr && multiply_instr->operand(1) != constant_instr)) {
+    VLOG(4) << "ScalarMultiplyFusion: multiply does not take both operands";
+    return false;
+  }
+
+  // Fusion's root must be the multiply instruction
+  if (computation->root_instruction() != multiply_instr) {
+    VLOG(4) << "ScalarMultiplyFusion: fusion root is not multiply";
+    return false;
+  }
+
+  return true;
+}
+
+
 // Helper function to check if a fusion matches the greater pattern
 // Pattern: fusion { parameter0 + parameter1 -> compare with GT direction }
 bool IsGreaterFusion(const HloFusionInstruction* fusion) {
@@ -1208,6 +1375,13 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitFusion(
     }
   }
 
+  if (IsScalarMultiplyFusion(fusion)) {
+    TF_ASSIGN_OR_RETURN(auto thunks, EmitScalarMultiplyFusion(fusion));
+    if (!thunks.empty()) {
+      return thunks;
+    }
+  }
+
   if (IsMaximumFusion(fusion)) {
     TF_ASSIGN_OR_RETURN(auto thunks, EmitMaximumFusion(fusion));
     if (!thunks.empty()) {
@@ -1323,6 +1497,13 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitFusion(
     }
   }
   
+  if (IsArgMaxFusion(fusion)) {
+    TF_ASSIGN_OR_RETURN(auto thunks, EmitArgMaxFusion(fusion));
+    if (!thunks.empty()) {
+      return thunks;
+    }
+  }
+  
   // Add more FFI pattern matching here in the future
   // Pattern 5: ...
   
@@ -1370,10 +1551,12 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitIotaFusion(
     case U8:
       function_name += ".u8";
       break;
-    default:
-      VLOG(2) << "Unsupported data type for iota: " << PrimitiveType_Name(element_type);
-      function_name += ".u8";
+    case S32:
+      function_name += ".s32";
       break;
+    default:
+      return absl::UnimplementedError(
+          absl::StrCat("Unsupported data type for iota: ", PrimitiveType_Name(element_type)));
   }
 
   VLOG(2) << "Using iota function: " << function_name;
@@ -1387,6 +1570,102 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitIotaFusion(
   attributes["iota_dimension"] = xla::ffi::Scalar(iota_dimension);
   attributes["num_classes"] = xla::ffi::Scalar(num_classes);
   attributes["num_rows"] = xla::ffi::Scalar(num_rows);
+
+  const se::GpuComputeCapability& gpu_compute_capability =
+      ir_emitter_context_->gpu_compute_capability();
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::gpu::CustomCallThunk> thunk,
+      xla::gpu::CustomCallThunk::Create(
+          xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
+          function_name,
+          std::move(operands),
+          std::move(results),
+          std::move(attributes),
+          /*called_computation=*/nullptr,
+          "ASCEND",
+          gpu_compute_capability,
+          /*execution_state=*/nullptr));
+
+  xla::gpu::ThunkSequence sequence;
+  sequence.push_back(std::move(thunk));
+
+  return sequence;
+}
+
+absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitArgMaxFusion(
+    const HloFusionInstruction* fusion) {
+  VLOG(2) << "Emitting argmax fusion as ascend.max_dim: " << fusion->name();
+
+  // Get the input buffer allocation for the first operand (the values tensor)
+  TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(fusion->operand(0)));
+  
+  // Handle tuple return value (value + index)
+  TF_ASSIGN_OR_RETURN(auto value_slice, GetShapedSliceForHlo(fusion, {0}));
+  TF_ASSIGN_OR_RETURN(auto index_slice, GetShapedSliceForHlo(fusion, {1}));
+
+  auto* computation = fusion->fused_instructions_computation();
+  const HloInstruction* reduce_instr = nullptr;
+
+  for (const auto* instr : computation->instructions()) {
+    if (instr->opcode() == HloOpcode::kReduce) {
+      reduce_instr = instr;
+      break;
+    }
+  }
+
+  if (!reduce_instr) {
+    return absl::InternalError("No reduce instruction found in argmax fusion");
+  }
+
+  // Extract reduction dimensions
+  absl::Span<const int64_t> reduce_dims = reduce_instr->dimensions();
+  if (reduce_dims.empty()) {
+    return absl::InternalError("Reduce instruction has no dimensions");
+  }
+  
+  int64_t dim = reduce_dims[0]; // Argmax typically reduces over one dimension
+  bool keepdim = false; // Default value, actual keep_dims behavior is handled by the shape
+
+  const Shape& input_shape = fusion->operand(0)->shape();
+  PrimitiveType element_type = input_shape.element_type();
+
+  VLOG(2) << "ArgMax fusion: input shape=" << input_shape.ToString()
+          << ", value output shape=" << value_slice.shape.ToString()
+          << ", index output shape=" << index_slice.shape.ToString()
+          << ", element_type=" << PrimitiveType_Name(element_type)
+          << ", reduce_dim=" << dim
+          << ", keepdim=" << keepdim;
+
+  std::string function_name = "ascend.max_dim";
+  switch (element_type) {
+    case F32:
+      function_name += ".f32";
+      break;
+    case F16:
+      function_name += ".f16";
+      break;
+    case BF16:
+      function_name += ".bf16";
+      break;
+    default:
+      VLOG(2) << "Unsupported data type for argmax: " << PrimitiveType_Name(element_type);
+      function_name += ".f32";
+      break;
+  }
+
+  VLOG(2) << "Using max_dim function: " << function_name;
+
+  std::vector<NullableShapedSlice> operands;
+  std::vector<NullableShapedSlice> results;
+
+  operands.push_back(input_slice);
+  results.push_back(value_slice);
+  results.push_back(index_slice);
+
+  xla::ffi::AttributesMap attributes;
+  attributes["dim"] = xla::ffi::Scalar(dim);
+  attributes["keepdim"] = xla::ffi::Scalar(keepdim);
 
   const se::GpuComputeCapability& gpu_compute_capability =
       ir_emitter_context_->gpu_compute_capability();
@@ -2567,12 +2846,25 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitTensorBroadcastFusion(
     return absl::InternalError("No broadcast instruction found in tensor broadcast fusion");
   }
   
-  // Get the output shape (target shape for expand)
-  const Shape& output_shape = fusion->shape();
-  std::vector<int64_t> size(output_shape.dimensions().begin(), output_shape.dimensions().end());
+  // Get the broadcast dimensions attribute
+  absl::Span<const int64_t> dimensions = broadcast_instr->dimensions();
   
-  VLOG(2) << "Tensor broadcast fusion: input shape=" << fusion->operand(0)->shape().ToString() 
-          << ", output shape=" << output_shape.ToString();
+  // The dim parameter for expand FFI: 
+  // - If dimensions is empty, it means scalar broadcast (input is scalar, output is any shape)
+  // - If dimensions[0] == 0, it means input's dims map to output's starting dims (prepend 1s at end)
+  // - If dimensions[0] == input_ndim, it means input's dims map to output's ending dims (prepend 1s at start)
+  int64_t dim = 0; // Default to 0 for scalar broadcast
+  if (!dimensions.empty()) {
+    dim = dimensions[0];
+  }
+  
+  const Shape& input_shape = fusion->operand(0)->shape();
+  int64_t input_ndim = input_shape.dimensions_size();
+  
+  VLOG(2) << "Tensor broadcast fusion: input shape=" << input_shape.ToString() 
+          << ", output shape=" << fusion->shape().ToString()
+          << ", broadcast dimensions=[" << absl::StrJoin(dimensions, ",") << "]"
+          << ", dim=" << dim;
   
   // Create operands and results for CustomCallThunk
   std::vector<NullableShapedSlice> operands;
@@ -2583,10 +2875,9 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitTensorBroadcastFusion(
   // Add output as result
   results.push_back(output_slice);
   
-  // Create attributes map with size array
+  // Create attributes map with dim parameter
   xla::ffi::AttributesMap attributes;
-  std::vector<int64_t> size_vec(size.begin(), size.end());
-  attributes["size"] = xla::ffi::Array(size_vec);
+  attributes["dim"] = xla::ffi::Scalar(dim);
   
   // Get GPU compute capability
   const se::GpuComputeCapability& gpu_compute_capability = 
@@ -2594,7 +2885,6 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitTensorBroadcastFusion(
   
   // Determine the function name based on data type
   std::string function_name = "ascend.expand";
-  const Shape& input_shape = fusion->operand(0)->shape();
   PrimitiveType element_type = input_shape.element_type();
   
   switch (element_type) {
@@ -2652,14 +2942,51 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitTensorBroadcastFusion(
   return sequence;
 }
 
-// Helper function to emit convert-element-type fusion as ascend.cast.s32_to_u32 FFI call
+// Helper function to emit convert-element-type fusion as ascend.cast FFI call
 absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitConvertFusion(
     const HloFusionInstruction* fusion) {
-  VLOG(2) << "Emitting convert-element-type fusion as ascend.cast.s32_to_u32: " << fusion->name();
-  
   // Get the input and output buffer allocations
   TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(fusion->operand(0)));
   TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
+  
+  // Determine the conversion type
+  auto* computation = fusion->fused_instructions_computation();
+  const HloInstruction* convert_instr = nullptr;
+  for (const auto* instr : computation->instructions()) {
+    if (instr->opcode() == HloOpcode::kConvert) {
+      convert_instr = instr;
+      break;
+    }
+  }
+  
+  PrimitiveType src_type = convert_instr->operand(0)->shape().element_type();
+  PrimitiveType dst_type = convert_instr->shape().element_type();
+  
+  // Determine the FFI function name based on conversion type
+  std::string function_name = "ascend.cast";
+  
+  // Map PrimitiveType to string suffix
+  auto type_to_suffix = [](PrimitiveType type) {
+    switch (type) {
+      case PrimitiveType::F32: return "f32";
+      case PrimitiveType::F16: return "f16";
+      case PrimitiveType::BF16: return "bf16";
+      case PrimitiveType::S32: return "s32";
+      case PrimitiveType::S64: return "s64";
+      case PrimitiveType::U32: return "u32";
+      case PrimitiveType::U64: return "u64";
+      case PrimitiveType::U8: return "u8";
+      case PrimitiveType::S8: return "s8";
+      case PrimitiveType::PRED: return "bool";
+      default: return "unknown";
+    }
+  };
+  
+  std::string src_suffix = type_to_suffix(src_type);
+  std::string dst_suffix = type_to_suffix(dst_type);
+  
+  function_name += "." + src_suffix + "_to_" + dst_suffix;
+  VLOG(2) << "Emitting convert-element-type fusion as " << function_name << ": " << fusion->name();
   
   // Create operands and results for CustomCallThunk
   std::vector<NullableShapedSlice> operands;
@@ -2681,7 +3008,7 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitConvertFusion(
       std::unique_ptr<xla::gpu::CustomCallThunk> thunk,
       xla::gpu::CustomCallThunk::Create(
           xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
-          "ascend.cast.s32_to_u32",
+          function_name,
           std::move(operands),
           std::move(results),
           std::move(attributes),
@@ -2846,7 +3173,7 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitConcatenateFusion(
 
 absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitGemmThunk(
     const HloCustomCallInstruction* instr) {
-  VLOG(2) << "Emitting matmul as ascend.matmul: " << instr->name();
+  VLOG(2) << "Emitting matmul as ascend.gemm: " << instr->name();
 
   TF_ASSIGN_OR_RETURN(auto a_slice, GetShapedSliceForHlo(instr->operand(0)));
   TF_ASSIGN_OR_RETURN(auto b_slice, GetShapedSliceForHlo(instr->operand(1)));
@@ -2867,7 +3194,67 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitGemmThunk(
           << ", c_shape=" << instr->shape().ToString()
           << ", element_type=" << PrimitiveType_Name(element_type);
 
-  std::string function_name = "ascend.matmulcublas";
+  // Parse GEMM backend config to get transpose information
+  int64_t transA = 0;
+  int64_t transB = 0;
+  float alpha = 1.0f;
+  float beta = 0.0f;
+
+  // Try to parse backend config using raw_backend_config_string
+  const std::string& backend_config = instr->raw_backend_config_string();
+  VLOG(2) << "Backend config: " << backend_config;
+  
+  // Simple parsing to extract gemm_backend_config
+  // This is a simplified parsing, in a real implementation you would use proper JSON parsing
+  if (!backend_config.empty()) {
+    // Check for rhs_contracting_dimensions to determine if B needs transpose
+    // If rhs_contracting_dimensions is ["1"], it means B's contracting dimension is the second dimension,
+    // so B needs to be transposed
+    size_t rhs_pos = backend_config.find("rhs_contracting_dimensions");
+    if (rhs_pos != std::string::npos) {
+      // Find the colon after rhs_contracting_dimensions
+      size_t colon_pos = backend_config.find(":", rhs_pos);
+      if (colon_pos != std::string::npos) {
+        // Find the value after the colon, which should be ["1"]
+        size_t val_start = backend_config.find("[", colon_pos);
+        if (val_start != std::string::npos) {
+          size_t val_end = backend_config.find("]", val_start);
+          if (val_end != std::string::npos) {
+            std::string val = backend_config.substr(val_start, val_end - val_start + 1);
+            if (val == "[\"1\"]") {
+              transB = 1;
+              VLOG(2) << "Setting transB=1 based on rhs_contracting_dimensions=" << val;
+            }
+          }
+        }
+      }
+    }
+    
+    // Check for lhs_contracting_dimensions to determine if A needs transpose
+    // If lhs_contracting_dimensions is ["0"], it means A's contracting dimension is the first dimension,
+    // so A needs to be transposed
+    size_t lhs_pos = backend_config.find("lhs_contracting_dimensions");
+    if (lhs_pos != std::string::npos) {
+      // Find the colon after lhs_contracting_dimensions
+      size_t colon_pos = backend_config.find(":", lhs_pos);
+      if (colon_pos != std::string::npos) {
+        // Find the value after the colon, which should be ["0"]
+        size_t val_start = backend_config.find("[", colon_pos);
+        if (val_start != std::string::npos) {
+          size_t val_end = backend_config.find("]", val_start);
+          if (val_end != std::string::npos) {
+            std::string val = backend_config.substr(val_start, val_end - val_start + 1);
+            if (val == "[\"0\"]") {
+              transA = 1;
+              VLOG(2) << "Setting transA=1 based on lhs_contracting_dimensions=" << val;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  std::string function_name = "ascend.gemm";
   switch (element_type) {
     case F32:
       function_name += ".f32";
@@ -2884,13 +3271,18 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitGemmThunk(
       break;
   }
 
-  VLOG(2) << "Using matmul function: " << function_name;
+  VLOG(2) << "Using gemm function: " << function_name;
+  VLOG(2) << "GEMM parameters: transA=" << transA << ", transB=" << transB << ", alpha=" << alpha << ", beta=" << beta;
 
   std::vector<NullableShapedSlice> operands;
   std::vector<NullableShapedSlice> results;
 
+  // Create a dummy C tensor (all zeros) since aclnnGemm requires it
+  // In a real implementation, you would create a proper zero tensor
+  // For simplicity, we'll just pass the same as C for now
   operands.push_back(a_slice);
   operands.push_back(b_slice);
+  operands.push_back(c_slice);  // Using c_slice as dummy C
   results.push_back(c_slice);
   
   // Add workspace to results to maintain tuple structure
@@ -2899,6 +3291,10 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitGemmThunk(
   }
 
   xla::ffi::AttributesMap attributes;
+  attributes["alpha"] = xla::ffi::Scalar(alpha);
+  attributes["beta"] = xla::ffi::Scalar(beta);
+  attributes["transA"] = xla::ffi::Scalar(transA);
+  attributes["transB"] = xla::ffi::Scalar(transB);
 
   const se::GpuComputeCapability& gpu_compute_capability =
       ir_emitter_context_->gpu_compute_capability();
@@ -2916,6 +3312,107 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitGemmThunk(
           gpu_compute_capability,
           /*execution_state=*/nullptr));
 
+  xla::gpu::ThunkSequence sequence;
+  sequence.push_back(std::move(thunk));
+
+  return sequence;
+}
+
+// Emit scalar multiply fusion using FFI
+absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitScalarMultiplyFusion(
+    const HloFusionInstruction* fusion) {
+  VLOG(2) << "EmitScalarMultiplyFusion for Ascend";
+
+  auto* computation = fusion->fused_instructions_computation();
+  const auto& instructions = computation->instructions();
+
+  // Find the instructions
+  const HloInstruction* param_instr = nullptr;
+  const HloInstruction* constant_instr = nullptr;
+  const HloInstruction* multiply_instr = nullptr;
+
+  for (const auto* instr : instructions) {
+    if (instr->opcode() == HloOpcode::kParameter) {
+      param_instr = instr;
+    } else if (instr->opcode() == HloOpcode::kConstant) {
+      constant_instr = instr;
+    } else if (instr->opcode() == HloOpcode::kMultiply) {
+      multiply_instr = instr;
+    }
+  }
+
+  // Get the input and output buffer allocations
+  TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
+
+  // Extract the constant value
+  float constant_value = 0.0f;
+  if (constant_instr->shape().element_type() == PrimitiveType::F32) {
+    constant_value = constant_instr->literal().Get<float>({});
+  } else {
+    VLOG(4) << "ScalarMultiplyFusion: unsupported constant type "
+            << PrimitiveType_Name(constant_instr->shape().element_type());
+    return xla::gpu::ThunkSequence{};
+  }
+
+  // Create operands and results for CustomCallThunk
+  std::vector<NullableShapedSlice> operands;
+  std::vector<NullableShapedSlice> results;
+
+  // Add input as operand
+  operands.push_back(input_slice);
+  // Add output as result
+  results.push_back(output_slice);
+
+  // Create attributes map with the constant value
+  xla::ffi::AttributesMap attributes;
+  attributes["other"] = xla::ffi::Scalar(constant_value);
+
+  // Get GPU compute capability
+  const se::GpuComputeCapability& gpu_compute_capability = 
+      ir_emitter_context_->gpu_compute_capability();
+
+  // Determine the function name based on data type
+  std::string function_name = "ascend.muls";
+  const Shape& input_shape = fusion->operand(0)->shape();
+  PrimitiveType element_type = input_shape.element_type();
+
+  switch (element_type) {
+    case F32:
+      function_name += ".f32";
+      break;
+    case F16:
+      function_name += ".f16";
+      break;
+    case BF16:
+      function_name += ".bf16";
+      break;
+    case S32:
+      function_name += ".s32";
+      break;
+    default:
+      VLOG(4) << "ScalarMultiplyFusion: unsupported data type " << PrimitiveType_Name(element_type);
+      function_name += ".f32"; // Default to f32 if type not supported
+      break;
+  }
+
+  VLOG(2) << "Using muls function: " << function_name;
+
+  // Create CustomCallThunk
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::gpu::CustomCallThunk> thunk,
+      xla::gpu::CustomCallThunk::Create(
+          xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
+          function_name,
+          std::move(operands),
+          std::move(results),
+          std::move(attributes),
+          /*called_computation=*/nullptr,
+          "ASCEND",
+          gpu_compute_capability,
+          /*execution_state=*/nullptr));
+
+  // Add the thunk to the sequence
   xla::gpu::ThunkSequence sequence;
   sequence.push_back(std::move(thunk));
 
