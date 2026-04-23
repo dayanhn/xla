@@ -20,6 +20,8 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/service/buffer_assignment.h"
 #include "third_party/acl/inc/acl/acl.h"
+#include <unordered_map>
+#include <functional>
 
 namespace xla {
 namespace ascend {
@@ -35,6 +37,78 @@ AclnnThunk::AclnnThunk(gpu::Thunk::ThunkInfo thunk_info, std::string op_name,
       params_(std::move(params)) {
 }
 
+// Define a type for the execution function
+using ExecuteFunc = std::function<absl::Status(
+    const AclnnThunk::ExecuteParams& params,
+    se::Stream* stream,
+    const std::vector<NullableShapedSlice>& operands,
+    const std::vector<NullableShapedSlice>& results,
+    const std::vector<AclnnThunk::Param>& params_list,
+    const std::function<TensorTriplet(const NullableShapedSlice&)>& make_triplet)>;
+
+// Create a map of operation names to their execution functions
+static const std::unordered_map<std::string, ExecuteFunc> kOpExecutors = {
+  {
+    "aclnnCast",
+    [](const AclnnThunk::ExecuteParams& params, se::Stream* stream, 
+       const std::vector<NullableShapedSlice>& operands, 
+       const std::vector<NullableShapedSlice>& results, 
+       const std::vector<AclnnThunk::Param>& params_list, 
+       const std::function<TensorTriplet(const NullableShapedSlice&)>& make_triplet) -> absl::Status {
+      CHECK(operands.size() == 1 && results.size() == 1) << "aclnnCast requires 1 input and 1 output";
+      EXEC_ACLNN_CMD(aclnnCast, stream, make_triplet(operands[0]), make_triplet(results[0]));
+      return absl::OkStatus();
+    }
+  },
+  {
+    "aclnnMuls",
+    [](const AclnnThunk::ExecuteParams& params, se::Stream* stream, 
+       const std::vector<NullableShapedSlice>& operands, 
+       const std::vector<NullableShapedSlice>& results, 
+       const std::vector<AclnnThunk::Param>& params_list, 
+       const std::function<TensorTriplet(const NullableShapedSlice&)>& make_triplet) -> absl::Status {
+      CHECK(operands.size() == 1 && results.size() == 1 && params_list.size() == 1) << "aclnnMuls requires 1 input, 1 output, and 1 scalar parameter";
+      auto other = std::get<float>(params_list[0]);
+      EXEC_ACLNN_CMD(aclnnMuls, stream, make_triplet(operands[0]), other, PrimitiveType::F32, make_triplet(results[0]));
+      return absl::OkStatus();
+    }
+  },
+  {
+    "aclnnMaxDim",
+    [](const AclnnThunk::ExecuteParams& params, se::Stream* stream, 
+       const std::vector<NullableShapedSlice>& operands, 
+       const std::vector<NullableShapedSlice>& results, 
+       const std::vector<AclnnThunk::Param>& params_list, 
+       const std::function<TensorTriplet(const NullableShapedSlice&)>& make_triplet) -> absl::Status {
+      CHECK(operands.size() == 1 && results.size() == 2 && params_list.size() == 2) << "aclnnMaxDim requires 1 input, 2 outputs, and 2 parameters (dim, keepdim)";
+      auto dim = std::get<int64_t>(params_list[0]);
+      auto keepdim = std::get<bool>(params_list[1]);
+      EXEC_ACLNN_CMD(aclnnMaxDim, stream, make_triplet(operands[0]), dim, keepdim, make_triplet(results[0]), make_triplet(results[1]));
+      return absl::OkStatus();
+    }
+  },
+  {
+    "aclnnGemm",
+    [](const AclnnThunk::ExecuteParams& params, se::Stream* stream, 
+       const std::vector<NullableShapedSlice>& operands, 
+       const std::vector<NullableShapedSlice>& results, 
+       const std::vector<AclnnThunk::Param>& params_list, 
+       const std::function<TensorTriplet(const NullableShapedSlice&)>& make_triplet) -> absl::Status {
+      CHECK(operands.size() == 3 && results.size() >= 1 && params_list.size() == 4) << "aclnnGemm requires 3 inputs, 1 output, and 4 parameters (alpha, beta, transA, transB)";
+      auto alpha = std::get<float>(params_list[0]);
+      auto beta = std::get<float>(params_list[1]);
+      auto transA = std::get<int64_t>(params_list[2]);
+      auto transB = std::get<int64_t>(params_list[3]);
+      int8_t cubeMathType = 0;  // Default value for cubeMathType
+      EXEC_ACLNN_CMD(aclnnGemm, stream, 
+                     make_triplet(operands[0]), make_triplet(operands[1]), make_triplet(operands[2]),
+                     alpha, beta, transA, transB, 
+                     make_triplet(results[0]), cubeMathType);
+      return absl::OkStatus();
+    }
+  }
+};
+
 absl::Status AclnnThunk::ExecuteOnStream(const ExecuteParams& params) {
   TF_ASSIGN_OR_RETURN(se::Stream* stream,
                       GetStreamForExecution(execution_stream_id(), params));
@@ -48,35 +122,14 @@ absl::Status AclnnThunk::ExecuteOnStream(const ExecuteParams& params) {
     };
   };
 
-  // Call the aclnn operation using the macro with TensorTriplet objects
-  if (op_name_ == "aclnnCast") {
-    CHECK(operands_.size() == 1 && results_.size() == 1) << "aclnnCast requires 1 input and 1 output";
-    EXEC_ACLNN_CMD(aclnnCast, stream, make_triplet(operands_[0]), make_triplet(results_[0]));
-  } else if (op_name_ == "aclnnMuls") {
-    CHECK(operands_.size() == 1 && results_.size() == 1 && params_.size() == 1) << "aclnnMuls requires 1 input, 1 output, and 1 scalar parameter";
-    auto other = std::get<float>(params_[0]);
-    EXEC_ACLNN_CMD(aclnnMuls, stream, make_triplet(operands_[0]), other, PrimitiveType::F32, make_triplet(results_[0]));
-  } else if (op_name_ == "aclnnMaxDim") {
-    CHECK(operands_.size() == 1 && results_.size() == 2 && params_.size() == 2) << "aclnnMaxDim requires 1 input, 2 outputs, and 2 parameters (dim, keepdim)";
-    auto dim = std::get<int64_t>(params_[0]);
-    auto keepdim = std::get<bool>(params_[1]);
-    EXEC_ACLNN_CMD(aclnnMaxDim, stream, make_triplet(operands_[0]), dim, keepdim, make_triplet(results_[0]), make_triplet(results_[1]));
-  } else if (op_name_ == "aclnnGemm") {
-    CHECK(operands_.size() == 3 && results_.size() >= 1 && params_.size() == 4) << "aclnnGemm requires 3 inputs, 1 output, and 4 parameters (alpha, beta, transA, transB)";
-    auto alpha = std::get<float>(params_[0]);
-    auto beta = std::get<float>(params_[1]);
-    auto transA = std::get<int64_t>(params_[2]);
-    auto transB = std::get<int64_t>(params_[3]);
-    int8_t cubeMathType = 0;  // Default value for cubeMathType
-    EXEC_ACLNN_CMD(aclnnGemm, stream, 
-                   make_triplet(operands_[0]), make_triplet(operands_[1]), make_triplet(operands_[2]),
-                   alpha, beta, transA, transB, 
-                   make_triplet(results_[0]), cubeMathType);
-  } else {
+  // Find the executor for the current operation
+  auto it = kOpExecutors.find(op_name_);
+  if (it == kOpExecutors.end()) {
     return absl::InternalError("Unsupported aclnn operation: " + op_name_);
   }
 
-  return absl::OkStatus();
+  // Execute the operation
+  return it->second(params, stream, operands_, results_, params_, make_triplet);
 }
 
 }  // namespace ascend
