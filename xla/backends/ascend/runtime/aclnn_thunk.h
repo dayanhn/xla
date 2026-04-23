@@ -19,6 +19,8 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/shaped_slice.h"
+#include "third_party/acl/inc/acl/acl.h"
+#include "absl/types/span.h"
 
 namespace xla {
 namespace ascend {

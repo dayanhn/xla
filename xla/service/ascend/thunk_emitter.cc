@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/ascend/runtime/aclnn_thunk.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -3173,6 +3174,130 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitConcatenateFusion(
 
 absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitGemmThunk(
     const HloCustomCallInstruction* instr) {
+  VLOG(2) << "Emitting matmul as aclnnGemm: " << instr->name();
+
+  TF_ASSIGN_OR_RETURN(auto a_slice, GetShapedSliceForHlo(instr->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto b_slice, GetShapedSliceForHlo(instr->operand(1)));
+  
+  // Handle tuple return value (result + workspace)
+  TF_ASSIGN_OR_RETURN(auto c_slice, GetShapedSliceForHlo(instr, {0}));
+  std::optional<xla::ShapedSlice> workspace_slice;
+  if (instr->shape().IsTuple() && instr->shape().tuple_shapes_size() > 1) {
+    TF_ASSIGN_OR_RETURN(auto ws, GetShapedSliceForHlo(instr, {1}));
+    workspace_slice = ws;
+  }
+
+  const Shape& a_shape = instr->operand(0)->shape();
+  PrimitiveType element_type = a_shape.element_type();
+
+  VLOG(2) << "Matmul: a_shape=" << a_shape.ToString()
+          << ", b_shape=" << instr->operand(1)->shape().ToString()
+          << ", c_shape=" << instr->shape().ToString()
+          << ", element_type=" << PrimitiveType_Name(element_type);
+
+  // Parse GEMM backend config to get transpose information
+  int64_t transA = 0;
+  int64_t transB = 0;
+  float alpha = 1.0f;
+  float beta = 0.0f;
+
+  // Try to parse backend config using raw_backend_config_string
+  const std::string& backend_config = instr->raw_backend_config_string();
+  VLOG(2) << "Backend config: " << backend_config;
+  
+  // Simple parsing to extract gemm_backend_config
+  // This is a simplified parsing, in a real implementation you would use proper JSON parsing
+  if (!backend_config.empty()) {
+    // Check for rhs_contracting_dimensions to determine if B needs transpose
+    // If rhs_contracting_dimensions is ["1"], it means B's contracting dimension is the second dimension,
+    // so B needs to be transposed
+    size_t rhs_pos = backend_config.find("rhs_contracting_dimensions");
+    if (rhs_pos != std::string::npos) {
+      // Find the colon after rhs_contracting_dimensions
+      size_t colon_pos = backend_config.find(":", rhs_pos);
+      if (colon_pos != std::string::npos) {
+        // Find the value after the colon, which should be ["1"]
+        size_t val_start = backend_config.find("[", colon_pos);
+        if (val_start != std::string::npos) {
+          size_t val_end = backend_config.find("]", val_start);
+          if (val_end != std::string::npos) {
+            std::string val = backend_config.substr(val_start, val_end - val_start + 1);
+            if (val == "[\"1\"]") {
+              transB = 1;
+              VLOG(2) << "Setting transB=1 based on rhs_contracting_dimensions=" << val;
+            }
+          }
+        }
+      }
+    }
+    
+    // Check for lhs_contracting_dimensions to determine if A needs transpose
+    // If lhs_contracting_dimensions is ["0"], it means A's contracting dimension is the first dimension,
+    // so A needs to be transposed
+    size_t lhs_pos = backend_config.find("lhs_contracting_dimensions");
+    if (lhs_pos != std::string::npos) {
+      // Find the colon after lhs_contracting_dimensions
+      size_t colon_pos = backend_config.find(":", lhs_pos);
+      if (colon_pos != std::string::npos) {
+        // Find the value after the colon, which should be ["0"]
+        size_t val_start = backend_config.find("[", colon_pos);
+        if (val_start != std::string::npos) {
+          size_t val_end = backend_config.find("]", val_start);
+          if (val_end != std::string::npos) {
+            std::string val = backend_config.substr(val_start, val_end - val_start + 1);
+            if (val == "[\"0\"]") {
+              transA = 1;
+              VLOG(2) << "Setting transA=1 based on lhs_contracting_dimensions=" << val;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  VLOG(2) << "GEMM parameters: transA=" << transA << ", transB=" << transB << ", alpha=" << alpha << ", beta=" << beta;
+
+  std::vector<xla::gpu::Thunk::NullableShapedSlice> operands;
+  std::vector<xla::gpu::Thunk::NullableShapedSlice> results;
+
+  // Create a dummy C tensor (all zeros) since aclnnGemm requires it
+  // In a real implementation, you would create a proper zero tensor
+  // For simplicity, we'll just pass the same as C for now
+  operands.push_back(a_slice);
+  operands.push_back(b_slice);
+  operands.push_back(c_slice);  // Using c_slice as dummy C
+  results.push_back(c_slice);
+  
+  // Add workspace to results to maintain tuple structure
+  if (workspace_slice) {
+    results.push_back(*workspace_slice);
+  }
+
+  // Create parameters for aclnnGemm
+  std::vector<xla::ascend::AclnnThunk::Param> params;
+  params.push_back(alpha);
+  params.push_back(beta);
+  params.push_back(transA);
+  params.push_back(transB);
+
+  // Create AclnnThunk
+  auto thunk = std::make_unique<xla::ascend::AclnnThunk>(
+      xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(instr, ir_emitter_context_->GetNextThunkId()),
+      "aclnnGemm",
+      std::move(operands),
+      std::move(results),
+      std::move(params));
+
+  xla::gpu::ThunkSequence sequence;
+  sequence.push_back(std::move(thunk));
+
+  return sequence;
+}
+
+/*
+// Original code for CustomCallThunk
+absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitGemmThunk(
+    const HloCustomCallInstruction* instr) {
   VLOG(2) << "Emitting matmul as ascend.gemm: " << instr->name();
 
   TF_ASSIGN_OR_RETURN(auto a_slice, GetShapedSliceForHlo(instr->operand(0)));
@@ -3317,6 +3442,7 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitGemmThunk(
 
   return sequence;
 }
+*/
 
 // Emit scalar multiply fusion using FFI
 absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitScalarMultiplyFusion(

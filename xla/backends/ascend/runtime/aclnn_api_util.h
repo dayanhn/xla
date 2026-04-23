@@ -29,6 +29,10 @@ limitations under the License.
 #include <functional>
 #include <type_traits>
 #include <vector>
+#include <optional>
+
+namespace xla {
+namespace ascend {
 
 // Forward declarations of ACL data structures
 typedef struct aclOpExecutor aclOpExecutor;
@@ -60,23 +64,23 @@ typedef int (*_aclDestroyBoolArray)(const aclBoolArray *array);
 typedef int (*_aclDestroyTensorList)(const aclTensorList *array);
 
 // Map XLA PrimitiveType to ACL DataType
-constexpr aclDataType PrimitiveTypeToAclDataType(xla::PrimitiveType type) {
+constexpr aclDataType PrimitiveTypeToAclDataType(PrimitiveType type) {
   switch (type) {
-    case xla::PrimitiveType::U8: return ACL_UINT8;
-    case xla::PrimitiveType::S8: return ACL_INT8;
-    case xla::PrimitiveType::U16: return ACL_UINT16;
-    case xla::PrimitiveType::S16: return ACL_INT16;
-    case xla::PrimitiveType::U32: return ACL_UINT32;
-    case xla::PrimitiveType::S32: return ACL_INT32;
-    case xla::PrimitiveType::U64: return ACL_UINT64;
-    case xla::PrimitiveType::S64: return ACL_INT64;
-    case xla::PrimitiveType::F16: return ACL_FLOAT16;
-    case xla::PrimitiveType::BF16: return ACL_BF16;
-    case xla::PrimitiveType::F32: return ACL_FLOAT;
-    case xla::PrimitiveType::F64: return ACL_DOUBLE;
-    case xla::PrimitiveType::PRED: return ACL_BOOL;
-    case xla::PrimitiveType::C64: return ACL_COMPLEX64;
-    case xla::PrimitiveType::C128: return ACL_COMPLEX128;
+    case PrimitiveType::U8: return ACL_UINT8;
+    case PrimitiveType::S8: return ACL_INT8;
+    case PrimitiveType::U16: return ACL_UINT16;
+    case PrimitiveType::S16: return ACL_INT16;
+    case PrimitiveType::U32: return ACL_UINT32;
+    case PrimitiveType::S32: return ACL_INT32;
+    case PrimitiveType::U64: return ACL_UINT64;
+    case PrimitiveType::S64: return ACL_INT64;
+    case PrimitiveType::F16: return ACL_FLOAT16;
+    case PrimitiveType::BF16: return ACL_BF16;
+    case PrimitiveType::F32: return ACL_FLOAT;
+    case PrimitiveType::F64: return ACL_DOUBLE;
+    case PrimitiveType::PRED: return ACL_BOOL;
+    case PrimitiveType::C64: return ACL_COMPLEX64;
+    case PrimitiveType::C128: return ACL_COMPLEX128;
     default: return ACL_DT_UNDEFINED;
   }
 }
@@ -86,7 +90,7 @@ constexpr aclDataType PrimitiveTypeToAclDataType(xla::PrimitiveType type) {
   reinterpret_cast<_##apiName>(GetOpApiFuncAddr(#apiName))
 
 // Convert XLA BufferAllocation::Slice to aclTensor
-inline aclTensor *ConvertType(const xla::gpu::BufferAllocations& buffer_allocations, const xla::BufferAllocation::Slice& slice, const xla::Shape& shape) {
+inline aclTensor *ConvertType(const gpu::BufferAllocations& buffer_allocations, const BufferAllocation::Slice& slice, const Shape& shape) {
   static const auto aclCreateTensor = GET_OP_API_FUNC(aclCreateTensor);
   if (aclCreateTensor == nullptr) {
     return nullptr;
@@ -99,9 +103,9 @@ inline aclTensor *ConvertType(const xla::gpu::BufferAllocations& buffer_allocati
   }
 
   // Get data type
-  xla::PrimitiveType primitive_type = shape.element_type();
+  PrimitiveType primitive_type = shape.element_type();
   aclDataType acl_data_type = PrimitiveTypeToAclDataType(primitive_type);
-  CHECK(acl_data_type != ACL_DT_UNDEFINED) << "Unsupported data type: " << xla::PrimitiveType_Name(primitive_type);
+  CHECK(acl_data_type != ACL_DT_UNDEFINED) << "Unsupported data type: " << PrimitiveType_Name(primitive_type);
 
   // Get dimensions
   std::vector<int64_t> dimensions;
@@ -130,14 +134,14 @@ inline aclTensor *ConvertType(const xla::gpu::BufferAllocations& buffer_allocati
 
 // Convert scalar value to aclScalar
 template <typename T>
-inline aclScalar *ConvertType(const T& value, xla::PrimitiveType type) {
+inline aclScalar *ConvertType(const T& value, PrimitiveType type) {
   static const auto aclCreateScalar = GET_OP_API_FUNC(aclCreateScalar);
   if (aclCreateScalar == nullptr) {
     return nullptr;
   }
 
   aclDataType acl_data_type = PrimitiveTypeToAclDataType(type);
-  CHECK(acl_data_type != ACL_DT_UNDEFINED) << "Unsupported data type: " << xla::PrimitiveType_Name(type);
+  CHECK(acl_data_type != ACL_DT_UNDEFINED) << "Unsupported data type: " << PrimitiveType_Name(type);
 
   return aclCreateScalar(const_cast<void*>(reinterpret_cast<const void*>(&value)), acl_data_type);
 }
@@ -174,8 +178,24 @@ inline aclTensorList *ConvertType(const std::vector<aclTensor*>& tensors) {
   return aclCreateTensorList(tensors.data(), tensors.size());
 }
 
+// Convert optional tensor to aclTensor
+inline aclTensor *ConvertType(const std::optional<aclTensor*>& opt_tensor) {
+  if (opt_tensor.has_value() && *opt_tensor != nullptr) {
+    return *opt_tensor;
+  }
+  return nullptr;
+}
+
+// Convert optional int64_t array to aclIntArray
+inline aclIntArray *ConvertType(const std::optional<std::vector<int64_t>>& opt_array) {
+  if (opt_array.has_value()) {
+    return ConvertType(*opt_array);
+  }
+  return nullptr;
+}
+
 // Template specialization for primitive types
-inline aclDataType ConvertType(xla::PrimitiveType type) {
+inline aclDataType ConvertType(PrimitiveType type) {
   return PrimitiveTypeToAclDataType(type);
 }
 
@@ -332,6 +352,85 @@ constexpr auto ConvertTypes(Ts&... args) {
   return std::make_tuple(ConvertType(args)...);
 }
 
+// Specialized ConvertType for BufferAllocations, Slice, and Shape combination
+inline aclTensor *ConvertType(const gpu::BufferAllocations& buffer_allocations, const BufferAllocation::Slice& slice, const Shape& shape) {
+  static const auto aclCreateTensor = GET_OP_API_FUNC(aclCreateTensor);
+  if (aclCreateTensor == nullptr) {
+    return nullptr;
+  }
+
+  // Get device address from buffer allocations
+  auto device_addr = buffer_allocations.GetDeviceAddress(slice);
+  if (!device_addr.opaque()) {
+    return nullptr;
+  }
+
+  // Get data type
+  PrimitiveType primitive_type = shape.element_type();
+  aclDataType acl_data_type = PrimitiveTypeToAclDataType(primitive_type);
+  CHECK(acl_data_type != ACL_DT_UNDEFINED) << "Unsupported data type: " << PrimitiveType_Name(primitive_type);
+
+  // Get dimensions
+  std::vector<int64_t> dimensions;
+  for (int64_t dim : shape.dimensions()) {
+    dimensions.push_back(dim);
+  }
+
+  // Calculate strides (assuming row-major)
+  std::vector<int64_t> strides = CalculateStrides(dimensions);
+
+  // Create aclTensor
+  return aclCreateTensor(
+      dimensions.data(),
+      dimensions.size(),
+      acl_data_type,
+      strides.data(),
+      0,  // offset
+      ACL_FORMAT_ND,
+      dimensions.data(),
+      dimensions.size(),
+      const_cast<void*>(device_addr.opaque()));
+}
+
+// Specialized ConvertType for scalar values with type
+inline aclScalar *ConvertType(float value, PrimitiveType type) {
+  static const auto aclCreateScalar = GET_OP_API_FUNC(aclCreateScalar);
+  if (aclCreateScalar == nullptr) {
+    return nullptr;
+  }
+
+  aclDataType acl_data_type = PrimitiveTypeToAclDataType(type);
+  CHECK(acl_data_type != ACL_DT_UNDEFINED) << "Unsupported data type: " << PrimitiveType_Name(type);
+
+  return aclCreateScalar(const_cast<void*>(reinterpret_cast<const void*>(&value)), acl_data_type);
+}
+
+// Specialized ConvertType for double values with type
+inline aclScalar *ConvertType(double value, PrimitiveType type) {
+  static const auto aclCreateScalar = GET_OP_API_FUNC(aclCreateScalar);
+  if (aclCreateScalar == nullptr) {
+    return nullptr;
+  }
+
+  aclDataType acl_data_type = PrimitiveTypeToAclDataType(type);
+  CHECK(acl_data_type != ACL_DT_UNDEFINED) << "Unsupported data type: " << PrimitiveType_Name(type);
+
+  return aclCreateScalar(const_cast<void*>(reinterpret_cast<const void*>(&value)), acl_data_type);
+}
+
+// Specialized ConvertType for int64_t values with type
+inline aclScalar *ConvertType(int64_t value, PrimitiveType type) {
+  static const auto aclCreateScalar = GET_OP_API_FUNC(aclCreateScalar);
+  if (aclCreateScalar == nullptr) {
+    return nullptr;
+  }
+
+  aclDataType acl_data_type = PrimitiveTypeToAclDataType(type);
+  CHECK(acl_data_type != ACL_DT_UNDEFINED) << "Unsupported data type: " << PrimitiveType_Name(type);
+
+  return aclCreateScalar(const_cast<void*>(reinterpret_cast<const void*>(&value)), acl_data_type);
+}
+
 // Helper function to call a function with a tuple of arguments
 template <typename Function, typename Tuple, size_t... I>
 auto CallFunction(Function f, Tuple t, std::index_sequence<I...>) {
@@ -427,5 +526,8 @@ auto ConvertToOpApiFunc(const Tuple& params, void *opApiAddr) {
       unInitMemFunc(nullptr, false);                                         
     }                                                                         
   } while (false)
+
+}  // namespace ascend
+}  // namespace xla
 
 #endif  // XLA_BACKENDS_ASCEND_RUNTIME_ACLNN_API_UTIL_H_

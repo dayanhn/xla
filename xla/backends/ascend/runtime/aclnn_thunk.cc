@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "xla/backends/ascend/runtime/aclnn_thunk.h"
+#include "xla/backends/ascend/runtime/aclnn_api_util.h"
 #include "absl/log/log.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
@@ -23,43 +24,6 @@ limitations under the License.
 
 namespace xla {
 namespace ascend {
-
-// Create aclTensor from device address and shape
-aclTensor* CreateAclTensorFromDeviceAddress(
-    const se::DeviceAddress& device_addr, const Shape& shape) {
-  // Get ACL data type from XLA primitive type
-  aclDataType data_type = ffi::ConvertToAclDataType(shape.element_type());
-
-  // Get shape dimensions
-  std::vector<int64_t> dims;
-  for (int i = 0; i < shape.rank(); ++i) {
-    dims.push_back(shape.dimensions(i));
-  }
-
-  // Calculate strides
-  std::vector<int64_t> strides(dims.size(), 1);
-  for (int i = dims.size() - 2; i >= 0; --i) {
-    strides[i] = strides[i + 1] * dims[i + 1];
-  }
-
-  // Create aclTensor
-  aclTensor* tensor = aclCreateTensor(
-      dims.data(),
-      dims.size(),
-      data_type,
-      strides.data(),
-      0,
-      ACL_FORMAT_ND,
-      dims.data(),
-      dims.size(),
-      const_cast<void*>(device_addr.opaque()));
-  if (tensor == nullptr) {
-    LOG(FATAL) << "Failed to create aclTensor: " << aclGetRecentErrMsg();
-    return nullptr;
-  }
-
-  return tensor;
-}
 
 AclnnThunk::AclnnThunk(gpu::Thunk::ThunkInfo thunk_info, std::string op_name,
                        std::vector<gpu::Thunk::NullableShapedSlice> operands,
@@ -76,76 +40,44 @@ absl::Status AclnnThunk::ExecuteOnStream(const gpu::ExecuteParams& params) {
   TF_ASSIGN_OR_RETURN(se::Stream* stream,
                       GetStreamForExecution(execution_stream_id(), params));
 
-  // Prepare runtime parameters
-  std::vector<Param> runtime_params = params_;
-
-  // Replace tensor placeholders with actual aclTensor objects
-  size_t tensor_index = 0;
-  for (size_t i = 0; i < operands_.size(); ++i) {
-    if (operands_[i].has_value()) {
-      const auto& slice = operands_[i].value();
-      se::DeviceAddress device_addr = params.buffer_allocations->GetDeviceAddress(slice.slice);
-      aclTensor* tensor = CreateAclTensorFromDeviceAddress(device_addr, slice.shape);
-      runtime_params[tensor_index++] = tensor;
-    }
-  }
-
-  for (size_t i = 0; i < results_.size(); ++i) {
-    if (results_[i].has_value()) {
-      const auto& slice = results_[i].value();
-      se::DeviceAddress device_addr = params.buffer_allocations->GetDeviceAddress(slice.slice);
-      aclTensor* tensor = CreateAclTensorFromDeviceAddress(device_addr, slice.shape);
-      runtime_params[tensor_index++] = tensor;
-    }
-  }
-
-  // Call the aclnn operation using the macro
+  // Call the aclnn operation using the macro with direct parameters
   if (op_name_ == "aclnnCast") {
     // For aclnnCast, parameters should be: input_tensor, output_tensor
-    auto input_tensor = std::get<aclTensor*>(runtime_params[0]);
-    auto output_tensor = std::get<aclTensor*>(runtime_params[1]);
-    EXEC_ACLNN_CMD(aclnnCast, input_tensor, output_tensor);
+    CHECK(operands_.size() == 1 && results_.size() == 1) << "aclnnCast requires 1 input and 1 output";
+    const auto& input_slice = operands_[0].value();
+    const auto& output_slice = results_[0].value();
+    EXEC_ACLNN_CMD(aclnnCast, *params.buffer_allocations, input_slice.slice, input_slice.shape, *params.buffer_allocations, output_slice.slice, output_slice.shape);
   } else if (op_name_ == "aclnnMuls") {
     // For aclnnMuls, parameters should be: input_tensor, other_scalar, output_tensor
-    auto input_tensor = std::get<aclTensor*>(runtime_params[0]);
-    auto other = std::get<float>(runtime_params[1]);
-    auto output_tensor = std::get<aclTensor*>(runtime_params[2]);
-    // Create scalar
-    aclScalar* other_scalar = nullptr;
-    aclError ret = aclCreateScalar(&other_scalar, &other, ACL_FLOAT);
-    if (ret != ACL_SUCCESS) {
-      return absl::InternalError("Failed to create scalar: " + std::string(aclGetRecentErrMsg()));
-    }
-    EXEC_ACLNN_CMD(aclnnMuls, input_tensor, other_scalar, output_tensor);
-    aclDestroyScalar(other_scalar);
+    CHECK(operands_.size() == 1 && results_.size() == 1 && params_.size() == 1) << "aclnnMuls requires 1 input, 1 output, and 1 scalar parameter";
+    const auto& input_slice = operands_[0].value();
+    const auto& output_slice = results_[0].value();
+    auto other = std::get<float>(params_[0]);
+    EXEC_ACLNN_CMD(aclnnMuls, *params.buffer_allocations, input_slice.slice, input_slice.shape, other, PrimitiveType::F32, *params.buffer_allocations, output_slice.slice, output_slice.shape);
   } else if (op_name_ == "aclnnMaxDim") {
     // For aclnnMaxDim, parameters should be: input_tensor, dim, keepdim, output_tensor, indices_tensor
-    auto input_tensor = std::get<aclTensor*>(runtime_params[0]);
-    auto dim = std::get<int64_t>(runtime_params[1]);
-    auto keepdim = std::get<bool>(runtime_params[2]);
-    auto output_tensor = std::get<aclTensor*>(runtime_params[3]);
-    auto indices_tensor = std::get<aclTensor*>(runtime_params[4]);
-    EXEC_ACLNN_CMD(aclnnMaxDim, input_tensor, dim, keepdim, output_tensor, indices_tensor);
+    CHECK(operands_.size() == 1 && results_.size() == 2 && params_.size() == 2) << "aclnnMaxDim requires 1 input, 2 outputs, and 2 parameters (dim, keepdim)";
+    const auto& input_slice = operands_[0].value();
+    const auto& output_slice = results_[0].value();
+    const auto& indices_slice = results_[1].value();
+    auto dim = std::get<int64_t>(params_[0]);
+    auto keepdim = std::get<bool>(params_[1]);
+    EXEC_ACLNN_CMD(aclnnMaxDim, *params.buffer_allocations, input_slice.slice, input_slice.shape, dim, keepdim, *params.buffer_allocations, output_slice.slice, output_slice.shape, *params.buffer_allocations, indices_slice.slice, indices_slice.shape);
   } else if (op_name_ == "aclnnGemm") {
-    // For aclnnGemm, parameters should be: A, B, C, alpha, beta, transA, transB, out
-    auto A = std::get<aclTensor*>(runtime_params[0]);
-    auto B = std::get<aclTensor*>(runtime_params[1]);
-    auto C = std::get<aclTensor*>(runtime_params[2]);
-    auto alpha = std::get<float>(runtime_params[3]);
-    auto beta = std::get<float>(runtime_params[4]);
-    auto transA = std::get<int64_t>(runtime_params[5]);
-    auto transB = std::get<int64_t>(runtime_params[6]);
-    auto out = std::get<aclTensor*>(runtime_params[7]);
-    EXEC_ACLNN_CMD(aclnnGemm, A, B, C, alpha, beta, transA, transB, out);
+    // For aclnnGemm, parameters should be: A, B, C, alpha, beta, transA, transB, out, cubeMathType
+    CHECK(operands_.size() == 3 && results_.size() == 1 && params_.size() == 4) << "aclnnGemm requires 3 inputs, 1 output, and 4 parameters (alpha, beta, transA, transB)";
+    const auto& A_slice = operands_[0].value();
+    const auto& B_slice = operands_[1].value();
+    const auto& C_slice = operands_[2].value();
+    const auto& out_slice = results_[0].value();
+    auto alpha = std::get<float>(params_[0]);
+    auto beta = std::get<float>(params_[1]);
+    auto transA = std::get<int64_t>(params_[2]);
+    auto transB = std::get<int64_t>(params_[3]);
+    int8_t cubeMathType = 0;  // Default value for cubeMathType
+    EXEC_ACLNN_CMD(aclnnGemm, *params.buffer_allocations, A_slice.slice, A_slice.shape, *params.buffer_allocations, B_slice.slice, B_slice.shape, *params.buffer_allocations, C_slice.slice, C_slice.shape, alpha, beta, transA, transB, *params.buffer_allocations, out_slice.slice, out_slice.shape, cubeMathType);
   } else {
     return absl::InternalError("Unsupported aclnn operation: " + op_name_);
-  }
-
-  // Destroy created tensors
-  for (auto& param : runtime_params) {
-    if (std::holds_alternative<aclTensor*>(param)) {
-      aclDestroyTensor(std::get<aclTensor*>(param));
-    }
   }
 
   return absl::OkStatus();
