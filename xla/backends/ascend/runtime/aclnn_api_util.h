@@ -85,6 +85,13 @@ constexpr aclDataType PrimitiveTypeToAclDataType(PrimitiveType type) {
   }
 }
 
+// Forward declarations for OpAPI functions
+inline const char *GetOpApiLibName(void);
+inline const char *GetCustOpApiLibName(void);
+inline void *GetOpApiFuncAddrInLib(void *handler, const char *libName, const char *apiName);
+inline void *GetOpApiLibHandler(const char *libName);
+inline void *GetOpApiFuncAddr(const char *apiName);
+
 // Macro to get ACL API functions
 #define GET_OP_API_FUNC(apiName) \
   reinterpret_cast<_##apiName>(GetOpApiFuncAddr(#apiName))
@@ -163,9 +170,9 @@ inline aclBoolArray *ConvertType(const std::vector<bool>& values) {
     return nullptr;
   }
 
-  // Convert std::vector<bool> to bool array
-  std::vector<bool> bool_values(values.begin(), values.end());
-  return aclCreateBoolArray(bool_values.data(), bool_values.size());
+  // Convert std::vector<bool> to bool array (std::vector<bool> is specialized and doesn't have .data())
+  std::vector<uint8_t> bool_array(values.begin(), values.end());
+  return aclCreateBoolArray(reinterpret_cast<const bool*>(bool_array.data()), bool_array.size());
 }
 
 // Convert tensor list to aclTensorList
@@ -281,7 +288,7 @@ inline void CheckAclStatus(aclError status, const char* message) {
 
 // Helper function to get ACL format from XLA shape
 inline aclFormat GetAclFormatFromShape(const xla::Shape& shape) {
-  int rank = shape.dimensions_size();
+  int rank = shape.dimensions().size();
   switch (rank) {
     case 0:
       return ACL_FORMAT_ND;
@@ -348,97 +355,18 @@ typedef void (*ReleaseHugeMem)(void*, bool);
 
 // Helper function to convert parameters to a tuple
 template <typename... Ts>
-constexpr auto ConvertTypes(Ts&... args) {
-  return std::make_tuple(ConvertType(args)...);
-}
-
-// Specialized ConvertType for BufferAllocations, Slice, and Shape combination
-inline aclTensor *ConvertType(const gpu::BufferAllocations& buffer_allocations, const BufferAllocation::Slice& slice, const Shape& shape) {
-  static const auto aclCreateTensor = GET_OP_API_FUNC(aclCreateTensor);
-  if (aclCreateTensor == nullptr) {
-    return nullptr;
-  }
-
-  // Get device address from buffer allocations
-  auto device_addr = buffer_allocations.GetDeviceAddress(slice);
-  if (!device_addr.opaque()) {
-    return nullptr;
-  }
-
-  // Get data type
-  PrimitiveType primitive_type = shape.element_type();
-  aclDataType acl_data_type = PrimitiveTypeToAclDataType(primitive_type);
-  CHECK(acl_data_type != ACL_DT_UNDEFINED) << "Unsupported data type: " << PrimitiveType_Name(primitive_type);
-
-  // Get dimensions
-  std::vector<int64_t> dimensions;
-  for (int64_t dim : shape.dimensions()) {
-    dimensions.push_back(dim);
-  }
-
-  // Calculate strides (assuming row-major)
-  std::vector<int64_t> strides = CalculateStrides(dimensions);
-
-  // Create aclTensor
-  return aclCreateTensor(
-      dimensions.data(),
-      dimensions.size(),
-      acl_data_type,
-      strides.data(),
-      0,  // offset
-      ACL_FORMAT_ND,
-      dimensions.data(),
-      dimensions.size(),
-      const_cast<void*>(device_addr.opaque()));
-}
-
-// Specialized ConvertType for scalar values with type
-inline aclScalar *ConvertType(float value, PrimitiveType type) {
-  static const auto aclCreateScalar = GET_OP_API_FUNC(aclCreateScalar);
-  if (aclCreateScalar == nullptr) {
-    return nullptr;
-  }
-
-  aclDataType acl_data_type = PrimitiveTypeToAclDataType(type);
-  CHECK(acl_data_type != ACL_DT_UNDEFINED) << "Unsupported data type: " << PrimitiveType_Name(type);
-
-  return aclCreateScalar(const_cast<void*>(reinterpret_cast<const void*>(&value)), acl_data_type);
-}
-
-// Specialized ConvertType for double values with type
-inline aclScalar *ConvertType(double value, PrimitiveType type) {
-  static const auto aclCreateScalar = GET_OP_API_FUNC(aclCreateScalar);
-  if (aclCreateScalar == nullptr) {
-    return nullptr;
-  }
-
-  aclDataType acl_data_type = PrimitiveTypeToAclDataType(type);
-  CHECK(acl_data_type != ACL_DT_UNDEFINED) << "Unsupported data type: " << PrimitiveType_Name(type);
-
-  return aclCreateScalar(const_cast<void*>(reinterpret_cast<const void*>(&value)), acl_data_type);
-}
-
-// Specialized ConvertType for int64_t values with type
-inline aclScalar *ConvertType(int64_t value, PrimitiveType type) {
-  static const auto aclCreateScalar = GET_OP_API_FUNC(aclCreateScalar);
-  if (aclCreateScalar == nullptr) {
-    return nullptr;
-  }
-
-  aclDataType acl_data_type = PrimitiveTypeToAclDataType(type);
-  CHECK(acl_data_type != ACL_DT_UNDEFINED) << "Unsupported data type: " << PrimitiveType_Name(type);
-
-  return aclCreateScalar(const_cast<void*>(reinterpret_cast<const void*>(&value)), acl_data_type);
+auto ConvertTypes(Ts&&... args) -> decltype(std::make_tuple(ConvertType(std::forward<Ts>(args))...)) {
+  return std::make_tuple(ConvertType(std::forward<Ts>(args))...);
 }
 
 // Helper function to call a function with a tuple of arguments
 template <typename Function, typename Tuple, size_t... I>
-auto CallFunction(Function f, Tuple t, std::index_sequence<I...>) {
+auto CallFunction(Function f, Tuple& t, std::index_sequence<I...>) -> decltype(f(std::get<I>(t)...)) {
   return f(std::get<I>(t)...);
 }
 
 template <typename Function, typename Tuple>
-auto CallFunction(Function f, Tuple t) {
+auto CallFunction(Function f, Tuple& t) -> decltype(CallFunction(f, t, std::make_index_sequence<std::tuple_size<Tuple>::value>{})) {
   static constexpr auto size = std::tuple_size<Tuple>::value;
   return CallFunction(f, t, std::make_index_sequence<size>{});
 }
@@ -457,74 +385,76 @@ auto ConvertToOpApiFunc(const Tuple& params, void *opApiAddr) {
   return ConvertToOpApiFunc(params, opApiAddr, std::make_index_sequence<size>{});
 }
 
+// Helper macro to convert (buffer_allocations, slice, shape) triplet to aclTensor*
+#define CONVERT_TENSOR_TRIPLET(buffer_allocs, slice, shape) \
+  ConvertType(buffer_allocs, slice, shape)
+
 // Macro to execute aclnn commands
-#define EXEC_ACLNN_CMD(aclnn_api, ...)                                          \
-  do {                                                                        
-    static const auto getWorkspaceSizeFuncAddr =                              
-        GetOpApiFuncAddr(#aclnn_api "GetWorkspaceSize");                      
-    static const auto opApiFuncAddr = GetOpApiFuncAddr(#aclnn_api);           
-    static const auto initMemAddr =                                           
-        GetOpApiFuncAddr("InitHugeMemThreadLocal");                           
-    static const auto unInitMemAddr =                                         
-        GetOpApiFuncAddr("UnInitHugeMemThreadLocal");                         
-    static const auto releaseMemAddr = GetOpApiFuncAddr("ReleaseHugeMem");    
-    CHECK(getWorkspaceSizeFuncAddr != nullptr && opApiFuncAddr != nullptr)    
-        << #aclnn_api << " or " << #aclnn_api << "GetWorkspaceSize not found in aclnn library";
-    aclrtStream acl_stream = static_cast<aclrtStream>(stream->platform_specific_handle().stream); \
-    uint64_t workspace_size = 0;                                              
-    uint64_t *workspace_size_addr = &workspace_size;                          
-    aclOpExecutor *executor = nullptr;                                        
-    aclOpExecutor **executor_addr = &executor;                                
-    
-    // Initialize huge memory thread local if available
-    InitHugeMemThreadLocal initMemFunc =                                      
-        reinterpret_cast<InitHugeMemThreadLocal>(initMemAddr);                
-    if (initMemFunc) {                                                        
-      initMemFunc(nullptr, false);                                            
-    }                                                                         
-    
-    // Convert parameters
-    auto converted_params = ConvertTypes(__VA_ARGS__, workspace_size_addr, executor_addr); 
-    
-    // Get workspace size
-    static auto getWorkspaceSizeFunc =                                        
-        ConvertToOpApiFunc(converted_params, getWorkspaceSizeFuncAddr);       
-    auto workspace_status = CallFunction(getWorkspaceSizeFunc, converted_params); 
-    CHECK(workspace_status == ACL_SUCCESS)                                   
-        << "call " << #aclnn_api << "GetWorkspaceSize failed: " << aclGetRecentErrMsg(); 
-    
-    // Allocate workspace if needed
-    void *workspace_addr = nullptr;                                           
-    if (workspace_size > 0) {                                                
-      aclrtMalloc(&workspace_addr, workspace_size, ACL_MEM_MALLOC_HUGE_FIRST); 
-    }                                                                         
-    
-    // Call the ACLNN API
-    typedef int (*OpApiFunc)(void *, uint64_t, aclOpExecutor *, aclrtStream); 
-    OpApiFunc opApiFunc = reinterpret_cast<OpApiFunc>(opApiFuncAddr);         
-    auto api_ret = opApiFunc(workspace_addr, workspace_size, executor, acl_stream); 
-    CHECK(api_ret == ACL_SUCCESS)                                            
-        << "call " << #aclnn_api << " failed: " << aclGetRecentErrMsg();      
-    
-    // Release resources
-    if (workspace_size > 0) {                                                
-      aclrtFree(workspace_addr);                                             
-    }                                                                         
-    ReleaseConvertTypes(converted_params);                                    
-    
-    // Release huge memory if available
-    ReleaseHugeMem releaseMemFunc =                                           
-        reinterpret_cast<ReleaseHugeMem>(releaseMemAddr);                     
-    if (releaseMemFunc) {                                                    
-      releaseMemFunc(nullptr, false);                                         
-    }                                                                         
-    
-    // Uninitialize huge memory thread local if available
-    UnInitHugeMemThreadLocal unInitMemFunc =                                  
-        reinterpret_cast<UnInitHugeMemThreadLocal>(unInitMemAddr);            
-    if (unInitMemFunc) {                                                     
-      unInitMemFunc(nullptr, false);                                         
-    }                                                                         
+#define EXEC_ACLNN_CMD(aclnn_api, stream, ...)                                \
+  do {                                                                        \
+    static const auto getWorkspaceSizeFuncAddr =                              \
+        GetOpApiFuncAddr(#aclnn_api "GetWorkspaceSize");                      \
+    static const auto opApiFuncAddr = GetOpApiFuncAddr(#aclnn_api);           \
+    static const auto initMemAddr =                                           \
+        GetOpApiFuncAddr("InitHugeMemThreadLocal");                           \
+    static const auto unInitMemAddr =                                         \
+        GetOpApiFuncAddr("UnInitHugeMemThreadLocal");                         \
+    static const auto releaseMemAddr = GetOpApiFuncAddr("ReleaseHugeMem");    \
+    CHECK(getWorkspaceSizeFuncAddr != nullptr && opApiFuncAddr != nullptr)    \
+        << #aclnn_api << " or " << #aclnn_api                                 \
+        << "GetWorkspaceSize not found in aclnn library";                     \
+    aclrtStream acl_stream = static_cast<aclrtStream>(                        \
+        stream->platform_specific_handle().stream);                           \
+    uint64_t workspace_size = 0;                                              \
+    uint64_t *workspace_size_addr = &workspace_size;                          \
+    aclOpExecutor *executor = nullptr;                                        \
+    aclOpExecutor **executor_addr = &executor;                                \
+                                                                              \
+    InitHugeMemThreadLocal initMemFunc =                                      \
+        reinterpret_cast<InitHugeMemThreadLocal>(initMemAddr);                \
+    if (initMemFunc) {                                                        \
+      initMemFunc(nullptr, false);                                            \
+    }                                                                         \
+                                                                              \
+    auto converted_params =                                                   \
+        ConvertTypes(__VA_ARGS__, workspace_size_addr, executor_addr);        \
+                                                                              \
+    static auto getWorkspaceSizeFunc =                                        \
+        ConvertToOpApiFunc(converted_params, getWorkspaceSizeFuncAddr);       \
+    auto workspace_status =                                                   \
+        CallFunction(getWorkspaceSizeFunc, converted_params);                 \
+    CHECK(workspace_status == ACL_SUCCESS)                                    \
+        << "call " << #aclnn_api << "GetWorkspaceSize failed: "               \
+        << aclGetRecentErrMsg();                                              \
+                                                                              \
+    void *workspace_addr = nullptr;                                           \
+    if (workspace_size > 0) {                                                 \
+      aclrtMalloc(&workspace_addr, workspace_size, ACL_MEM_MALLOC_HUGE_FIRST);\
+    }                                                                         \
+                                                                              \
+    typedef int (*OpApiFunc)(void *, uint64_t, aclOpExecutor *, aclrtStream); \
+    OpApiFunc opApiFunc = reinterpret_cast<OpApiFunc>(opApiFuncAddr);         \
+    auto api_ret =                                                            \
+        opApiFunc(workspace_addr, workspace_size, executor, acl_stream);      \
+    CHECK(api_ret == ACL_SUCCESS)                                             \
+        << "call " << #aclnn_api << " failed: " << aclGetRecentErrMsg();      \
+                                                                              \
+    if (workspace_size > 0) {                                                 \
+      aclrtFree(workspace_addr);                                              \
+    }                                                                         \
+    ReleaseConvertTypes(converted_params);                                    \
+                                                                              \
+    ReleaseHugeMem releaseMemFunc =                                           \
+        reinterpret_cast<ReleaseHugeMem>(releaseMemAddr);                     \
+    if (releaseMemFunc) {                                                     \
+      releaseMemFunc(nullptr, false);                                         \
+    }                                                                         \
+                                                                              \
+    UnInitHugeMemThreadLocal unInitMemFunc =                                  \
+        reinterpret_cast<UnInitHugeMemThreadLocal>(unInitMemAddr);            \
+    if (unInitMemFunc) {                                                      \
+      unInitMemFunc(nullptr, false);                                          \
+    }                                                                         \
   } while (false)
 
 }  // namespace ascend

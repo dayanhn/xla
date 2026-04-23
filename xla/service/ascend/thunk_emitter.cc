@@ -3257,8 +3257,8 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitGemmThunk(
 
   VLOG(2) << "GEMM parameters: transA=" << transA << ", transB=" << transB << ", alpha=" << alpha << ", beta=" << beta;
 
-  std::vector<xla::gpu::Thunk::NullableShapedSlice> operands;
-  std::vector<xla::gpu::Thunk::NullableShapedSlice> results;
+  std::vector<NullableShapedSlice> operands;
+  std::vector<NullableShapedSlice> results;
 
   // Create a dummy C tensor (all zeros) since aclnnGemm requires it
   // In a real implementation, you would create a proper zero tensor
@@ -3294,7 +3294,7 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitGemmThunk(
   return sequence;
 }
 
-/*
+#if 0
 // Original code for CustomCallThunk
 absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitGemmThunk(
     const HloCustomCallInstruction* instr) {
@@ -3442,7 +3442,7 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitGemmThunk(
 
   return sequence;
 }
-*/
+#endif
 
 // Emit scalar multiply fusion using FFI
 absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitScalarMultiplyFusion(

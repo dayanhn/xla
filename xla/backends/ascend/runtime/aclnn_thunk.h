@@ -16,10 +16,13 @@ limitations under the License.
 #ifndef XLA_BACKENDS_ASCEND_RUNTIME_ACLNN_THUNK_H_
 #define XLA_BACKENDS_ASCEND_RUNTIME_ACLNN_THUNK_H_
 
+#include <variant>
+
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/shaped_slice.h"
 #include "third_party/acl/inc/acl/acl.h"
+#include "third_party/acl/inc/aclnn/acl_meta.h"
 #include "absl/types/span.h"
 
 namespace xla {
@@ -30,25 +33,25 @@ class AclnnThunk : public gpu::Thunk {
  public:
   // Parameter type for aclnn operations
   using Param = std::variant<
-      aclTensor*,      // Tensor parameter
-      float,           // Float parameter
-      int64_t,         // Integer parameter
-      bool,            // Boolean parameter
-      absl::Span<int64_t>  // Dimensions parameter
+      aclTensor*,           // Tensor parameter
+      float,                // Float parameter
+      int64_t,              // Integer parameter
+      bool,                 // Boolean parameter
+      absl::Span<int64_t>   // Dimensions parameter
   >;
 
   AclnnThunk(gpu::Thunk::ThunkInfo thunk_info, std::string op_name,
-             std::vector<gpu::Thunk::NullableShapedSlice> operands,
-             std::vector<gpu::Thunk::NullableShapedSlice> results,
+             std::vector<NullableShapedSlice> operands,
+             std::vector<NullableShapedSlice> results,
              std::vector<Param> params);
 
   // Execute the aclnn operation
-  absl::Status ExecuteOnStream(const gpu::ExecuteParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   std::string op_name_;  // Name of the aclnn operation
-  std::vector<gpu::Thunk::NullableShapedSlice> operands_;  // Input operands
-  std::vector<gpu::Thunk::NullableShapedSlice> results_;  // Output results
+  std::vector<NullableShapedSlice> operands_;  // Input operands
+  std::vector<NullableShapedSlice> results_;  // Output results
   std::vector<Param> params_;  // Additional parameters for the operation
 };
 

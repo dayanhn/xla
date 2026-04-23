@@ -12,25 +12,38 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//xla:xla.bzl", "xla_cc_library")
+load("//xla:xla.default.bzl", "xla_cc_test")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
 
-xla_cc_library(
+cc_library(
     name = "aclnn_thunk",
     srcs = ["aclnn_thunk.cc"],
-    hdrs = ["aclnn_thunk.h"],
+    hdrs = [
+        "aclnn_thunk.h",
+        "aclnn_api_util.h",
+    ],
     deps = [
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
         "//xla/backends/gpu/runtime:thunk",
         "//xla/service",
-        "//xla/service/ascend/ffi/utils:tensor_utils",
-        "//xla/stream_executor",
+        "//xla/service:shaped_slice",
+        "//xla/ffi/api:ffi",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor:stream",
         "//third_party/acl:acl_headers",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@tsl//tsl/platform:casts",
+        "@tsl//tsl/platform:numbers",
     ],
-    linkopts = ["-ldl"],
+    copts = select({
+        "//conditions:default": ["-Ithird_party/acl/inc"],
+    }),
 )

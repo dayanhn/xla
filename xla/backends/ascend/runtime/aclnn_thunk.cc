@@ -19,15 +19,14 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/ascend/ffi/utils/tensor_utils.h"
 #include "third_party/acl/inc/acl/acl.h"
 
 namespace xla {
 namespace ascend {
 
 AclnnThunk::AclnnThunk(gpu::Thunk::ThunkInfo thunk_info, std::string op_name,
-                       std::vector<gpu::Thunk::NullableShapedSlice> operands,
-                       std::vector<gpu::Thunk::NullableShapedSlice> results,
+                       std::vector<NullableShapedSlice> operands,
+                       std::vector<NullableShapedSlice> results,
                        std::vector<Param> params)
     : gpu::Thunk(gpu::Thunk::kCustomCall, thunk_info),
       op_name_(std::move(op_name)),
@@ -36,7 +35,7 @@ AclnnThunk::AclnnThunk(gpu::Thunk::ThunkInfo thunk_info, std::string op_name,
       params_(std::move(params)) {
 }
 
-absl::Status AclnnThunk::ExecuteOnStream(const gpu::ExecuteParams& params) {
+absl::Status AclnnThunk::ExecuteOnStream(const ExecuteParams& params) {
   TF_ASSIGN_OR_RETURN(se::Stream* stream,
                       GetStreamForExecution(execution_stream_id(), params));
 
@@ -46,14 +45,18 @@ absl::Status AclnnThunk::ExecuteOnStream(const gpu::ExecuteParams& params) {
     CHECK(operands_.size() == 1 && results_.size() == 1) << "aclnnCast requires 1 input and 1 output";
     const auto& input_slice = operands_[0].value();
     const auto& output_slice = results_[0].value();
-    EXEC_ACLNN_CMD(aclnnCast, *params.buffer_allocations, input_slice.slice, input_slice.shape, *params.buffer_allocations, output_slice.slice, output_slice.shape);
+    aclTensor* input_tensor = ConvertType(*params.buffer_allocations, input_slice.slice, input_slice.shape);
+    aclTensor* output_tensor = ConvertType(*params.buffer_allocations, output_slice.slice, output_slice.shape);
+    EXEC_ACLNN_CMD(aclnnCast, stream, input_tensor, output_tensor);
   } else if (op_name_ == "aclnnMuls") {
     // For aclnnMuls, parameters should be: input_tensor, other_scalar, output_tensor
     CHECK(operands_.size() == 1 && results_.size() == 1 && params_.size() == 1) << "aclnnMuls requires 1 input, 1 output, and 1 scalar parameter";
     const auto& input_slice = operands_[0].value();
     const auto& output_slice = results_[0].value();
     auto other = std::get<float>(params_[0]);
-    EXEC_ACLNN_CMD(aclnnMuls, *params.buffer_allocations, input_slice.slice, input_slice.shape, other, PrimitiveType::F32, *params.buffer_allocations, output_slice.slice, output_slice.shape);
+    aclTensor* input_tensor = ConvertType(*params.buffer_allocations, input_slice.slice, input_slice.shape);
+    aclTensor* output_tensor = ConvertType(*params.buffer_allocations, output_slice.slice, output_slice.shape);
+    EXEC_ACLNN_CMD(aclnnMuls, stream, input_tensor, other, PrimitiveType::F32, output_tensor);
   } else if (op_name_ == "aclnnMaxDim") {
     // For aclnnMaxDim, parameters should be: input_tensor, dim, keepdim, output_tensor, indices_tensor
     CHECK(operands_.size() == 1 && results_.size() == 2 && params_.size() == 2) << "aclnnMaxDim requires 1 input, 2 outputs, and 2 parameters (dim, keepdim)";
@@ -62,10 +65,13 @@ absl::Status AclnnThunk::ExecuteOnStream(const gpu::ExecuteParams& params) {
     const auto& indices_slice = results_[1].value();
     auto dim = std::get<int64_t>(params_[0]);
     auto keepdim = std::get<bool>(params_[1]);
-    EXEC_ACLNN_CMD(aclnnMaxDim, *params.buffer_allocations, input_slice.slice, input_slice.shape, dim, keepdim, *params.buffer_allocations, output_slice.slice, output_slice.shape, *params.buffer_allocations, indices_slice.slice, indices_slice.shape);
+    aclTensor* input_tensor = ConvertType(*params.buffer_allocations, input_slice.slice, input_slice.shape);
+    aclTensor* output_tensor = ConvertType(*params.buffer_allocations, output_slice.slice, output_slice.shape);
+    aclTensor* indices_tensor = ConvertType(*params.buffer_allocations, indices_slice.slice, indices_slice.shape);
+    EXEC_ACLNN_CMD(aclnnMaxDim, stream, input_tensor, dim, keepdim, output_tensor, indices_tensor);
   } else if (op_name_ == "aclnnGemm") {
     // For aclnnGemm, parameters should be: A, B, C, alpha, beta, transA, transB, out, cubeMathType
-    CHECK(operands_.size() == 3 && results_.size() == 1 && params_.size() == 4) << "aclnnGemm requires 3 inputs, 1 output, and 4 parameters (alpha, beta, transA, transB)";
+    CHECK(operands_.size() == 3 && results_.size() >= 1 && params_.size() == 4) << "aclnnGemm requires 3 inputs, 1 output, and 4 parameters (alpha, beta, transA, transB)";
     const auto& A_slice = operands_[0].value();
     const auto& B_slice = operands_[1].value();
     const auto& C_slice = operands_[2].value();
@@ -75,7 +81,11 @@ absl::Status AclnnThunk::ExecuteOnStream(const gpu::ExecuteParams& params) {
     auto transA = std::get<int64_t>(params_[2]);
     auto transB = std::get<int64_t>(params_[3]);
     int8_t cubeMathType = 0;  // Default value for cubeMathType
-    EXEC_ACLNN_CMD(aclnnGemm, *params.buffer_allocations, A_slice.slice, A_slice.shape, *params.buffer_allocations, B_slice.slice, B_slice.shape, *params.buffer_allocations, C_slice.slice, C_slice.shape, alpha, beta, transA, transB, *params.buffer_allocations, out_slice.slice, out_slice.shape, cubeMathType);
+    aclTensor* A_tensor = ConvertType(*params.buffer_allocations, A_slice.slice, A_slice.shape);
+    aclTensor* B_tensor = ConvertType(*params.buffer_allocations, B_slice.slice, B_slice.shape);
+    aclTensor* C_tensor = ConvertType(*params.buffer_allocations, C_slice.slice, C_slice.shape);
+    aclTensor* out_tensor = ConvertType(*params.buffer_allocations, out_slice.slice, out_slice.shape);
+    EXEC_ACLNN_CMD(aclnnGemm, stream, A_tensor, B_tensor, C_tensor, alpha, beta, transA, transB, out_tensor, cubeMathType);
   } else {
     return absl::InternalError("Unsupported aclnn operation: " + op_name_);
   }
