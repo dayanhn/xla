@@ -37,6 +37,7 @@ class AclnnThunk : public gpu::Thunk {
       float,                // Float parameter
       int64_t,              // Integer parameter
       bool,                 // Boolean parameter
+      int8_t,                // Int8 parameter (e.g., cubeMathType)
       absl::Span<int64_t>   // Dimensions parameter
   >;
 

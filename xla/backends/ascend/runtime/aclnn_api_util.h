@@ -98,11 +98,6 @@ inline void *GetOpApiFuncAddr(const char *apiName);
 
 // Convert XLA BufferAllocation::Slice to aclTensor
 inline aclTensor *ConvertType(const gpu::BufferAllocations& buffer_allocations, const BufferAllocation::Slice& slice, const Shape& shape) {
-  static const auto aclCreateTensor = GET_OP_API_FUNC(aclCreateTensor);
-  if (aclCreateTensor == nullptr) {
-    return nullptr;
-  }
-
   // Get device address from buffer allocations
   auto device_addr = buffer_allocations.GetDeviceAddress(slice);
   if (!device_addr.opaque()) {
@@ -206,9 +201,46 @@ inline aclDataType ConvertType(PrimitiveType type) {
   return PrimitiveTypeToAclDataType(type);
 }
 
-// Template fallback for other types
-template <typename T>
-inline T ConvertType(T value) {
+// Helper struct to wrap tensor triplet (buffer_allocations, slice, shape)
+// This allows passing tensor information without immediate conversion
+struct TensorTriplet {
+  const gpu::BufferAllocations* buffer_allocations;
+  BufferAllocation::Slice slice;
+  Shape shape;
+};
+
+// Helper function to convert TensorTriplet to aclTensor*
+inline aclTensor* ConvertType(const TensorTriplet& triplet) {
+  return ConvertType(*triplet.buffer_allocations, triplet.slice, triplet.shape);
+}
+
+// Pass-through ConvertType for pointer types that don't need conversion
+inline uint64_t* ConvertType(uint64_t* value) {
+  return value;
+}
+
+// Pass-through ConvertType for aclOpExecutor**
+inline aclOpExecutor** ConvertType(aclOpExecutor** value) {
+  return value;
+}
+
+// Pass-through ConvertType for float
+inline float ConvertType(float value) {
+  return value;
+}
+
+// Pass-through ConvertType for int64_t
+inline int64_t ConvertType(int64_t value) {
+  return value;
+}
+
+// Pass-through ConvertType for bool
+inline bool ConvertType(bool value) {
+  return value;
+}
+
+// Pass-through ConvertType for int8_t
+inline int8_t ConvertType(int8_t value) {
   return value;
 }
 
