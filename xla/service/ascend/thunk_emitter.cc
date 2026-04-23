@@ -2944,6 +2944,7 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitTensorBroadcastFusion(
 }
 
 // Helper function to emit convert-element-type fusion as ascend.cast FFI call
+#if 0
 absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitConvertFusion(
     const HloFusionInstruction* fusion) {
   // Get the input and output buffer allocations
@@ -3017,6 +3018,40 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitConvertFusion(
           "ASCEND",
           gpu_compute_capability,
           /*execution_state=*/nullptr));
+  
+  // Add the thunk to the sequence
+  xla::gpu::ThunkSequence sequence;
+  sequence.push_back(std::move(thunk));
+  
+  return sequence;
+}
+#endif
+
+// Helper function to emit convert-element-type fusion as aclnnCast
+absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitConvertFusion(
+    const HloFusionInstruction* fusion) {
+  // Get the input and output buffer allocations
+  TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
+  
+  // Create operands and results for AclnnThunk
+  std::vector<NullableShapedSlice> operands;
+  std::vector<NullableShapedSlice> results;
+  std::vector<xla::ascend::AclnnThunk::Param> params;
+  
+  // Add input and output slices
+  operands.push_back(input_slice);
+  results.push_back(output_slice);
+  
+  VLOG(2) << "Emitting convert-element-type fusion as aclnnCast: " << fusion->name();
+  
+  // Create AclnnThunk for aclnnCast
+  auto thunk = std::make_unique<xla::ascend::AclnnThunk>(
+      xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
+      "aclnnCast",
+      std::move(operands),
+      std::move(results),
+      std::move(params));
   
   // Add the thunk to the sequence
   xla::gpu::ThunkSequence sequence;

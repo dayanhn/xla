@@ -56,7 +56,9 @@ static const std::unordered_map<std::string, ExecuteFunc> kOpExecutors = {
        const std::vector<AclnnThunk::Param>& params_list, 
        const std::function<TensorTriplet(const NullableShapedSlice&)>& make_triplet) -> absl::Status {
       CHECK(operands.size() == 1 && results.size() == 1) << "aclnnCast requires 1 input and 1 output";
-      EXEC_ACLNN_CMD(aclnnCast, stream, make_triplet(operands[0]), make_triplet(results[0]));
+      // Get the target dtype from the result shape
+      auto target_dtype = results[0].value().shape.element_type();
+      EXEC_ACLNN_CMD(aclnnCast, stream, make_triplet(operands[0]), target_dtype, make_triplet(results[0]));
       return absl::OkStatus();
     }
   },
