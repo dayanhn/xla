@@ -137,6 +137,7 @@ cc_library(
         "//xla/backends/gpu/runtime:custom_call_thunk",
         "//xla/backends/gpu/runtime:sequential_thunk",
         "//xla/backends/gpu/runtime:thunk",
+        "//xla/backends/ascend/runtime:aclnn_thunk",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service:call_graph",
