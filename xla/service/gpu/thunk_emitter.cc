@@ -2563,6 +2563,21 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
       // Ascend backend handled this instruction
       return std::move(ascend_result.value().value());
     }
+    // 使用VLOG(4)控制打印输出，这样可以通过前端配置TF_CPP_VMODULE=thunk_emitter=4来控制 
+    if (VLOG_IS_ON(4)) {
+      std::cerr << "=== HLO Instruction Emit Fail,Text (detailed) ===" << std::endl;
+      // 使用详细的打印选项
+      HloPrintOptions detailed_options;
+      detailed_options.set_print_large_constants(true)
+                      .set_print_metadata(true)
+                      .set_include_layout_in_shapes(true)
+                      .set_print_backend_config(true)
+                      .set_print_control_dependencies(true)
+                      .set_print_subcomputation_mode(HloPrintOptions::PrintSubcomputationMode::kFullBodies);
+      std::string hlo_text = hlo->ToString(detailed_options);
+      std::cerr << hlo_text << std::endl;
+      std::cerr << "=== HLO Instruction Detailed End ===" << std::endl;
+    }
     // If Ascend returned nullopt, continue with GPU implementation
   }
 #endif
