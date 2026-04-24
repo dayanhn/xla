@@ -240,6 +240,90 @@ bool IsTanhFusion(const HloFusionInstruction* fusion) {
   return true;
 }
 
+// Helper function to check if a fusion matches the sqrt pattern
+// Pattern: fusion { parameter -> sqrt }
+bool IsSqrtFusion(const HloFusionInstruction* fusion) {
+  auto* computation = fusion->fused_instructions_computation();
+
+  // Must have exactly 2 instructions: parameter + sqrt
+  const auto& instructions = computation->instructions();
+  int64_t instruction_count = std::distance(instructions.begin(), instructions.end());
+  if (instruction_count != 2) {
+    VLOG(4) << "SqrtFusion: expected 2 instructions, got "
+            << instruction_count;
+    return false;
+  }
+
+  // Find the parameter and sqrt instructions
+  const HloInstruction* param_instr = nullptr;
+  const HloInstruction* sqrt_instr = nullptr;
+
+  for (const auto* instr : instructions) {
+    if (instr->opcode() == HloOpcode::kParameter) {
+      param_instr = instr;
+    } else if (instr->opcode() == HloOpcode::kSqrt) {
+      sqrt_instr = instr;
+    } else {
+      VLOG(4) << "SqrtFusion: unexpected opcode "
+              << HloOpcodeString(instr->opcode());
+      return false;
+    }
+  }
+
+  // Both instructions must be present
+  if (!param_instr || !sqrt_instr) {
+    VLOG(4) << "SqrtFusion: missing parameter or sqrt instruction";
+    return false;
+  }
+
+  // Sqrt must take parameter as its only operand
+  if (sqrt_instr->operand_count() != 1 ||
+      sqrt_instr->operand(0) != param_instr) {
+    VLOG(4) << "SqrtFusion: sqrt does not take parameter as operand";
+    return false;
+  }
+
+  // Fusion's root must be the sqrt instruction
+  if (computation->root_instruction() != sqrt_instr) {
+    VLOG(4) << "SqrtFusion: fusion root is not sqrt";
+    return false;
+  }
+
+  // Check if it's a supported data type based on aclnnSqrt documentation
+  PrimitiveType input_type = sqrt_instr->operand(0)->shape().element_type();
+  PrimitiveType output_type = sqrt_instr->shape().element_type();
+
+  // Check if input and output types are the same (sqrt is element-wise and preserves type)
+  if (input_type != output_type) {
+    VLOG(4) << "SqrtFusion: input and output types must be the same";
+    return false;
+  }
+
+  // Supported input/output types for sqrt based on aclnnSqrt documentation
+  // FLOAT, FLOAT16, BFLOAT16, DOUBLE, INT32, INT64, INT16, INT8, UINT8, BOOL, COMPLEX64, COMPLEX128
+  bool is_supported = false;
+  if (input_type == PrimitiveType::F32 ||
+      input_type == PrimitiveType::F16 ||
+      input_type == PrimitiveType::BF16 ||
+      input_type == PrimitiveType::F64 ||
+      input_type == PrimitiveType::S32 ||
+      input_type == PrimitiveType::S64 ||
+      input_type == PrimitiveType::S16 ||
+      input_type == PrimitiveType::S8 ||
+      input_type == PrimitiveType::U8 ||
+      input_type == PrimitiveType::PRED) {
+    is_supported = true;
+  }
+
+  if (!is_supported) {
+    VLOG(4) << "SqrtFusion: unsupported data type: "
+            << PrimitiveType_Name(input_type);
+    return false;
+  }
+
+  return true;
+}
+
 // Helper function to check if a fusion matches the convolution pattern
 // Pattern: fusion { parameter(0) -> parameter(1) -> convolution }
 bool IsConvolutionFusion(const HloFusionInstruction* fusion) {
@@ -1678,7 +1762,15 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitFusion(
       return thunks;
     }
   }
-  
+
+  // Pattern: sqrt -> aclnnSqrt
+  if (IsSqrtFusion(fusion)) {
+    TF_ASSIGN_OR_RETURN(auto thunks, EmitSqrtFusion(fusion));
+    if (!thunks.empty()) {
+      return thunks;
+    }
+  }
+
   // Pattern 3: shift-right-logical -> ascend.right_shift
   if (IsShiftRightFusion(fusion)) {
     TF_ASSIGN_OR_RETURN(auto thunks, EmitShiftRightFusion(fusion));
@@ -3312,6 +3404,39 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitTanhFusion(
   xla::gpu::ThunkSequence sequence;
   sequence.push_back(std::move(thunk));
   
+  return sequence;
+}
+
+// Helper function to emit sqrt fusion as aclnnSqrt
+absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitSqrtFusion(
+    const HloFusionInstruction* fusion) {
+  // Get the input and output buffer allocations
+  TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
+
+  // Create operands and results for AclnnThunk
+  std::vector<NullableShapedSlice> operands;
+  std::vector<NullableShapedSlice> results;
+  std::vector<xla::ascend::AclnnThunk::Param> params;
+
+  // Add input and output slices
+  operands.push_back(input_slice);
+  results.push_back(output_slice);
+
+  VLOG(2) << "Emitting sqrt fusion as aclnnSqrt: " << fusion->name();
+
+  // Create AclnnThunk for aclnnSqrt
+  auto thunk = std::make_unique<xla::ascend::AclnnThunk>(
+      xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
+      "aclnnSqrt",
+      std::move(operands),
+      std::move(results),
+      std::move(params));
+
+  // Add the thunk to the sequence
+  xla::gpu::ThunkSequence sequence;
+  sequence.push_back(std::move(thunk));
+
   return sequence;
 }
 
