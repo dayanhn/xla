@@ -63,6 +63,18 @@ static const std::unordered_map<std::string, ExecuteFunc> kOpExecutors = {
     }
   },
   {
+    "aclnnTanh",
+    [](const AclnnThunk::ExecuteParams& params, se::Stream* stream, 
+       const std::vector<NullableShapedSlice>& operands, 
+       const std::vector<NullableShapedSlice>& results, 
+       const std::vector<AclnnThunk::Param>& params_list, 
+       const std::function<TensorTriplet(const NullableShapedSlice&)>& make_triplet) -> absl::Status {
+      CHECK(operands.size() == 1 && results.size() == 1) << "aclnnTanh requires 1 input and 1 output";
+      EXEC_ACLNN_CMD(aclnnTanh, stream, make_triplet(operands[0]),make_triplet(results[0]));
+      return absl::OkStatus();
+    }
+  },
+  {
     "aclnnMuls",
     [](const AclnnThunk::ExecuteParams& params, se::Stream* stream, 
        const std::vector<NullableShapedSlice>& operands, 

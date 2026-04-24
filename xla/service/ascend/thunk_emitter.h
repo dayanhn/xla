@@ -132,6 +132,9 @@ class ThunkEmitter {
   
   absl::StatusOr<xla::gpu::ThunkSequence> EmitConvertFusion(
       const HloFusionInstruction* fusion);
+
+  absl::StatusOr<xla::gpu::ThunkSequence> EmitTanhFusion(
+      const HloFusionInstruction* fusion);
   
   absl::StatusOr<xla::gpu::ThunkSequence> EmitShiftRightFusion(
       const HloFusionInstruction* fusion);

@@ -162,6 +162,84 @@ bool IsTensorBroadcastFusion(const HloFusionInstruction* fusion) {
   return true;
 }
 
+// Helper function to check if a fusion matches the tanh pattern
+// Pattern: fusion { parameter -> tanh }
+bool IsTanhFusion(const HloFusionInstruction* fusion) {
+  auto* computation = fusion->fused_instructions_computation();
+  
+  // Must have exactly 2 instructions: parameter + tanh
+  const auto& instructions = computation->instructions();
+  int64_t instruction_count = std::distance(instructions.begin(), instructions.end());
+  if (instruction_count != 2) {
+    VLOG(4) << "TanhFusion: expected 2 instructions, got " 
+            << instruction_count;
+    return false;
+  }
+  
+  // Find the parameter and tanh instructions
+  const HloInstruction* param_instr = nullptr;
+  const HloInstruction* tanh_instr = nullptr;
+  
+  for (const auto* instr : instructions) {
+    if (instr->opcode() == HloOpcode::kParameter) {
+      param_instr = instr;
+    } else if (instr->opcode() == HloOpcode::kTanh) {
+      tanh_instr = instr;
+    } else {
+      VLOG(4) << "TanhFusion: unexpected opcode " 
+              << HloOpcodeString(instr->opcode());
+      return false;
+    }
+  }
+  
+  // Both instructions must be present
+  if (!param_instr || !tanh_instr) {
+    VLOG(4) << "TanhFusion: missing parameter or tanh instruction";
+    return false;
+  }
+  
+  // Tanh must take parameter as its only operand
+  if (tanh_instr->operand_count() != 1 || 
+      tanh_instr->operand(0) != param_instr) {
+    VLOG(4) << "TanhFusion: tanh does not take parameter as operand";
+    return false;
+  }
+  
+  // Fusion's root must be the tanh instruction
+  if (computation->root_instruction() != tanh_instr) {
+    VLOG(4) << "TanhFusion: fusion root is not tanh";
+    return false;
+  }
+  
+  // Check if it's a supported data type
+  PrimitiveType input_type = tanh_instr->operand(0)->shape().element_type();
+  PrimitiveType output_type = tanh_instr->shape().element_type();
+  
+  // Check if input and output types are the same (tanh is element-wise and preserves type)
+  if (input_type != output_type) {
+    VLOG(4) << "TanhFusion: input and output types must be the same";
+    return false;
+  }
+  
+  // Check if it's a supported data type based on aclnnTanh documentation
+  bool is_supported = false;
+  
+  // Supported input/output types for tanh
+  if (input_type == PrimitiveType::F32 ||
+      input_type == PrimitiveType::F16 ||
+      input_type == PrimitiveType::BF16) {
+    is_supported = true;
+  }
+  
+  if (!is_supported) {
+    VLOG(4) << "TanhFusion: unsupported data type: " 
+            << PrimitiveType_Name(input_type);
+    return false;
+  }
+  
+  return true;
+}
+
 // Helper function to check if a fusion matches the convert-element-type pattern
 // Pattern: fusion { parameter -> convert-element-type }
 bool IsConvertFusion(const HloFusionInstruction* fusion) {
@@ -1470,6 +1548,14 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitFusion(
   // Pattern 2: convert-element-type -> ascend.cast.s32_to_u32
   if (IsConvertFusion(fusion)) {
     TF_ASSIGN_OR_RETURN(auto thunks, EmitConvertFusion(fusion));
+    if (!thunks.empty()) {
+      return thunks;
+    }
+  }
+  
+  // Pattern 2.5: tanh -> aclnnTanh
+  if (IsTanhFusion(fusion)) {
+    TF_ASSIGN_OR_RETURN(auto thunks, EmitTanhFusion(fusion));
     if (!thunks.empty()) {
       return thunks;
     }
@@ -3049,6 +3135,39 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitConvertFusion(
   auto thunk = std::make_unique<xla::ascend::AclnnThunk>(
       xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
       "aclnnCast",
+      std::move(operands),
+      std::move(results),
+      std::move(params));
+  
+  // Add the thunk to the sequence
+  xla::gpu::ThunkSequence sequence;
+  sequence.push_back(std::move(thunk));
+  
+  return sequence;
+}
+
+// Helper function to emit tanh fusion as aclnnTanh
+absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitTanhFusion(
+    const HloFusionInstruction* fusion) {
+  // Get the input and output buffer allocations
+  TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
+  
+  // Create operands and results for AclnnThunk
+  std::vector<NullableShapedSlice> operands;
+  std::vector<NullableShapedSlice> results;
+  std::vector<xla::ascend::AclnnThunk::Param> params;
+  
+  // Add input and output slices
+  operands.push_back(input_slice);
+  results.push_back(output_slice);
+  
+  VLOG(2) << "Emitting tanh fusion as aclnnTanh: " << fusion->name();
+  
+  // Create AclnnThunk for aclnnTanh
+  auto thunk = std::make_unique<xla::ascend::AclnnThunk>(
+      xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
+      "aclnnTanh",
       std::move(operands),
       std::move(results),
       std::move(params));
