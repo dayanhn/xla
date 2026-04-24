@@ -1243,20 +1243,22 @@ bool IsDivideFusion(const HloFusionInstruction* fusion) {
 }
 
 // Helper function to check if a fusion matches the multiply pattern
-// Pattern: fusion { parameter0 + parameter1 -> multiply }
+// Patterns:
+// 1. fusion { parameter0 + parameter1 -> multiply } (two different tensors)
+// 2. fusion { parameter0 -> multiply(parameter0, parameter0) } (same tensor squared)
 bool IsMultiplyFusion(const HloFusionInstruction* fusion) {
   auto* computation = fusion->fused_instructions_computation();
 
-  // Must have exactly 3 instructions: parameter0 + parameter1 + multiply
+  // Check instruction count: either 2 (single parameter squared) or 3 (two parameters)
   const auto& instructions = computation->instructions();
   int64_t instruction_count = std::distance(instructions.begin(), instructions.end());
-  if (instruction_count != 3) {
-    VLOG(4) << "MultiplyFusion: expected 3 instructions, got "
+  if (instruction_count != 2 && instruction_count != 3) {
+    VLOG(4) << "MultiplyFusion: expected 2 or 3 instructions, got "
             << instruction_count;
     return false;
   }
 
-  // Find the parameters and multiply instructions
+  // Find the instructions
   const HloInstruction* param0_instr = nullptr;
   const HloInstruction* param1_instr = nullptr;
   const HloInstruction* multiply_instr = nullptr;
@@ -1280,18 +1282,35 @@ bool IsMultiplyFusion(const HloFusionInstruction* fusion) {
     }
   }
 
-  // All instructions must be present
-  if (!param0_instr || !param1_instr || !multiply_instr) {
+  // Must have at least one parameter and the multiply instruction
+  if (!param0_instr || !multiply_instr) {
     VLOG(4) << "MultiplyFusion: missing parameter or multiply instruction";
     return false;
   }
 
-  // Multiply must take both parameters as operands
-  if (multiply_instr->operand_count() != 2 ||
-      (multiply_instr->operand(0) != param0_instr && multiply_instr->operand(0) != param1_instr) ||
-      (multiply_instr->operand(1) != param0_instr && multiply_instr->operand(1) != param1_instr)) {
-    VLOG(4) << "MultiplyFusion: multiply does not take both parameters as operands";
+  // Check multiply operands
+  if (multiply_instr->operand_count() != 2) {
+    VLOG(4) << "MultiplyFusion: multiply must have exactly 2 operands";
     return false;
+  }
+
+  // Case 1: Two different parameters
+  if (instruction_count == 3) {
+    if (!param1_instr) {
+      VLOG(4) << "MultiplyFusion: missing second parameter";
+      return false;
+    }
+    if ((multiply_instr->operand(0) != param0_instr && multiply_instr->operand(0) != param1_instr) ||
+        (multiply_instr->operand(1) != param0_instr && multiply_instr->operand(1) != param1_instr)) {
+      VLOG(4) << "MultiplyFusion: multiply does not take both parameters as operands";
+      return false;
+    }
+  } else {
+    // Case 2: Same parameter squared
+    if (multiply_instr->operand(0) != param0_instr || multiply_instr->operand(1) != param0_instr) {
+      VLOG(4) << "MultiplyFusion: multiply does not take the same parameter as both operands";
+      return false;
+    }
   }
 
   // Fusion's root must be the multiply instruction
@@ -2831,10 +2850,6 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitMultiplyFusion(
     const HloFusionInstruction* fusion) {
   VLOG(2) << "Emitting multiply fusion as ascend.multiply: " << fusion->name();
 
-  TF_ASSIGN_OR_RETURN(auto input_slice0, GetShapedSliceForHlo(fusion->operand(0)));
-  TF_ASSIGN_OR_RETURN(auto input_slice1, GetShapedSliceForHlo(fusion->operand(1)));
-  TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
-
   auto* computation = fusion->fused_instructions_computation();
   const HloInstruction* multiply_instr = nullptr;
 
@@ -2849,13 +2864,35 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitMultiplyFusion(
     return absl::InternalError("No multiply instruction found in multiply fusion");
   }
 
+  // Get input slices based on the number of parameters
+  TF_ASSIGN_OR_RETURN(auto input_slice0, GetShapedSliceForHlo(fusion->operand(0)));
+  NullableShapedSlice input_slice1;
+  
+  // Check if fusion has two operands or one operand (squared case)
+  bool is_squared = (fusion->operand_count() == 1);
+  
+  if (!is_squared) {
+    TF_ASSIGN_OR_RETURN(input_slice1, GetShapedSliceForHlo(fusion->operand(1)));
+  } else {
+    // For squared case, use the same input slice for both operands
+    input_slice1 = input_slice0;
+  }
+  
+  TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
+
   const Shape& input_shape = fusion->operand(0)->shape();
   PrimitiveType element_type = input_shape.element_type();
 
-  VLOG(2) << "Multiply fusion: input0 shape=" << input_shape.ToString()
-          << ", input1 shape=" << fusion->operand(1)->shape().ToString()
-          << ", output shape=" << output_slice.shape.ToString()
-          << ", element_type=" << PrimitiveType_Name(element_type);
+  if (!is_squared) {
+    VLOG(2) << "Multiply fusion: input0 shape=" << input_shape.ToString()
+            << ", input1 shape=" << fusion->operand(1)->shape().ToString()
+            << ", output shape=" << output_slice.shape.ToString()
+            << ", element_type=" << PrimitiveType_Name(element_type);
+  } else {
+    VLOG(2) << "Multiply fusion (squared): input shape=" << input_shape.ToString()
+            << ", output shape=" << output_slice.shape.ToString()
+            << ", element_type=" << PrimitiveType_Name(element_type);
+  }
 
   std::string function_name = "ascend.multiply";
   switch (element_type) {

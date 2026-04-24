@@ -123,3 +123,15 @@ jax/xla/xla/service/ascend/ffi/BUILD
   }, metadata={op_name="jit(create_full_matrix)/broadcast_in_dim" stack_frame_id=8}识别出为一个常量广播，然后通过 `/home/zzw/code/uni_ai/xla/xla/service/ascend/thunk_emitter.cc#L470-535` 
 转换为调用ascend.full.f32算子： `/home/zzw/code/uni_ai/xla/xla/service/ascend/ffi/ascend_ffi.cc#L70-75` ，此算子的定义和接口注册参考： `/home/zzw/code/uni_ai/xla/xla/service/ascend/ffi/ops/nn/full/full.cc` ，现在我需要你参考其实现再修改函数 thunk_emitter.cc中的absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitFusion函数，识别出以下的Hlo融合指令：
  `/home/zzw/code/uni_ai/xla/mydoc/hlo_main.txt#L20-25` ，然后将其转换为 `/home/zzw/code/uni_ai/xla/xla/service/ascend/ffi/ops/math/add/add.cc` 中接口，其接口的定义在 `/home/zzw/code/uni_ai/xla/xla/service/ascend/ffi/ascend_ffi.cc#L145-234` ，注意根据数据类型调用相匹配的接口，可以参考 `/home/zzw/code/uni_ai/xla/xla/service/ascend/thunk_emitter.cc#L537-538` 函数
+
+
+ ------------
+ 请根据hlo-to-aclnn-converter技能，帮我完成卷积算子的转换。对应的hlo算子信息为： 
+ %wrapped_convolution = f32[128,32,32,64]{3,2,1,0} fusion(%x.1, %params__conv1____conv____W__.1), kind=kLoop, calls= 
+ (param_0.50: f32[128,32,32,3], param_1.33: f32[3,3,3,64]) -> f32[128,32,32,64] { 
+   %param_0.50 = f32[128,32,32,3]{3,2,1,0} parameter(0) 
+   %param_1.33 = f32[3,3,3,64]{3,2,1,0} parameter(1) 
+   ROOT %conv_general_dilated.8.1 = f32[128,32,32,64]{3,2,1,0} convolution(%param_0.50, %param_1.33), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, metadata={op_name="jit(compute_grads)/jvp()/conv_general_dilated" stack_frame_id=20} 
+ }, metadata={op_name="jit(compute_grads)/jvp()/conv_general_dilated" stack_frame_id=20} 
+ 需要转换为aclnnConvolution算子，对应的接口说明文档为： `/home/zzw/code/google/ascend/ops-nn/conv/convolution_forward/docs/aclnnConvolution.md` ，你需要注意aclnnConvolution接口的参数相对要复杂一点，有些参数需要从Hlo算子中提取信息，比如步长，padding，然后传入EXEC_ACLNN_CMD，由EXEC_ACLNN_CMD去将这些参数转换为aclIntArray，你需要关注aclIntArray是否已经有了这种自动转换能力
+ ------------
