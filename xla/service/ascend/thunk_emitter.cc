@@ -240,6 +240,91 @@ bool IsTanhFusion(const HloFusionInstruction* fusion) {
   return true;
 }
 
+// Helper function to check if a fusion matches the convolution pattern
+// Pattern: fusion { parameter(0) -> parameter(1) -> convolution }
+bool IsConvolutionFusion(const HloFusionInstruction* fusion) {
+  auto* computation = fusion->fused_instructions_computation();
+  
+  // Must have exactly 3 instructions: parameter(0) + parameter(1) + convolution
+  const auto& instructions = computation->instructions();
+  int64_t instruction_count = std::distance(instructions.begin(), instructions.end());
+  if (instruction_count != 3) {
+    VLOG(4) << "ConvolutionFusion: expected 3 instructions, got " 
+            << instruction_count;
+    return false;
+  }
+  
+  // Find the parameter and convolution instructions
+  const HloInstruction* param0_instr = nullptr;
+  const HloInstruction* param1_instr = nullptr;
+  const HloInstruction* conv_instr = nullptr;
+  
+  for (const auto* instr : instructions) {
+    if (instr->opcode() == HloOpcode::kParameter) {
+      if (instr->parameter_number() == 0) {
+        param0_instr = instr;
+      } else if (instr->parameter_number() == 1) {
+        param1_instr = instr;
+      } else {
+        VLOG(4) << "ConvolutionFusion: unexpected parameter number " 
+                << instr->parameter_number();
+        return false;
+      }
+    } else if (instr->opcode() == HloOpcode::kConvolution) {
+      conv_instr = instr;
+    } else {
+      VLOG(4) << "ConvolutionFusion: unexpected opcode " 
+              << HloOpcodeString(instr->opcode());
+      return false;
+    }
+  }
+  
+  // All instructions must be present
+  if (!param0_instr || !param1_instr || !conv_instr) {
+    VLOG(4) << "ConvolutionFusion: missing parameter or convolution instruction";
+    return false;
+  }
+  
+  // Convolution must take both parameters as operands
+  if (conv_instr->operand_count() != 2 || 
+      conv_instr->operand(0) != param0_instr ||
+      conv_instr->operand(1) != param1_instr) {
+    VLOG(4) << "ConvolutionFusion: convolution does not take both parameters as operands";
+    return false;
+  }
+  
+  // Fusion's root must be the convolution instruction
+  if (computation->root_instruction() != conv_instr) {
+    VLOG(4) << "ConvolutionFusion: fusion root is not convolution";
+    return false;
+  }
+  
+  // Check if it's a supported data type
+  PrimitiveType input_type = param0_instr->shape().element_type();
+  PrimitiveType weight_type = param1_instr->shape().element_type();
+  PrimitiveType output_type = conv_instr->shape().element_type();
+  
+  // Check if input and weight types are compatible
+  bool is_supported = false;
+  if ((input_type == PrimitiveType::F32 ||
+       input_type == PrimitiveType::F16 ||
+       input_type == PrimitiveType::BF16) &&
+      (weight_type == PrimitiveType::F32 ||
+       weight_type == PrimitiveType::F16 ||
+       weight_type == PrimitiveType::BF16)) {
+    is_supported = true;
+  }
+  
+  if (!is_supported) {
+    VLOG(4) << "ConvolutionFusion: unsupported data types: input=" 
+            << PrimitiveType_Name(input_type) << ", weight=" 
+            << PrimitiveType_Name(weight_type);
+    return false;
+  }
+  
+  return true;
+}
+
 // Helper function to check if a fusion matches the convert-element-type pattern
 // Pattern: fusion { parameter -> convert-element-type }
 bool IsConvertFusion(const HloFusionInstruction* fusion) {
@@ -856,21 +941,20 @@ bool IsExponentialFusion(const HloFusionInstruction* fusion) {
 bool IsReduceSumFusion(const HloFusionInstruction* fusion) {
   auto* computation = fusion->fused_instructions_computation();
 
-  // Must have exactly 3 instructions: parameter + constant + reduce
-  const auto& instructions = computation->instructions();
-  int64_t instruction_count = std::distance(instructions.begin(), instructions.end());
-  if (instruction_count != 3) {
-    VLOG(4) << "ReduceSumFusion: expected 3 instructions, got "
-            << instruction_count;
-    return false;
-  }
-
-  // Find the parameter, constant, and reduce instructions
+  // Count only direct children instructions (not nested in sub-computations)
+  int64_t instruction_count = 0;
   const HloInstruction* param_instr = nullptr;
   const HloInstruction* constant_instr = nullptr;
   const HloInstruction* reduce_instr = nullptr;
 
-  for (const auto* instr : instructions) {
+  for (const auto* instr : computation->instructions()) {
+    // Skip instructions that belong to nested computations
+    if (instr->parent() != computation) {
+      continue;
+    }
+    
+    instruction_count++;
+    
     if (instr->opcode() == HloOpcode::kParameter) {
       param_instr = instr;
     } else if (instr->opcode() == HloOpcode::kConstant) {
@@ -882,6 +966,13 @@ bool IsReduceSumFusion(const HloFusionInstruction* fusion) {
               << HloOpcodeString(instr->opcode());
       return false;
     }
+  }
+
+  // Must have exactly 3 instructions: parameter + constant + reduce
+  if (instruction_count != 3) {
+    VLOG(4) << "ReduceSumFusion: expected 3 instructions, got "
+            << instruction_count;
+    return false;
   }
 
   // All instructions must be present
@@ -1512,6 +1603,14 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitFusion(
 
   if (IsNegateFusion(fusion)) {
     TF_ASSIGN_OR_RETURN(auto thunks, EmitNegateFusion(fusion));
+    if (!thunks.empty()) {
+      return thunks;
+    }
+  }
+
+  // Pattern: convolution -> aclnnConvolution
+  if (IsConvolutionFusion(fusion)) {
+    TF_ASSIGN_OR_RETURN(auto thunks, EmitConvolutionFusion(fusion));
     if (!thunks.empty()) {
       return thunks;
     }
@@ -3168,6 +3267,104 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitTanhFusion(
   auto thunk = std::make_unique<xla::ascend::AclnnThunk>(
       xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
       "aclnnTanh",
+      std::move(operands),
+      std::move(results),
+      std::move(params));
+  
+  // Add the thunk to the sequence
+  xla::gpu::ThunkSequence sequence;
+  sequence.push_back(std::move(thunk));
+  
+  return sequence;
+}
+
+// Helper function to emit convolution fusion as aclnnConvolution
+absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitConvolutionFusion(
+    const HloFusionInstruction* fusion) {
+  // Get the input, weight, and output buffer allocations
+  TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto weight_slice, GetShapedSliceForHlo(fusion->operand(1)));
+  TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
+  
+  // Create operands and results for AclnnThunk
+  std::vector<NullableShapedSlice> operands;
+  std::vector<NullableShapedSlice> results;
+  std::vector<xla::ascend::AclnnThunk::Param> params;
+  
+  // Add input, weight, and output slices
+  operands.push_back(input_slice);
+  operands.push_back(weight_slice);
+  results.push_back(output_slice);
+  
+  // Extract convolution parameters from HLO instruction
+  auto* computation = fusion->fused_instructions_computation();
+  const HloInstruction* conv_instr = nullptr;
+  
+  for (const auto* instr : computation->instructions()) {
+    if (instr->opcode() == HloOpcode::kConvolution) {
+      conv_instr = instr;
+      break;
+    }
+  }
+  
+  if (!conv_instr) {
+    return absl::InternalError("No convolution instruction found in fusion");
+  }
+  
+  const auto& window = conv_instr->window();
+  const auto& padding = window.padding();
+  
+  // Extract stride
+  std::vector<int64_t> stride;
+  for (int i = 0; i < window.dimensions_size(); ++i) {
+    stride.push_back(window.dimensions(i).stride());
+  }
+  
+  // Extract padding
+  std::vector<int64_t> pad_values;
+  for (int i = 0; i < padding.dimensions_size(); ++i) {
+    pad_values.push_back(padding.dimensions(i).low());
+    pad_values.push_back(padding.dimensions(i).high());
+  }
+  
+  // Extract dilation
+  std::vector<int64_t> dilation;
+  for (int i = 0; i < window.dimensions_size(); ++i) {
+    dilation.push_back(window.dimensions(i).window_dilation());
+  }
+  
+  // Extract transposed
+  bool transposed = conv_instr->feature_group_count() > 1 ? false : false; // TODO: Check actual transposed flag
+  
+  // Extract output padding (default to 0)
+  std::vector<int64_t> output_padding(window.dimensions_size(), 0);
+  
+  // Extract groups
+  int64_t groups = conv_instr->feature_group_count();
+  
+  // Extract cubeMathType (default to 0 - KEEP_DTYPE)
+  int8_t cube_math_type = 0;
+  
+  // Add parameters to params list
+  params.push_back(xla::ascend::AclnnThunk::Param{stride});
+  params.push_back(xla::ascend::AclnnThunk::Param{pad_values});
+  params.push_back(xla::ascend::AclnnThunk::Param{dilation});
+  params.push_back(xla::ascend::AclnnThunk::Param{transposed});
+  params.push_back(xla::ascend::AclnnThunk::Param{output_padding});
+  params.push_back(xla::ascend::AclnnThunk::Param{groups});
+  params.push_back(xla::ascend::AclnnThunk::Param{cube_math_type});
+  
+  VLOG(2) << "Emitting convolution fusion as aclnnConvolution: " << fusion->name();
+  VLOG(3) << "Stride: " << absl::StrJoin(stride, ", ");
+  VLOG(3) << "Padding: " << absl::StrJoin(pad_values, ", ");
+  VLOG(3) << "Dilation: " << absl::StrJoin(dilation, ", ");
+  VLOG(3) << "Transposed: " << transposed;
+  VLOG(3) << "Groups: " << groups;
+  
+  // Create AclnnThunk for aclnnConvolution
+  auto thunk = std::make_unique<xla::ascend::AclnnThunk>(
+      xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
+      "aclnnConvolution",
       std::move(operands),
       std::move(results),
       std::move(params));

@@ -103,10 +103,10 @@ static const std::unordered_map<std::string, ExecuteFunc> kOpExecutors = {
   },
   {
     "aclnnGemm",
-    [](const AclnnThunk::ExecuteParams& params, se::Stream* stream, 
-       const std::vector<NullableShapedSlice>& operands, 
-       const std::vector<NullableShapedSlice>& results, 
-       const std::vector<AclnnThunk::Param>& params_list, 
+    [](const AclnnThunk::ExecuteParams& params, se::Stream* stream,
+       const std::vector<NullableShapedSlice>& operands,
+       const std::vector<NullableShapedSlice>& results,
+       const std::vector<AclnnThunk::Param>& params_list,
        const std::function<TensorTriplet(const NullableShapedSlice&)>& make_triplet) -> absl::Status {
       CHECK(operands.size() == 3 && results.size() >= 1 && params_list.size() == 4) << "aclnnGemm requires 3 inputs, 1 output, and 4 parameters (alpha, beta, transA, transB)";
       auto alpha = std::get<float>(params_list[0]);
@@ -118,6 +118,41 @@ static const std::unordered_map<std::string, ExecuteFunc> kOpExecutors = {
                      make_triplet(operands[0]), make_triplet(operands[1]), make_triplet(operands[2]),
                      alpha, beta, transA, transB, 
                      make_triplet(results[0]), cubeMathType);
+      return absl::OkStatus();
+    }
+  },
+  {
+    "aclnnConvolution",
+    [](const AclnnThunk::ExecuteParams& params, se::Stream* stream,
+       const std::vector<NullableShapedSlice>& operands,
+       const std::vector<NullableShapedSlice>& results,
+       const std::vector<AclnnThunk::Param>& params_list,
+       const std::function<TensorTriplet(const NullableShapedSlice&)>& make_triplet) -> absl::Status {
+      CHECK(operands.size() == 2 && results.size() == 1 && params_list.size() == 7) << "aclnnConvolution requires 2 inputs (input, weight), 1 output, and 7 parameters (stride, padding, dilation, transposed, outputPadding, groups, cubeMathType)";
+      
+      // Extract parameters
+      auto stride = std::get<std::vector<int64_t>>(params_list[0]);
+      auto padding = std::get<std::vector<int64_t>>(params_list[1]);
+      auto dilation = std::get<std::vector<int64_t>>(params_list[2]);
+      auto transposed = std::get<bool>(params_list[3]);
+      auto outputPadding = std::get<std::vector<int64_t>>(params_list[4]);
+      auto groups = std::get<int64_t>(params_list[5]);
+      auto cubeMathType = std::get<int8_t>(params_list[6]);
+      
+      // Call aclnnConvolution
+      EXEC_ACLNN_CMD(aclnnConvolution, stream,
+                     make_triplet(operands[0]),  // input
+                     make_triplet(operands[1]),  // weight
+                     nullptr,  // bias (none)
+                     stride,   // stride
+                     padding,  // padding
+                     dilation, // dilation
+                     transposed, // transposed
+                     outputPadding, // outputPadding
+                     groups,   // groups
+                     make_triplet(results[0]), // output
+                     cubeMathType); // cubeMathType
+      
       return absl::OkStatus();
     }
   }
