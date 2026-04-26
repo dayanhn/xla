@@ -164,7 +164,39 @@ static const std::unordered_map<std::string, ExecuteFunc> kOpExecutors = {
                      groups,   // groups
                      make_triplet(results[0]), // output
                      cubeMathType); // cubeMathType
-      
+
+      return absl::OkStatus();
+    }
+  },
+  {
+    "aclnnMaxPool",
+    [](const AclnnThunk::ExecuteParams& params, se::Stream* stream,
+       const std::vector<NullableShapedSlice>& operands,
+       const std::vector<NullableShapedSlice>& results,
+       const std::vector<AclnnThunk::Param>& params_list,
+       const std::function<TensorTriplet(const NullableShapedSlice&)>& make_triplet) -> absl::Status {
+      CHECK(operands.size() == 1 && results.size() == 1 && params_list.size() == 6)
+          << "aclnnMaxPool requires 1 input, 1 output, and 6 parameters";
+
+      // Extract parameters
+      auto kernelShape = std::get<std::vector<int64_t>>(params_list[0]);
+      auto strides = std::get<std::vector<int64_t>>(params_list[1]);
+      auto autoPad = std::get<int64_t>(params_list[2]);
+      auto pads = std::get<std::vector<int64_t>>(params_list[3]);
+      auto dilations = std::get<std::vector<int64_t>>(params_list[4]);
+      auto ceilMode = std::get<int64_t>(params_list[5]);
+
+      // Call aclnnMaxPool
+      EXEC_ACLNN_CMD(aclnnMaxPool, stream,
+                     make_triplet(operands[0]),  // self
+                     kernelShape,
+                     strides,
+                     autoPad,
+                     pads,
+                     dilations,
+                     ceilMode,
+                     make_triplet(results[0]));  // out
+
       return absl::OkStatus();
     }
   },

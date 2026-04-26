@@ -1265,6 +1265,89 @@ bool IsDivideFusion(const HloFusionInstruction* fusion) {
   return true;
 }
 
+// Helper function to check if a fusion matches the max pool 2D pattern
+// Pattern:
+//   fusion { parameter -> reduce-window(parameter, init_value), window={...}, to_apply=max }
+// Supports only max pooling with same padding
+bool IsMaxPoolFusion(const HloFusionInstruction* fusion) {
+  auto* computation = fusion->fused_instructions_computation();
+
+  const auto& instructions = computation->instructions();
+
+  // Collect all parameters and the reduce-window instruction
+  std::vector<const HloInstruction*> params;
+  const HloInstruction* reduce_window_instr = nullptr;
+
+  for (const auto* instr : instructions) {
+    if (instr->opcode() == HloOpcode::kParameter) {
+      params.push_back(instr);
+    } else if (instr->opcode() == HloOpcode::kReduceWindow) {
+      reduce_window_instr = instr;
+    } else if (instr->opcode() == HloOpcode::kConstant) {
+      // init value constant - allowed
+    } else {
+      VLOG(4) << "MaxPoolFusion: unexpected opcode "
+              << HloOpcodeString(instr->opcode());
+      return false;
+    }
+  }
+
+  // Must have exactly 1 parameter
+  if (params.size() != 1) {
+    VLOG(4) << "MaxPoolFusion: need exactly 1 parameter, got "
+            << params.size();
+    return false;
+  }
+
+  // Must have the reduce-window instruction
+  if (!reduce_window_instr) {
+    VLOG(4) << "MaxPoolFusion: missing reduce-window instruction";
+    return false;
+  }
+
+  // Check that reduce-window operand is the parameter
+  if (reduce_window_instr->operand(0) != params[0]) {
+    VLOG(4) << "MaxPoolFusion: reduce-window does not take parameter as operand";
+    return false;
+  }
+
+  // Fusion's root must be the reduce-window instruction
+  if (computation->root_instruction() != reduce_window_instr) {
+    VLOG(4) << "MaxPoolFusion: fusion root is not reduce-window";
+    return false;
+  }
+
+  // Check data type support
+  PrimitiveType dtype = reduce_window_instr->shape().element_type();
+  bool is_supported = (dtype == PrimitiveType::F32 ||
+                      dtype == PrimitiveType::F16 ||
+                      dtype == PrimitiveType::BF16);
+
+  if (!is_supported) {
+    VLOG(4) << "MaxPoolFusion: unsupported data type: "
+            << PrimitiveType_Name(dtype);
+    return false;
+  }
+
+  // Check the to_apply computation is maximum
+  auto* to_apply = reduce_window_instr->to_apply();
+  if (to_apply->root_instruction()->opcode() != HloOpcode::kMaximum) {
+    VLOG(4) << "MaxPoolFusion: reduce-window must use maximum, got "
+            << HloOpcodeString(to_apply->root_instruction()->opcode());
+    return false;
+  }
+
+  // Check window dimensions are valid for max pool 2D
+  const Window& window = reduce_window_instr->window();
+  if (window.dimensions().size() != 4) {
+    VLOG(4) << "MaxPoolFusion: only 4D input is supported, got "
+            << window.dimensions().size() << "D";
+    return false;
+  }
+
+  return true;
+}
+
 // Helper function to check if a fusion matches the concatenate pattern
 // Pattern:
 //   fusion { parameter0, parameter1, ... -> concatenate(parameter0, parameter1, ...), dimensions={N} }
@@ -1817,6 +1900,14 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitFusion(
   
   if (IsArgMaxFusion(fusion)) {
     TF_ASSIGN_OR_RETURN(auto thunks, EmitArgMaxFusion(fusion));
+    if (!thunks.empty()) {
+      return thunks;
+    }
+  }
+
+  // Pattern: max pool 2D -> aclnnMaxPool
+  if (IsMaxPoolFusion(fusion)) {
+    TF_ASSIGN_OR_RETURN(auto thunks, EmitMaxPoolFusion(fusion));
     if (!thunks.empty()) {
       return thunks;
     }
@@ -4003,6 +4094,89 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitScalarMultiplyFusion(
           /*execution_state=*/nullptr));
 
   // Add the thunk to the sequence
+  xla::gpu::ThunkSequence sequence;
+  sequence.push_back(std::move(thunk));
+
+  return sequence;
+}
+
+absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitMaxPoolFusion(
+    const HloFusionInstruction* fusion) {
+  VLOG(2) << "Emitting max pool fusion as aclnnMaxPool: " << fusion->name();
+
+  auto* computation = fusion->fused_instructions_computation();
+  const HloInstruction* reduce_window_instr = nullptr;
+
+  for (const auto* instr : computation->instructions()) {
+    if (instr->opcode() == HloOpcode::kReduceWindow) {
+      reduce_window_instr = instr;
+      break;
+    }
+  }
+
+  if (!reduce_window_instr) {
+    return absl::InternalError("No reduce-window instruction found in max pool fusion");
+  }
+
+  // Get input and output slices
+  TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
+
+  const Window& window = reduce_window_instr->window();
+
+  // Extract spatial dimensions (last 2 dimensions for 4D input)
+  // Window format: {size=NxCxHxW, stride=NxCxHxW, pad=N_low_N_highxC_low_C_highxH_low_H_highxW_low_W_high}
+  // For aclnnMaxPool, we only use H and W dimensions
+
+  int64_t kernel_h = window.dimensions(2).size();
+  int64_t kernel_w = window.dimensions(3).size();
+
+  int64_t stride_h = window.dimensions(2).stride();
+  int64_t stride_w = window.dimensions(3).stride();
+
+  // Padding format: N_low, N_high, C_low, C_high, H_low, H_high, W_low, W_high
+  int64_t pad_h_low = window.dimensions(2).padding_low();
+  int64_t pad_h_high = window.dimensions(2).padding_high();
+  int64_t pad_w_low = window.dimensions(3).padding_low();
+  int64_t pad_w_high = window.dimensions(3).padding_high();
+
+  std::vector<NullableShapedSlice> operands;
+  std::vector<NullableShapedSlice> results;
+  std::vector<xla::ascend::AclnnThunk::Param> params;
+
+  operands.push_back(input_slice);
+  results.push_back(output_slice);
+
+  // Add parameters for aclnnMaxPool
+  // kernelShape
+  params.push_back(xla::ascend::AclnnThunk::Param{std::vector<int64_t>{kernel_h, kernel_w}});
+
+  // strides
+  params.push_back(xla::ascend::AclnnThunk::Param{std::vector<int64_t>{stride_h, stride_w}});
+
+  // autoPad (only 0 is supported)
+  params.push_back(xla::ascend::AclnnThunk::Param{static_cast<int64_t>(0)});
+
+  // pads (H_low, H_high, W_low, W_high)
+  params.push_back(xla::ascend::AclnnThunk::Param{std::vector<int64_t>{pad_h_low, pad_h_high, pad_w_low, pad_w_high}});
+
+  // dilations (only 1 is supported)
+  params.push_back(xla::ascend::AclnnThunk::Param{std::vector<int64_t>{1, 1}});
+
+  // ceilMode (0 = false, floor division)
+  params.push_back(xla::ascend::AclnnThunk::Param{static_cast<int64_t>(0)});
+
+  VLOG(2) << "Emitting max pool fusion with kernel=[" << kernel_h << "," << kernel_w
+          << "], stride=[" << stride_h << "," << stride_w
+          << "], pad=[" << pad_h_low << "," << pad_h_high << "," << pad_w_low << "," << pad_w_high << "]";
+
+  auto thunk = std::make_unique<xla::ascend::AclnnThunk>(
+      xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
+      "aclnnMaxPool",
+      std::move(operands),
+      std::move(results),
+      std::move(params));
+
   xla::gpu::ThunkSequence sequence;
   sequence.push_back(std::move(thunk));
 
