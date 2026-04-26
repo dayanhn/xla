@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package xla.ascend;
+
+import "xla/xla_data.proto";
+
+// Backend config for ACLNN GEMM operation.
+message AclnnGemmBackendConfig {
+  double alpha = 1;
+
+  double beta = 2;
+
+  xla.DotDimensionNumbers dot_dimension_numbers = 3;
+
+  xla.PrecisionConfig precision_config = 4;
+
+  int64 lhs_stride = 5;
+  int64 rhs_stride = 6;
+
+  int64 transpose_a = 7;
+  int64 transpose_b = 8;
+
+  enum Epilogue {
+    DEFAULT = 0;
+    BIAS = 1;
+  }
+
+  Epilogue epilogue = 9;
+}

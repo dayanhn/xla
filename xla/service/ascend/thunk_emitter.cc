@@ -555,67 +555,6 @@ bool IsShiftRightFusion(const HloFusionInstruction* fusion) {
   return true;
 }
 
-// Helper function to check if a fusion matches the concatenate pattern
-// Pattern: fusion { parameter0 + parameter1 -> concatenate }
-bool IsConcatenateFusion(const HloFusionInstruction* fusion) {
-  auto* computation = fusion->fused_instructions_computation();
-  
-  // Must have exactly 3 instructions: parameter0 + parameter1 + concatenate
-  const auto& instructions = computation->instructions();
-  int64_t instruction_count = std::distance(instructions.begin(), instructions.end());
-  if (instruction_count != 3) {
-    VLOG(4) << "ConcatenateFusion: expected 3 instructions, got " 
-            << instruction_count;
-    return false;
-  }
-  
-  // Find the parameters and concatenate instructions
-  const HloInstruction* param0_instr = nullptr;
-  const HloInstruction* param1_instr = nullptr;
-  const HloInstruction* concat_instr = nullptr;
-  
-  for (const auto* instr : instructions) {
-    if (instr->opcode() == HloOpcode::kParameter) {
-      if (!param0_instr) {
-        param0_instr = instr;
-      } else if (!param1_instr) {
-        param1_instr = instr;
-      } else {
-        VLOG(4) << "ConcatenateFusion: too many parameter instructions";
-        return false;
-      }
-    } else if (instr->opcode() == HloOpcode::kConcatenate) {
-      concat_instr = instr;
-    } else {
-      VLOG(4) << "ConcatenateFusion: unexpected opcode " 
-              << HloOpcodeString(instr->opcode());
-      return false;
-    }
-  }
-  
-  // All instructions must be present
-  if (!param0_instr || !param1_instr || !concat_instr) {
-    VLOG(4) << "ConcatenateFusion: missing parameter or concatenate instruction";
-    return false;
-  }
-  
-  // Concatenate must take both parameters as operands
-  if (concat_instr->operand_count() != 2 || 
-      (concat_instr->operand(0) != param0_instr && concat_instr->operand(0) != param1_instr) ||
-      (concat_instr->operand(1) != param0_instr && concat_instr->operand(1) != param1_instr)) {
-    VLOG(4) << "ConcatenateFusion: concatenate does not take both parameters as operands";
-    return false;
-  }
-  
-  // Fusion's root must be the concatenate instruction
-  if (computation->root_instruction() != concat_instr) {
-    VLOG(4) << "ConcatenateFusion: fusion root is not concatenate";
-    return false;
-  }
-  
-  return true;
-}
-
 // Helper function to serialize broadcast-constant fusion metadata
 std::string SerializeBroadcastConstantMetadata(
     const HloFusionInstruction* fusion,
@@ -1326,6 +1265,96 @@ bool IsDivideFusion(const HloFusionInstruction* fusion) {
   return true;
 }
 
+// Helper function to check if a fusion matches the concatenate pattern
+// Pattern:
+//   fusion { parameter0, parameter1, ... -> concatenate(parameter0, parameter1, ...), dimensions={N} }
+// Supports 2 or more tensors to concatenate
+bool IsConcatenateFusion(const HloFusionInstruction* fusion) {
+  auto* computation = fusion->fused_instructions_computation();
+
+  const auto& instructions = computation->instructions();
+
+  // Collect all parameters and the concatenate instruction
+  std::vector<const HloInstruction*> params;
+  const HloInstruction* concatenate_instr = nullptr;
+
+  for (const auto* instr : instructions) {
+    if (instr->opcode() == HloOpcode::kParameter) {
+      params.push_back(instr);
+    } else if (instr->opcode() == HloOpcode::kConcatenate) {
+      concatenate_instr = instr;
+    } else {
+      VLOG(4) << "ConcatenateFusion: unexpected opcode "
+              << HloOpcodeString(instr->opcode());
+      return false;
+    }
+  }
+
+  // Must have at least 2 parameters (for concatenation)
+  if (params.size() < 2) {
+    VLOG(4) << "ConcatenateFusion: need at least 2 parameters, got "
+            << params.size();
+    return false;
+  }
+
+  // Must have the concatenate instruction
+  if (!concatenate_instr) {
+    VLOG(4) << "ConcatenateFusion: missing concatenate instruction";
+    return false;
+  }
+
+  // Check concatenate operands match parameters
+  if (concatenate_instr->operand_count() != params.size()) {
+    VLOG(4) << "ConcatenateFusion: concatenate operand count "
+            << concatenate_instr->operand_count()
+            << " doesn't match parameter count " << params.size();
+    return false;
+  }
+
+  // Verify each operand of concatenate is a parameter
+  for (int i = 0; i < concatenate_instr->operand_count(); ++i) {
+    bool found = false;
+    for (const auto* param : params) {
+      if (concatenate_instr->operand(i) == param) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      VLOG(4) << "ConcatenateFusion: concatenate operand " << i
+              << " is not a parameter";
+      return false;
+    }
+  }
+
+  // Fusion's root must be the concatenate instruction
+  if (computation->root_instruction() != concatenate_instr) {
+    VLOG(4) << "ConcatenateFusion: fusion root is not concatenate";
+    return false;
+  }
+
+  // Check data type support (aclnnCat supports multiple types)
+  PrimitiveType dtype = concatenate_instr->shape().element_type();
+  bool is_supported = (dtype == PrimitiveType::F32 ||
+                      dtype == PrimitiveType::F16 ||
+                      dtype == PrimitiveType::BF16 ||
+                      dtype == PrimitiveType::S32 ||
+                      dtype == PrimitiveType::S64 ||
+                      dtype == PrimitiveType::U32 ||
+                      dtype == PrimitiveType::U64 ||
+                      dtype == PrimitiveType::U8 ||
+                      dtype == PrimitiveType::S8 ||
+                      dtype == PrimitiveType::BOOL);
+
+  if (!is_supported) {
+    VLOG(4) << "ConcatenateFusion: unsupported data type: "
+            << PrimitiveType_Name(dtype);
+    return false;
+  }
+
+  return true;
+}
+
 // Helper function to check if a fusion matches the multiply pattern
 // Patterns:
 // 1. fusion { parameter0 + parameter1 -> multiply } (two different tensors)
@@ -1779,14 +1808,6 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitFusion(
     }
   }
   
-  // Pattern 4: concatenate -> ascend.cat
-  if (IsConcatenateFusion(fusion)) {
-    TF_ASSIGN_OR_RETURN(auto thunks, EmitConcatenateFusion(fusion));
-    if (!thunks.empty()) {
-      return thunks;
-    }
-  }
-  
   if (IsIotaFusion(fusion)) {
     TF_ASSIGN_OR_RETURN(auto thunks, EmitIotaFusion(fusion));
     if (!thunks.empty()) {
@@ -1800,7 +1821,15 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitFusion(
       return thunks;
     }
   }
-  
+
+  // Pattern: concatenate -> aclnnCat
+  if (IsConcatenateFusion(fusion)) {
+    TF_ASSIGN_OR_RETURN(auto thunks, EmitConcatenateFusion(fusion));
+    if (!thunks.empty()) {
+      return thunks;
+    }
+  }
+
   // Add more FFI pattern matching here in the future
   // Pattern 5: ...
   
@@ -3606,84 +3635,6 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitShiftRightFusion(
   return sequence;
 }
 
-// Helper function to emit concatenate fusion as ascend.cat FFI call
-absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitConcatenateFusion(
-    const HloFusionInstruction* fusion) {
-  VLOG(2) << "Emitting concatenate fusion as ascend.cat: " << fusion->name();
-  
-  // Get the input buffer allocations
-  TF_ASSIGN_OR_RETURN(auto input1_slice_result, GetShapedSliceForHlo(fusion->operand(0)));
-  TF_ASSIGN_OR_RETURN(auto input2_slice_result, GetShapedSliceForHlo(fusion->operand(1)));
-  TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
-  
-  // Fix: Use instruction's shape directly because GetShapeForUniqueSlice may return incorrect shape
-  xla::ShapedSlice input1_slice = input1_slice_result;
-  input1_slice.shape = fusion->operand(0)->shape();
-  
-  xla::ShapedSlice input2_slice = input2_slice_result;
-  input2_slice.shape = fusion->operand(1)->shape();
-  
-  // Extract the concatenate instruction to get the dimensions attribute
-  auto* computation = fusion->fused_instructions_computation();
-  const HloInstruction* concat_instr = nullptr;
-  
-  for (const auto* instr : computation->instructions()) {
-    if (instr->opcode() == HloOpcode::kConcatenate) {
-      concat_instr = instr;
-      break;
-    }
-  }
-  
-  if (!concat_instr) {
-    return absl::InternalError("No concatenate instruction found in concatenate fusion");
-  }
-  
-  // Get the concatenate dimension from the instruction
-  absl::Span<const int64_t> dimensions = concat_instr->dimensions();
-  if (dimensions.empty()) {
-    return absl::InternalError("Concatenate instruction has no dimensions attribute");
-  }
-  
-  int64_t concat_dimension = dimensions[0];  // Typically concatenate has one dimension
-  VLOG(2) << "Concatenate fusion: concat_dimension=" << concat_dimension;
-  
-  // Create operands and results for CustomCallThunk
-  std::vector<NullableShapedSlice> operands;
-  std::vector<NullableShapedSlice> results;
-  
-  // Add input and output slices
-  operands.push_back(input1_slice);
-  operands.push_back(input2_slice);
-  results.push_back(output_slice);
-  
-  // Create attributes map with concatenate dimension
-  xla::ffi::AttributesMap attributes;
-  attributes["dim"] = xla::ffi::Scalar(concat_dimension);
-  
-  // Get GPU compute capability
-  const se::GpuComputeCapability& gpu_compute_capability = 
-      ir_emitter_context_->gpu_compute_capability();
-  
-  // Create CustomCallThunk
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<xla::gpu::CustomCallThunk> thunk,
-      xla::gpu::CustomCallThunk::Create(
-          xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
-          "ascend.cat",
-          std::move(operands),
-          std::move(results),
-          std::move(attributes),
-          /*called_computation=*/nullptr,
-          "ASCEND",
-          gpu_compute_capability,
-          /*execution_state=*/nullptr));
-  
-  // Add the thunk to the sequence
-  xla::gpu::ThunkSequence sequence;
-  sequence.push_back(std::move(thunk));
-  
-  return sequence;
-}
 
 absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitGemmThunk(
     const HloCustomCallInstruction* instr) {
@@ -4058,6 +4009,67 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitScalarMultiplyFusion(
   return sequence;
 }
 
+absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitConcatenateFusion(
+    const HloFusionInstruction* fusion) {
+  VLOG(2) << "Emitting concatenate fusion as aclnnCat: " << fusion->name();
+
+  auto* computation = fusion->fused_instructions_computation();
+  const HloInstruction* concatenate_instr = nullptr;
+
+  for (const auto* instr : computation->instructions()) {
+    if (instr->opcode() == HloOpcode::kConcatenate) {
+      concatenate_instr = instr;
+      break;
+    }
+  }
+
+  if (!concatenate_instr) {
+    return absl::InternalError("No concatenate instruction found in concatenate fusion");
+  }
+
+  // Get the concatenate dimension
+  int64_t concat_dim = concatenate_instr->dimensions()[0];
+
+  // Get all input slices
+  std::vector<NullableShapedSlice> input_slices;
+  for (int i = 0; i < fusion->operand_count(); ++i) {
+    TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(fusion->operand(i)));
+    input_slices.push_back(input_slice);
+  }
+
+  // Get output slice
+  TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
+
+  std::vector<NullableShapedSlice> operands;
+  std::vector<NullableShapedSlice> results;
+  std::vector<xla::ascend::AclnnThunk::Param> params;
+
+  // Add input slices
+  for (auto& input_slice : input_slices) {
+    operands.push_back(input_slice);
+  }
+
+  // Add output slice
+  results.push_back(output_slice);
+
+  // Add the concatenate dimension as parameter
+  params.push_back(xla::ascend::AclnnThunk::Param{concat_dim});
+
+  VLOG(2) << "Emitting concatenate fusion with " << operands.size()
+          << " inputs along dimension " << concat_dim;
+
+  auto thunk = std::make_unique<xla::ascend::AclnnThunk>(
+      xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
+      "aclnnCat",
+      std::move(operands),
+      std::move(results),
+      std::move(params));
+
+  xla::gpu::ThunkSequence sequence;
+  sequence.push_back(std::move(thunk));
+
+  return sequence;
+}
 
 absl::StatusOr<std::optional<xla::gpu::ThunkSequence>> ThunkEmitter::EmitHloInstruction(
     const HloInstruction* hlo) {

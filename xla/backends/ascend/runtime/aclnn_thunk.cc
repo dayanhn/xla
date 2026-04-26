@@ -167,6 +167,36 @@ static const std::unordered_map<std::string, ExecuteFunc> kOpExecutors = {
       
       return absl::OkStatus();
     }
+  },
+  {
+    "aclnnCat",
+    [](const AclnnThunk::ExecuteParams& params, se::Stream* stream,
+       const std::vector<NullableShapedSlice>& operands,
+       const std::vector<NullableShapedSlice>& results,
+       const std::vector<AclnnThunk::Param>& params_list,
+       const std::function<TensorTriplet(const NullableShapedSlice&)>& make_triplet) -> absl::Status {
+      CHECK(operands.size() >= 2 && results.size() == 1 && params_list.size() == 1)
+          << "aclnnCat requires at least 2 inputs, 1 output, and 1 parameter (concat_dim)";
+
+      // Extract the concatenate dimension
+      int64_t concat_dim = std::get<int64_t>(params_list[0]);
+
+      // Build tensor list from operands
+      std::vector<aclTensor*> tensor_list;
+      tensor_list.reserve(operands.size());
+      for (const auto& operand : operands) {
+        TensorTriplet triplet = make_triplet(operand);
+        tensor_list.push_back(triplet.device_memory_data());
+      }
+
+      // Call aclnnCat
+      EXEC_ACLNN_CMD(aclnnCat, stream,
+                     tensor_list,
+                     concat_dim,
+                     make_triplet(results[0]));
+
+      return absl::OkStatus();
+    }
   }
 };
 
