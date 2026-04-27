@@ -120,58 +120,16 @@ static const std::unordered_map<std::string, ExecuteFunc> kOpExecutors = {
        const std::vector<NullableShapedSlice>& results,
        const std::vector<AclnnThunk::Param>& params_list,
        const std::function<TensorTriplet(const NullableShapedSlice&)>& make_triplet) -> absl::Status {
-      // operands: [A, B] or [A, B, bias]
-      // results: [output]
-      bool has_bias = (operands.size() == 3);
-      CHECK(operands.size() == 2 || operands.size() == 3) << "aclnnGemm requires 2 or 3 inputs";
-      CHECK(results.size() >= 1) << "aclnnGemm requires at least 1 output";
-
-      // Extract parameters
-      float alpha = 1.0f;
-      float beta = has_bias ? 1.0f : 0.0f;
-      int64_t transA = 0;
-      int64_t transB = 0;
+      CHECK(operands.size() == 3 && results.size() >= 1 && params_list.size() == 4) << "aclnnGemm requires 3 inputs, 1 output, and 4 parameters (alpha, beta, transA, transB)";
+      auto alpha = std::get<float>(params_list[0]);
+      auto beta = std::get<float>(params_list[1]);
+      auto transA = std::get<int64_t>(params_list[2]);
+      auto transB = std::get<int64_t>(params_list[3]);
       int8_t cubeMathType = 0;  // Default value for cubeMathType
-
-      // Get workspace size and executor
-      uint64_t workspaceSize = 0;
-      aclOpExecutor* executor = nullptr;
-      auto status = aclnnGemmGetWorkspaceSize(
-          make_triplet(operands[0]).device_memory_data(),  // A
-          make_triplet(operands[1]).device_memory_data(),  // B
-          has_bias ? make_triplet(operands[2]).device_memory_data() : nullptr,  // C (bias)
-          alpha, beta, transA, transB,
-          make_triplet(results[0]).device_memory_data(),  // out
-          cubeMathType,
-          &workspaceSize,
-          &executor);
-      if (status != ACLNN_SUCCESS) {
-        return absl::InternalError(absl::StrCat("aclnnGemmGetWorkspaceSize failed: ", status));
-      }
-
-      // Allocate workspace if needed
-      void* workspace = nullptr;
-      if (workspaceSize > 0) {
-        auto ret = aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        if (ret != ACL_SUCCESS) {
-          return absl::InternalError(absl::StrCat("aclrtMalloc failed: ", ret));
-        }
-      }
-
-      // Call aclnnGemm
-      status = aclnnGemm(workspace, workspaceSize, executor, stream->implementation());
-      if (status != ACLNN_SUCCESS) {
-        if (workspace) {
-          aclrtFree(workspace);
-        }
-        return absl::InternalError(absl::StrCat("aclnnGemm failed: ", status));
-      }
-
-      // Free workspace
-      if (workspace) {
-        aclrtFree(workspace);
-      }
-
+      EXEC_ACLNN_CMD(aclnnGemm, stream, 
+                     make_triplet(operands[0]), make_triplet(operands[1]), make_triplet(operands[2]),
+                     alpha, beta, transA, transB, 
+                     make_triplet(results[0]), cubeMathType);
       return absl::OkStatus();
     }
   },
@@ -260,7 +218,7 @@ static const std::unordered_map<std::string, ExecuteFunc> kOpExecutors = {
       tensor_list.reserve(operands.size());
       for (const auto& operand : operands) {
         TensorTriplet triplet = make_triplet(operand);
-        tensor_list.push_back(triplet.device_memory_data());
+        tensor_list.push_back(ConvertType(triplet));
       }
 
       // Call aclnnCat

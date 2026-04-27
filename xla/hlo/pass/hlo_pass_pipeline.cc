@@ -183,7 +183,15 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
       compilation_stats_->StartPass(pass_name);
     }
     RecordPassStartMetadata(*hlo, pass_name, pipeline_name);
+    uint64_t test_start_micros = tsl::Env::Default()->NowMicros();
+    if (VLOG_IS_ON(5)) {
+      std::cerr << "-------->HLO pass : " << pipeline_name << "," << pass_name << " : Start time: " << test_start_micros / 1000.0 << std::endl;
+    }
     auto status_or_changed = RunHelper<HloT>(pass, hlo, execution_threads);
+    uint64_t test_end_micros = tsl::Env::Default()->NowMicros();
+    if (VLOG_IS_ON(5)) {
+      std::cerr << "-------->HLO pass " << pass_name << " : Duration: " << (test_end_micros - test_start_micros) / 1000.0 << std::endl;
+    }
     if (auto status = status_or_changed.status(); !status.ok()) {
       compilation_stats_->RecordPassError(
           pass_name, absl::StatusCodeToString(status.code()));

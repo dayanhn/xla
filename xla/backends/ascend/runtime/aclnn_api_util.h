@@ -219,6 +219,11 @@ inline uint64_t* ConvertType(uint64_t* value) {
   return value;
 }
 
+// Handle nullptr_t to avoid ambiguity
+inline std::nullptr_t ConvertType(std::nullptr_t value) {
+  return value;
+}
+
 // Pass-through ConvertType for aclOpExecutor**
 inline aclOpExecutor** ConvertType(aclOpExecutor** value) {
   return value;

@@ -70,7 +70,7 @@ class ThunkEmitter {
   std::vector<std::unique_ptr<llvm::Module>> ConsumeKernelModules() {
     return std::move(kernel_modules_);
   }
-
+  int debug_ascend = 0;
  private:
   // Emits code for the given HLO computation.
   //

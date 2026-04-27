@@ -1427,7 +1427,7 @@ bool IsConcatenateFusion(const HloFusionInstruction* fusion) {
                       dtype == PrimitiveType::U64 ||
                       dtype == PrimitiveType::U8 ||
                       dtype == PrimitiveType::S8 ||
-                      dtype == PrimitiveType::BOOL);
+                      dtype == PrimitiveType::PRED);
 
   if (!is_supported) {
     VLOG(4) << "ConcatenateFusion: unsupported data type: "
@@ -3294,7 +3294,6 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitTensorBroadcastFusion(
   }
   
   const Shape& input_shape = fusion->operand(0)->shape();
-  int64_t input_ndim = input_shape.dimensions_size();
   
   VLOG(2) << "Tensor broadcast fusion: input shape=" << input_shape.ToString() 
           << ", output shape=" << fusion->shape().ToString()
@@ -3594,7 +3593,6 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitConvolutionFusion(
   }
   
   const auto& window = conv_instr->window();
-  const auto& padding = window.padding();
   
   // Extract stride
   std::vector<int64_t> stride;
@@ -3602,11 +3600,11 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitConvolutionFusion(
     stride.push_back(window.dimensions(i).stride());
   }
   
-  // Extract padding
+  // Extract padding - use dimensions().padding_low() and padding_high()
   std::vector<int64_t> pad_values;
-  for (int i = 0; i < padding.dimensions_size(); ++i) {
-    pad_values.push_back(padding.dimensions(i).low());
-    pad_values.push_back(padding.dimensions(i).high());
+  for (int i = 0; i < window.dimensions_size(); ++i) {
+    pad_values.push_back(window.dimensions(i).padding_low());
+    pad_values.push_back(window.dimensions(i).padding_high());
   }
   
   // Extract dilation

@@ -277,11 +277,10 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
       "GpuCompiler::RunBackend - IR emission for ", hlo_module->name()));
   // 使用VLOG(4)控制打印输出，这样可以通过前端配置TF_CPP_VMODULE=compile_module_to_llvm_ir=4来控制
-  VLOG(4) << "\n\n=== DUMPING HLO MODULE DETAILS (TEMPORARY DEBUG) ===";
-  VLOG(4) << "Module name: " << hlo_module->name();
-  VLOG(4) << "Module unique_id: " << hlo_module->unique_id();
-  
   if (VLOG_IS_ON(4)) {
+    std::cerr << "\n\n=== DUMPING HLO MODULE DETAILS (TEMPORARY DEBUG) ===\n";
+    std::cerr << "Module name: " << hlo_module->name() << std::endl;
+    std::cerr << "Module unique_id: " << hlo_module->unique_id() << std::endl;
     // 使用详细的打印选项
     HloPrintOptions detailed_options;
     detailed_options.set_print_large_constants(true)
@@ -292,8 +291,9 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
                     .set_print_subcomputation_mode(HloPrintOptions::PrintSubcomputationMode::kFullBodies);
     
     std::string hlo_text = hlo_module->ToString(detailed_options);
-    VLOG(4) << "=== HLO Module Text (detailed) ===";
-    VLOG(4) << hlo_text;
+    std::cerr << "=== HLO Module Text (detailed) ===" << std::endl;
+    std::cerr << hlo_text;
+    std::cerr << "\n=== END DUMPING HLO MODULE DETAILS (TEMPORARY DEBUG) ===\n\n";
   }
   // === END TEMPORARY DEBUG ===
 

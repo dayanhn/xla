@@ -2578,6 +2578,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
       std::cerr << hlo_text << std::endl;
       std::cerr << "=== HLO Instruction Detailed End ===" << std::endl;
     }
+    if(debug_ascend){
+      return ThunkSequence{};
+    }
     // If Ascend returned nullopt, continue with GPU implementation
   }
 #endif

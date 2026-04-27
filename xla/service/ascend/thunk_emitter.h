@@ -154,6 +154,15 @@ class ThunkEmitter {
   absl::StatusOr<xla::gpu::ThunkSequence> EmitGemmThunk(
       const HloCustomCallInstruction* hlo);
 
+  absl::StatusOr<xla::gpu::ThunkSequence> EmitConvolutionFusion(
+      const HloFusionInstruction* fusion);
+
+  absl::StatusOr<xla::gpu::ThunkSequence> EmitSqrtFusion(
+      const HloFusionInstruction* fusion);
+
+  absl::StatusOr<xla::gpu::ThunkSequence> EmitMaxPoolFusion(
+      const HloFusionInstruction* fusion);
+
   // Context and state
   xla::gpu::IrEmitterContext* ir_emitter_context_;
   std::shared_ptr<xla::gpu::HostSendRecvAsyncEvents> send_recv_events_;
