@@ -135,3 +135,7 @@ jax/xla/xla/service/ascend/ffi/BUILD
  }, metadata={op_name="jit(compute_grads)/jvp()/conv_general_dilated" stack_frame_id=20} 
  需要转换为aclnnConvolution算子，对应的接口说明文档为： `/home/zzw/code/google/ascend/ops-nn/conv/convolution_forward/docs/aclnnConvolution.md` ，你需要注意aclnnConvolution接口的参数相对要复杂一点，有些参数需要从Hlo算子中提取信息，比如步长，padding，然后传入EXEC_ACLNN_CMD，由EXEC_ACLNN_CMD去将这些参数转换为aclIntArray，你需要关注aclIntArray是否已经有了这种自动转换能力
  ------------
+
+ ascend提供的卷积算子接口如下: `/home/zzw/code/google/ascend/ops-nn/conv/convolution_forward/docs/aclnnConvolution.md` 我现在需要你研究该接口，同时参考xla下Pass的写法，比如 `/home/zzw/code/google/jax/xla/xla/backends/gpu/transforms/gemm_rewriter.cc` ,帮我在jax/xla/xla/backends/ascend/transforms目录下写一个aclnn_convolution  pass,该PASS能将卷积,+bias等指令进行融合，重写为一个custom_call指令，该指令方便后续转换为aclnn_thunk来直接调用aclnnConvolution算子。以下是一个带bias的conv hlo ir示例：
+ `/home/zzw/code/google/jax/tmp/xla_dump_conv_bias_net/module_0003.jit_convnet_forward_and_backward.0000.annotate-host-compute.after_pipeline-start.before_hlo_host_device_type_call_wrapper.txt#L132-140` ，要求PASS支持带bias,也不支持不带bias的情况。并且能提取出准确全面的信息用于构造custom_call指令
+ ------------

@@ -307,13 +307,12 @@ class AclnnGemmRewriterVisitor : public DfsHloRewriteVisitor {
                   m::Bitcast(AclnnGemm(&existing_gemm).WithOneUser())
                       .WithOneUser(),
                   m::Broadcast(&bias, m::Op()).WithOneUser()))) {
-      TF_ASSIGN_OR_RETURN(
-          HloInstruction * new_add,
-          MakeBinaryHlo(HloOpcode::kAdd, existing_gemm,
-                        MakeBitcastHlo(bias, existing_gemm->shape())));
-      TF_RETURN_IF_ERROR(
-          ReplaceInstruction(instr, MakeBitcastHlo(new_add, instr->shape())));
-      instr = new_add;
+      TF_ASSIGN_OR_RETURN(bool was_fused,
+                          FuseVectorBiasAdd(instr, bias, existing_gemm,
+                                           nullptr, nullptr, nullptr));
+      if (was_fused) {
+        return absl::OkStatus();
+      }
     }
 
     auto is_not_broadcast = HloPredicateIsNotOp<HloOpcode::kBroadcast>;
@@ -324,14 +323,11 @@ class AclnnGemmRewriterVisitor : public DfsHloRewriteVisitor {
                       AclnnGemm(&existing_gemm).WithOneUser())
                       .WithOneUser(),
                   m::Op(&bias).WithPredicate(is_not_broadcast)))) {
-      HloInstruction* new_bitcast =
-          MakeBitcastHlo(bias, existing_gemm->shape(), &bias->metadata());
-      TF_ASSIGN_OR_RETURN(HloInstruction * new_add,
-                          MakeBinaryHlo(HloOpcode::kAdd, existing_gemm,
-                                        new_bitcast, &bias->metadata()));
-      TF_RETURN_IF_ERROR(
-          ReplaceInstruction(instr, MakeBitcastHlo(new_add, instr->shape())));
-      instr = new_add;
+      TF_ASSIGN_OR_RETURN(bool was_fused,
+                          FuseMatrixBiasAdd(instr, bias, existing_gemm));
+      if (was_fused) {
+        return absl::OkStatus();
+      }
     }
 
     if (Match(instr,
@@ -354,7 +350,11 @@ class AclnnGemmRewriterVisitor : public DfsHloRewriteVisitor {
            instr->users()[0]->user_count() == 0);
 
       if (types_are_supported && has_no_consumer) {
-        return FuseMatrixBiasAdd(instr, bias, existing_gemm);
+        TF_ASSIGN_OR_RETURN(bool was_fused,
+                            FuseMatrixBiasAdd(instr, bias, existing_gemm));
+        if (was_fused) {
+          return absl::OkStatus();
+        }
       }
     }
 
@@ -375,14 +375,16 @@ class AclnnGemmRewriterVisitor : public DfsHloRewriteVisitor {
                                           gemm->operands().end());
     operands.push_back(bias_operand);
 
+    HloComputation* computation = gemm->parent();
+    HloInstruction* result = computation->AddInstruction(
+        HloInstruction::CreateCustomCall(
+            gemm->shape(),
+            operands,
+            kAclnnGemmCallTarget));
+
     AclnnGemmConfig config;
     config.has_bias = true;
     config.beta = 1.0f;
-
-    HloComputation* computation = gemm->parent();
-    HloInstruction* result = computation->AddInstruction(
-        gemm->CloneWithNewOperands(gemm->shape(), operands));
-
     result->set_raw_backend_config_string(config.ToString());
     TF_RETURN_IF_ERROR(SetName(gemm->GetModule(), result));
 
@@ -400,16 +402,16 @@ class AclnnGemmRewriterVisitor : public DfsHloRewriteVisitor {
     return true;
   }
 
-  absl::Status FuseMatrixBiasAdd(HloInstruction* instr, HloInstruction* bias,
+  absl::StatusOr<bool> FuseMatrixBiasAdd(HloInstruction* instr, HloInstruction* bias,
                                 HloInstruction* gemm) {
     TF_RET_CHECK(ShapeUtil::Compatible(bias->shape(), gemm->shape()));
 
     if (!SupportsEpilogueFusion(gemm->shape().element_type())) {
-      return absl::OkStatus();
+      return false;
     }
 
     if (gemm->user_count() != 1) {
-      return absl::OkStatus();
+      return false;
     }
 
     std::vector<HloInstruction*> operands(gemm->operands().begin(),
@@ -421,12 +423,16 @@ class AclnnGemmRewriterVisitor : public DfsHloRewriteVisitor {
     config.beta = 1.0f;
 
     std::unique_ptr<HloInstruction> fused_op =
-        gemm->CloneWithNewOperands(gemm->shape(), operands);
+        HloInstruction::CreateCustomCall(
+            gemm->shape(),
+            operands,
+            kAclnnGemmCallTarget);
     fused_op->mutable_shape()->set_element_type(bias->shape().element_type());
     fused_op->set_raw_backend_config_string(config.ToString());
     TF_RETURN_IF_ERROR(SetName(instr->GetModule(), fused_op.get()));
 
-    return ReplaceWithNewInstruction(instr, std::move(fused_op));
+    TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(instr, std::move(fused_op)));
+    return true;
   }
 
   se::GpuComputeCapability gpu_version_;
