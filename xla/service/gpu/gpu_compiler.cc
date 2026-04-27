@@ -343,6 +343,10 @@ limitations under the License.
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_stablehlo_pass.h"
 #endif  // PLATFORM_GOOGLE
 
+#ifdef XLA_ENABLE_ASCEND
+#include "xla/backends/ascend/transforms/aclnn_fusion_pass.h"
+#endif
+
 namespace xla {
 namespace gpu {
 namespace {
@@ -1598,6 +1602,9 @@ absl::Status GpuCompiler::OptimizeHloModule(
                     "compile with a GPU present.";
     enable_sort_rewriter = false;
   }
+#ifdef XLA_ENABLE_ASCEND
+      RETURN_IF_ERROR(xla::ascend::RunAclnnFusionPass(hlo_module, gpu_target_config));
+#endif
   RETURN_IF_ERROR(RunOptimizationPasses(hlo_module, gpu_target_config,
                                         layout_insensitive_algsimp_opts,
                                         enable_sort_rewriter));

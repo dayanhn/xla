@@ -1948,6 +1948,11 @@ cc_library(
         "//xla/hlo/experimental/auto_sharding",
         "//xla/hlo/experimental/auto_sharding:auto_sharding_option",
         "//xla/hlo/experimental/auto_sharding:auto_sharding_stablehlo_pass",
+    ]) + if_ascend_is_configured([
+        "//xla/backends/ascend/transforms:aclnn_fusion_pass",
+    ]),
+    defines = if_ascend_is_configured([
+        "XLA_ENABLE_ASCEND",
     ]),
 )
 
