@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "xla/backends/ascend/transforms/aclnn_gemm_rewriter.h"
+#include "xla/backends/ascend/transforms/aclnn_config.h"
+#include "xla/backends/ascend/transforms/aclnn_targets.h"
 
 #include <algorithm>
 #include <array>
@@ -62,35 +64,13 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
+#include "xla/backends/ascend/transforms/aclnn_config.h"
 
 namespace xla {
 namespace ascend {
 namespace {
 
 namespace m = match;
-
-constexpr char kAclnnGemmCallTarget[] = "__aclnn$gemm";
-
-struct AclnnGemmConfig {
-  float alpha = 1.0f;
-  float beta = 0.0f;
-  int64_t transpose_a = 0;
-  int64_t transpose_b = 0;
-  int64_t lhs_stride = 0;
-  int64_t rhs_stride = 0;
-  bool has_bias = false;
-
-  std::string ToString() const {
-    return absl::StrCat(
-        "alpha=", alpha,
-        ",beta=", beta,
-        ",transpose_a=", transpose_a,
-        ",transpose_b=", transpose_b,
-        ",lhs_stride=", lhs_stride,
-        ",rhs_stride=", rhs_stride,
-        ",has_bias=", has_bias);
-  }
-};
 
 absl::Status SetName(HloModule* module, HloInstruction* gemm) {
   module->SetAndUniquifyInstrName(gemm, "aclnn-gemm");
@@ -217,26 +197,39 @@ class AclnnGemmRewriterVisitor : public DfsHloRewriteVisitor {
       return absl::OkStatus();
     }
 
-    AclnnGemmConfig config;
-    config.alpha = 1.0f;
-    config.beta = 0.0f;
+    auto config = std::make_unique<AclnnGemmConfig>();
+    config->alpha = 1.0f;
+    config->beta = 0.0f;
 
     HloInstruction* lhs = instr->mutable_operand(0);
     HloInstruction* rhs = instr->mutable_operand(1);
 
-    int64_t lhs_batch_dims_size =
-        instr->dot_dimension_numbers().lhs_batch_dimensions_size();
-    bool is_lhs_vector =
-        lhs->shape().dimensions().size() == lhs_batch_dims_size + 1;
-    config.lhs_stride =
-        is_lhs_vector ? lhs->shape().dimensions(lhs_batch_dims_size)
+    // Collect reduce axis information and determine transpose flags
+    const auto& dot_dims = instr->dot_dimension_numbers();
+    int64_t lhs_batch_dims_size = dot_dims.lhs_batch_dimensions_size();
+    
+    // Get contracting dimensions
+    int64_t lhs_contracting_dim = dot_dims.lhs_contracting_dimensions(0);
+    int64_t rhs_contracting_dim = dot_dims.rhs_contracting_dimensions(0);
+    
+    // Determine if we need to transpose
+    // For ACLNN GEMM, we need to check if the contracting dimension is the last dimension
+    bool is_lhs_vector = lhs->shape().dimensions().size() == lhs_batch_dims_size + 1;
+    int64_t lhs_non_contracting_dim = is_lhs_vector ? lhs_batch_dims_size : lhs_batch_dims_size;
+    
+    bool is_rhs_vector = rhs->shape().dimensions().size() == lhs_batch_dims_size + 1;
+    int64_t rhs_non_contracting_dim = is_rhs_vector ? lhs_batch_dims_size : lhs_batch_dims_size + 1;
+    
+    // Set transpose flags based on contracting dimension position
+    config->transpose_a = (lhs_contracting_dim != lhs->shape().dimensions().size() - 1) ? 1 : 0;
+    config->transpose_b = (rhs_contracting_dim != rhs->shape().dimensions().size() - 2) ? 1 : 0;
+
+    // Calculate strides
+    config->lhs_stride = is_lhs_vector ? lhs->shape().dimensions(lhs_batch_dims_size)
                      : lhs->shape().dimensions(lhs_batch_dims_size) *
                            lhs->shape().dimensions(lhs_batch_dims_size + 1);
 
-    bool is_rhs_vector =
-        rhs->shape().dimensions().size() == lhs_batch_dims_size + 1;
-    config.rhs_stride =
-        is_rhs_vector ? rhs->shape().dimensions(lhs_batch_dims_size)
+    config->rhs_stride = is_rhs_vector ? rhs->shape().dimensions(lhs_batch_dims_size)
                      : rhs->shape().dimensions(lhs_batch_dims_size) *
                            rhs->shape().dimensions(lhs_batch_dims_size + 1);
 
@@ -247,7 +240,7 @@ class AclnnGemmRewriterVisitor : public DfsHloRewriteVisitor {
             {lhs, rhs},
             kAclnnGemmCallTarget));
 
-    gemm_call->set_raw_backend_config_string(config.ToString());
+    gemm_call->set_raw_backend_config_string(SerializeAclnnConfig(*config));
     TF_RETURN_IF_ERROR(SetName(instr->GetModule(), gemm_call));
     TF_RETURN_IF_ERROR(ReplaceInstruction(instr, gemm_call));
 
@@ -383,10 +376,16 @@ class AclnnGemmRewriterVisitor : public DfsHloRewriteVisitor {
             operands,
             kAclnnGemmCallTarget));
 
-    AclnnGemmConfig config;
-    config.has_bias = true;
-    config.beta = 1.0f;
-    result->set_raw_backend_config_string(config.ToString());
+    // Parse original config and modify it
+    TF_ASSIGN_OR_RETURN(auto config, ParseAclnnConfig(
+        kAclnnGemmCallTarget, gemm->raw_backend_config_string()));
+    auto* gemm_config = dynamic_cast<AclnnGemmConfig*>(config.get());
+    if (!gemm_config) {
+      return absl::InternalError("Failed to cast to AclnnGemmConfig");
+    }
+    gemm_config->has_bias = true;
+    gemm_config->beta = 1.0f;
+    result->set_raw_backend_config_string(SerializeAclnnConfig(*config));
     TF_RETURN_IF_ERROR(SetName(gemm->GetModule(), result));
 
     if (slice) {
@@ -419,9 +418,15 @@ class AclnnGemmRewriterVisitor : public DfsHloRewriteVisitor {
                                           gemm->operands().end());
     operands.push_back(bias);
 
-    AclnnGemmConfig config;
-    config.has_bias = true;
-    config.beta = 1.0f;
+    // Parse original config and modify it
+    TF_ASSIGN_OR_RETURN(auto config, ParseAclnnConfig(
+        kAclnnGemmCallTarget, gemm->raw_backend_config_string()));
+    auto* gemm_config = dynamic_cast<AclnnGemmConfig*>(config.get());
+    if (!gemm_config) {
+      return absl::InternalError("Failed to cast to AclnnGemmConfig");
+    }
+    gemm_config->has_bias = true;
+    gemm_config->beta = 1.0f;
 
     std::unique_ptr<HloInstruction> fused_op =
         HloInstruction::CreateCustomCall(
@@ -429,7 +434,7 @@ class AclnnGemmRewriterVisitor : public DfsHloRewriteVisitor {
             operands,
             kAclnnGemmCallTarget);
     fused_op->mutable_shape()->set_element_type(bias->shape().element_type());
-    fused_op->set_raw_backend_config_string(config.ToString());
+    fused_op->set_raw_backend_config_string(SerializeAclnnConfig(*config));
     TF_RETURN_IF_ERROR(SetName(instr->GetModule(), fused_op.get()));
 
     TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(instr, std::move(fused_op)));

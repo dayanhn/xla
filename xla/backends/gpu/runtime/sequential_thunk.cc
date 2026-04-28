@@ -114,7 +114,16 @@ absl::Status SequentialThunk::ExecuteOnStream(const ExecuteParams& params) {
                "[thunk=%d/%d] Start SequentialThunk::ExecuteOnStream: %s", i,
                thunks_.size(), thunk->profile_annotation());
 
-    TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
+    auto status = thunk->ExecuteOnStream(params);
+    if (!status.ok()) {
+      std::cerr << "=========>Error executing thunk " << i << "/" << thunks_.size() 
+                << " | kind=" << Thunk::KindToString(thunk->kind())
+                << " | annotation=" << thunk->profile_annotation()
+                << " | thunk_id=" << thunk->thunk_info().thunk_id.value()
+                << " | details=" << thunk->ToString(0)
+                << std::endl;
+    }
+    TF_RETURN_IF_ERROR(status);
 
     XLA_VLOG_DEVICE(1, params.stream->parent()->device_ordinal())
         << absl::StreamFormat(

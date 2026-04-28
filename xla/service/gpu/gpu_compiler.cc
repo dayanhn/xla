@@ -1603,7 +1603,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
     enable_sort_rewriter = false;
   }
 #ifdef XLA_ENABLE_ASCEND
-      RETURN_IF_ERROR(xla::ascend::RunAclnnFusionPass(hlo_module, gpu_target_config));
+  RETURN_IF_ERROR(xla::ascend::RunAclnnFusionPass(hlo_module, gpu_target_config));
 #endif
   RETURN_IF_ERROR(RunOptimizationPasses(hlo_module, gpu_target_config,
                                         layout_insensitive_algsimp_opts,

@@ -33,6 +33,8 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/ascend/runtime/aclnn_thunk.h"
+#include "xla/backends/ascend/transforms/aclnn_config.h"
+#include "xla/backends/ascend/transforms/aclnn_targets.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -486,6 +488,9 @@ bool IsConvertFusion(const HloFusionInstruction* fusion) {
       (src_type == PrimitiveType::U8 && dst_type == PrimitiveType::U32) ||
       (src_type == PrimitiveType::U32 && dst_type == PrimitiveType::U8) ||
       (src_type == PrimitiveType::PRED && dst_type == PrimitiveType::S32) ||
+      (src_type == PrimitiveType::PRED && dst_type == PrimitiveType::F32) ||
+      (src_type == PrimitiveType::PRED && dst_type == PrimitiveType::F16) ||
+      (src_type == PrimitiveType::PRED && dst_type == PrimitiveType::BF16) ||
       (src_type == PrimitiveType::S32 && dst_type == PrimitiveType::PRED)) {
     is_supported = true;
   }
@@ -1722,6 +1727,39 @@ absl::StatusOr<xla::ShapedSlice> ThunkEmitter::GetShapedSliceForHlo(
   return xla::ShapedSlice{slice, shape};
 }
 
+// Overload for fusion instruction inputs - handles cases where operations
+// like bitcast are fused inline, sharing memory but changing shape
+absl::StatusOr<xla::ShapedSlice> ThunkEmitter::GetInputParamShapedSliceForHlo(
+    const xla::HloFusionInstruction* fusion, int64_t operand_index) const {
+  // Get slice from operand (memory address is correct)
+  TF_ASSIGN_OR_RETURN(xla::BufferAllocation::Slice slice,
+                      GetAllocationSliceForHlo(fusion->operand(operand_index)));
+  
+  // Get shape from fusion internal parameter (handles bitcast fusion)
+  auto* computation = fusion->fused_instructions_computation();
+  const HloInstruction* param_instr = nullptr;
+  for (const auto* instr : computation->instructions()) {
+    if (instr->opcode() == HloOpcode::kParameter && 
+        instr->parameter_number() == operand_index) {
+      param_instr = instr;
+      break;
+    }
+  }
+  
+  // If we found internal parameter, use its shape; otherwise fall back to operand shape
+  xla::Shape shape;
+  if (param_instr) {
+    shape = param_instr->shape();
+  } else {
+    TF_ASSIGN_OR_RETURN(
+        shape,
+        ir_emitter_context_->buffer_assignment().GetShapeForUniqueSlice(
+            fusion->operand(operand_index), ShapeIndex{}));
+  }
+  
+  return xla::ShapedSlice{slice, shape};
+}
+
 absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitConstant(
     const HloConstantInstruction* instr) {
   // For constants inside fusions, they are handled as part of the fusion's CustomCall
@@ -2015,7 +2053,7 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitArgMaxFusion(
   VLOG(2) << "Emitting argmax fusion as ascend.max_dim: " << fusion->name();
 
   // Get the input buffer allocation for the first operand (the values tensor)
-  TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto input_slice, GetInputParamShapedSliceForHlo(fusion,0));
   
   // Handle tuple return value (value + index)
   TF_ASSIGN_OR_RETURN(auto value_slice, GetShapedSliceForHlo(fusion, {0}));
@@ -2177,8 +2215,8 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitAddFusion(
     const HloFusionInstruction* fusion) {
   VLOG(2) << "Emitting add fusion as ascend.add: " << fusion->name();
 
-  TF_ASSIGN_OR_RETURN(auto input_slice0, GetShapedSliceForHlo(fusion->operand(0)));
-  TF_ASSIGN_OR_RETURN(auto input_slice1, GetShapedSliceForHlo(fusion->operand(1)));
+  TF_ASSIGN_OR_RETURN(auto input_slice0, GetInputParamShapedSliceForHlo(fusion,0));
+  TF_ASSIGN_OR_RETURN(auto input_slice1, GetInputParamShapedSliceForHlo(fusion,1));
   TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
 
   auto* computation = fusion->fused_instructions_computation();
@@ -2264,8 +2302,8 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitMaximumFusion(
     const HloFusionInstruction* fusion) {
   VLOG(2) << "Emitting maximum fusion as ascend.maximum: " << fusion->name();
 
-  TF_ASSIGN_OR_RETURN(auto input_slice0, GetShapedSliceForHlo(fusion->operand(0)));
-  TF_ASSIGN_OR_RETURN(auto input_slice1, GetShapedSliceForHlo(fusion->operand(1)));
+  TF_ASSIGN_OR_RETURN(auto input_slice0, GetInputParamShapedSliceForHlo(fusion,0));
+  TF_ASSIGN_OR_RETURN(auto input_slice1, GetInputParamShapedSliceForHlo(fusion,1));
   TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
 
   auto* computation = fusion->fused_instructions_computation();
@@ -2350,7 +2388,7 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitReduceMaxFusion(
     const HloFusionInstruction* fusion) {
   VLOG(2) << "Emitting reduce_max fusion as ascend.reduce_max: " << fusion->name();
 
-  TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto input_slice, GetInputParamShapedSliceForHlo(fusion,0));
   TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
 
   auto* computation = fusion->fused_instructions_computation();
@@ -2444,8 +2482,8 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitSubtractFusion(
     const HloFusionInstruction* fusion) {
   VLOG(2) << "Emitting subtract fusion as ascend.subtract: " << fusion->name();
 
-  TF_ASSIGN_OR_RETURN(auto input_slice0, GetShapedSliceForHlo(fusion->operand(0)));
-  TF_ASSIGN_OR_RETURN(auto input_slice1, GetShapedSliceForHlo(fusion->operand(1)));
+  TF_ASSIGN_OR_RETURN(auto input_slice0, GetInputParamShapedSliceForHlo(fusion,0));
+  TF_ASSIGN_OR_RETURN(auto input_slice1, GetInputParamShapedSliceForHlo(fusion,1));
   TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
 
   auto* computation = fusion->fused_instructions_computation();
@@ -2531,7 +2569,7 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitExponentialFusion(
     const HloFusionInstruction* fusion) {
   VLOG(2) << "Emitting exponential fusion as ascend.exponential: " << fusion->name();
 
-  TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto input_slice, GetInputParamShapedSliceForHlo(fusion,0));
   TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
 
   auto* computation = fusion->fused_instructions_computation();
@@ -2614,7 +2652,8 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitReduceSumFusion(
     const HloFusionInstruction* fusion) {
   VLOG(2) << "Emitting reduce_sum fusion as ascend.reduce_sum: " << fusion->name();
 
-  TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(fusion->operand(0)));
+  // Use new overload that handles fusion inputs correctly
+  TF_ASSIGN_OR_RETURN(auto input_slice, GetInputParamShapedSliceForHlo(fusion, 0));
   TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
 
   auto* computation = fusion->fused_instructions_computation();
@@ -2635,7 +2674,7 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitReduceSumFusion(
   absl::Span<const int64_t> reduce_dims = reduce_instr->dimensions();
   bool keep_dims = false; // Default value, actual keep_dims behavior is handled by the shape
 
-  const Shape& input_shape = fusion->operand(0)->shape();
+  const Shape& input_shape = input_slice.shape;
   PrimitiveType element_type = input_shape.element_type();
 
   VLOG(2) << "ReduceSum fusion: input shape=" << input_shape.ToString()
@@ -2706,8 +2745,8 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitEqualFusion(
     const HloFusionInstruction* fusion) {
   VLOG(2) << "Emitting equal fusion as ascend.equal: " << fusion->name();
 
-  TF_ASSIGN_OR_RETURN(auto input_slice0, GetShapedSliceForHlo(fusion->operand(0)));
-  TF_ASSIGN_OR_RETURN(auto input_slice1, GetShapedSliceForHlo(fusion->operand(1)));
+  TF_ASSIGN_OR_RETURN(auto input_slice0, GetInputParamShapedSliceForHlo(fusion, 0));
+  TF_ASSIGN_OR_RETURN(auto input_slice1, GetInputParamShapedSliceForHlo(fusion, 1));
   TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
 
   auto* computation = fusion->fused_instructions_computation();
@@ -2801,9 +2840,9 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitSelectFusion(
     const HloFusionInstruction* fusion) {
   VLOG(2) << "Emitting select fusion as ascend.select: " << fusion->name();
 
-  TF_ASSIGN_OR_RETURN(auto condition_slice, GetShapedSliceForHlo(fusion->operand(0)));
-  TF_ASSIGN_OR_RETURN(auto x_slice, GetShapedSliceForHlo(fusion->operand(1)));
-  TF_ASSIGN_OR_RETURN(auto y_slice, GetShapedSliceForHlo(fusion->operand(2)));
+  TF_ASSIGN_OR_RETURN(auto condition_slice, GetInputParamShapedSliceForHlo(fusion, 0));
+  TF_ASSIGN_OR_RETURN(auto x_slice, GetInputParamShapedSliceForHlo(fusion, 1));
+  TF_ASSIGN_OR_RETURN(auto y_slice, GetInputParamShapedSliceForHlo(fusion, 2));
   TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
 
   auto* computation = fusion->fused_instructions_computation();
@@ -2893,7 +2932,7 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitNegateFusion(
     const HloFusionInstruction* fusion) {
   VLOG(2) << "Emitting negate fusion as ascend.negate: " << fusion->name();
 
-  TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto input_slice, GetInputParamShapedSliceForHlo(fusion, 0));
   TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
 
   auto* computation = fusion->fused_instructions_computation();
@@ -2976,8 +3015,8 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitDivideFusion(
     const HloFusionInstruction* fusion) {
   VLOG(2) << "Emitting divide fusion as ascend.divide: " << fusion->name();
 
-  TF_ASSIGN_OR_RETURN(auto input_slice0, GetShapedSliceForHlo(fusion->operand(0)));
-  TF_ASSIGN_OR_RETURN(auto input_slice1, GetShapedSliceForHlo(fusion->operand(1)));
+  TF_ASSIGN_OR_RETURN(auto input_slice0, GetInputParamShapedSliceForHlo(fusion, 0));
+  TF_ASSIGN_OR_RETURN(auto input_slice1, GetInputParamShapedSliceForHlo(fusion, 1));
   TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
 
   auto* computation = fusion->fused_instructions_computation();
@@ -3077,14 +3116,14 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitMultiplyFusion(
   }
 
   // Get input slices based on the number of parameters
-  TF_ASSIGN_OR_RETURN(auto input_slice0, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto input_slice0, GetInputParamShapedSliceForHlo(fusion,0));
   NullableShapedSlice input_slice1;
   
   // Check if fusion has two operands or one operand (squared case)
   bool is_squared = (fusion->operand_count() == 1);
   
   if (!is_squared) {
-    TF_ASSIGN_OR_RETURN(input_slice1, GetShapedSliceForHlo(fusion->operand(1)));
+    TF_ASSIGN_OR_RETURN(input_slice1, GetInputParamShapedSliceForHlo(fusion,1));
   } else {
     // For squared case, use the same input slice for both operands
     input_slice1 = input_slice0;
@@ -3166,8 +3205,8 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitGreaterFusion(
     const HloFusionInstruction* fusion) {
   VLOG(2) << "Emitting greater fusion as ascend.greater: " << fusion->name();
 
-  TF_ASSIGN_OR_RETURN(auto input_slice0, GetShapedSliceForHlo(fusion->operand(0)));
-  TF_ASSIGN_OR_RETURN(auto input_slice1, GetShapedSliceForHlo(fusion->operand(1)));
+  TF_ASSIGN_OR_RETURN(auto input_slice0, GetInputParamShapedSliceForHlo(fusion, 0));
+  TF_ASSIGN_OR_RETURN(auto input_slice1, GetInputParamShapedSliceForHlo(fusion, 1));
   TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
 
   auto* computation = fusion->fused_instructions_computation();
@@ -3263,7 +3302,7 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitTensorBroadcastFusion(
   VLOG(2) << "Emitting tensor broadcast fusion as ascend.expand: " << fusion->name();
   
   // Get the input and output buffer allocations
-  TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto input_slice, GetInputParamShapedSliceForHlo(fusion, 0));
   TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
   
   // Extract broadcast dimensions from the fusion computation
@@ -3381,7 +3420,7 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitTensorBroadcastFusion(
 absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitConvertFusion(
     const HloFusionInstruction* fusion) {
   // Get the input and output buffer allocations
-  TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto input_slice, GetInputParamShapedSliceForHlo(fusion, 0));
   TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
   
   // Determine the conversion type
@@ -3464,7 +3503,7 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitConvertFusion(
 absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitConvertFusion(
     const HloFusionInstruction* fusion) {
   // Get the input and output buffer allocations
-  TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto input_slice, GetInputParamShapedSliceForHlo(fusion, 0));
   TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
   
   // Create operands and results for AclnnThunk
@@ -3497,7 +3536,7 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitConvertFusion(
 absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitTanhFusion(
     const HloFusionInstruction* fusion) {
   // Get the input and output buffer allocations
-  TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto input_slice, GetInputParamShapedSliceForHlo(fusion, 0));
   TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
   
   // Create operands and results for AclnnThunk
@@ -3530,7 +3569,7 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitTanhFusion(
 absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitSqrtFusion(
     const HloFusionInstruction* fusion) {
   // Get the input and output buffer allocations
-  TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto input_slice, GetInputParamShapedSliceForHlo(fusion, 0));
   TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
 
   // Create operands and results for AclnnThunk
@@ -3563,8 +3602,8 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitSqrtFusion(
 absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitConvolutionFusion(
     const HloFusionInstruction* fusion) {
   // Get the input, weight, and output buffer allocations
-  TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(fusion->operand(0)));
-  TF_ASSIGN_OR_RETURN(auto weight_slice, GetShapedSliceForHlo(fusion->operand(1)));
+  TF_ASSIGN_OR_RETURN(auto input_slice, GetInputParamShapedSliceForHlo(fusion, 0));
+  TF_ASSIGN_OR_RETURN(auto weight_slice, GetInputParamShapedSliceForHlo(fusion, 1));
   TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
   
   // Create operands and results for AclnnThunk
@@ -3662,7 +3701,7 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitShiftRightFusion(
   VLOG(2) << "Emitting shift-right-logical fusion as ascend.right_shift: " << fusion->name();
   
   // Get the input buffer allocation
-  TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto input_slice, GetInputParamShapedSliceForHlo(fusion, 0));
   TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
   
   // Extract constant value from the fusion computation (shift bits)
@@ -3825,6 +3864,92 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitGemmThunk(
   if (workspace_slice) {
     results.push_back(*workspace_slice);
   }
+
+  // Create parameters for aclnnGemm
+  std::vector<xla::ascend::AclnnThunk::Param> params;
+  params.push_back(alpha);
+  params.push_back(beta);
+  params.push_back(transA);
+  params.push_back(transB);
+
+  // Create AclnnThunk
+  auto thunk = std::make_unique<xla::ascend::AclnnThunk>(
+      xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(instr, ir_emitter_context_->GetNextThunkId()),
+      "aclnnGemm",
+      std::move(operands),
+      std::move(results),
+      std::move(params));
+
+  xla::gpu::ThunkSequence sequence;
+  sequence.push_back(std::move(thunk));
+
+  return sequence;
+}
+
+absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitAclnnGemmThunk(
+    const HloCustomCallInstruction* instr) {
+  VLOG(2) << "Emitting ACLNN GEMM: " << instr->name();
+
+  TF_ASSIGN_OR_RETURN(auto a_slice, GetShapedSliceForHlo(instr->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto b_slice, GetShapedSliceForHlo(instr->operand(1)));
+  
+  // Handle result
+  TF_ASSIGN_OR_RETURN(auto c_slice, GetShapedSliceForHlo(instr));
+
+  const Shape& a_shape = instr->operand(0)->shape();
+  PrimitiveType element_type = a_shape.element_type();
+
+  VLOG(2) << "ACLNN GEMM: a_shape=" << a_shape.ToString()
+          << ", b_shape=" << instr->operand(1)->shape().ToString()
+          << ", c_shape=" << instr->shape().ToString()
+          << ", element_type=" << PrimitiveType_Name(element_type);
+
+  // Parse ACLNN GEMM backend config
+  float alpha = 1.0f;
+  float beta = 0.0f;
+  int64_t transA = 0;
+  int64_t transB = 0;
+  bool has_bias = false;
+
+  // Parse backend config using the config system
+  const std::string& backend_config = instr->raw_backend_config_string();
+  VLOG(2) << "Backend config: " << backend_config;
+  
+  if (!backend_config.empty()) {
+    TF_ASSIGN_OR_RETURN(auto config, ParseAclnnConfig(
+        instr->custom_call_target(), backend_config));
+    auto* gemm_config = dynamic_cast<AclnnGemmConfig*>(config.get());
+    if (!gemm_config) {
+      return absl::InternalError("Failed to cast to AclnnGemmConfig");
+    }
+    alpha = gemm_config->alpha;
+    beta = gemm_config->beta;
+    transA = gemm_config->transpose_a;
+    transB = gemm_config->transpose_b;
+    has_bias = gemm_config->has_bias;
+  }
+
+  VLOG(2) << "ACLNN GEMM parameters: transA=" << transA << ", transB=" << transB 
+          << ", alpha=" << alpha << ", beta=" << beta << ", has_bias=" << has_bias;
+
+  std::vector<NullableShapedSlice> operands;
+  std::vector<NullableShapedSlice> results;
+
+  // Add operands
+  operands.push_back(a_slice);
+  operands.push_back(b_slice);
+  
+  // Add bias if present
+  if (has_bias && instr->operand_count() > 2) {
+    TF_ASSIGN_OR_RETURN(auto bias_slice, GetShapedSliceForHlo(instr->operand(2)));
+    operands.push_back(bias_slice);
+  }else{
+    beta = 0.0f;
+    operands.push_back(c_slice);
+  }
+  
+  // Add result
+  results.push_back(c_slice);
 
   // Create parameters for aclnnGemm
   std::vector<xla::ascend::AclnnThunk::Param> params;
@@ -4021,7 +4146,7 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitScalarMultiplyFusion(
   }
 
   // Get the input and output buffer allocations
-  TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto input_slice, GetInputParamShapedSliceForHlo(fusion, 0));
   TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
 
   // Extract the constant value
@@ -4117,7 +4242,7 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitMaxPoolFusion(
   }
 
   // Get input and output slices
-  TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(fusion->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto input_slice, GetInputParamShapedSliceForHlo(fusion, 0));
   TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
 
   const Window& window = reduce_window_instr->window();
@@ -4205,7 +4330,7 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitConcatenateFusion(
   // Get all input slices
   std::vector<NullableShapedSlice> input_slices;
   for (int i = 0; i < fusion->operand_count(); ++i) {
-    TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(fusion->operand(i)));
+    TF_ASSIGN_OR_RETURN(auto input_slice, GetInputParamShapedSliceForHlo(fusion, i));
     input_slices.push_back(input_slice);
   }
 
@@ -4275,6 +4400,9 @@ absl::StatusOr<std::optional<xla::gpu::ThunkSequence>> ThunkEmitter::EmitHloInst
       auto* custom_call = Cast<HloCustomCallInstruction>(hlo);
       if (xla::gpu::IsLegacyCublasMatmul(*hlo)) {
         return EmitGemmThunk(custom_call);
+      }
+      if (xla::ascend::IsAclnnGemmTarget(custom_call->custom_call_target())) {
+        return EmitAclnnGemmThunk(custom_call);
       }
     }
     

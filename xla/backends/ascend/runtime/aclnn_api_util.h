@@ -214,13 +214,13 @@ inline aclTensor* ConvertType(const TensorTriplet& triplet) {
   return ConvertType(*triplet.buffer_allocations, triplet.slice, triplet.shape);
 }
 
-// Pass-through ConvertType for pointer types that don't need conversion
-inline uint64_t* ConvertType(uint64_t* value) {
-  return value;
+// Handle nullptr for optional tensor parameters - convert to aclTensor*
+inline aclTensor* ConvertType(std::nullptr_t) {
+  return nullptr;
 }
 
-// Handle nullptr_t to avoid ambiguity
-inline std::nullptr_t ConvertType(std::nullptr_t value) {
+// Pass-through ConvertType for pointer types that don't need conversion
+inline uint64_t* ConvertType(uint64_t* value) {
   return value;
 }
 

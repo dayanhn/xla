@@ -2564,7 +2564,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
       return std::move(ascend_result.value().value());
     }
     // 使用VLOG(4)控制打印输出，这样可以通过前端配置TF_CPP_VMODULE=thunk_emitter=4来控制 
-    if (VLOG_IS_ON(4)) {
+    if (VLOG_IS_ON(4) && (hlo->opcode() ==  HloOpcode::kFusion || hlo->opcode() == HloOpcode::kCustomCall)) {
       std::cerr << "=== HLO Instruction Emit Fail,Text (detailed) ===" << std::endl;
       // 使用详细的打印选项
       HloPrintOptions detailed_options;

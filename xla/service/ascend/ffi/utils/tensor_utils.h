@@ -10,8 +10,8 @@
 
 namespace xla::ffi {
   // Convert XLA Buffer to Ascend Tensor
-  template <DataType dtype, size_t rank>
-  aclTensor* ConvertToAclTensor(const Buffer<dtype, rank>& buffer);
+  template <DataType dtype>
+  aclTensor* ConvertToAclTensor(const Buffer<dtype>& buffer);
   
   // Convert XLA DataType to Ascend aclDataType
   aclDataType ConvertToAclDataType(DataType type);

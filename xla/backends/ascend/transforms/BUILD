@@ -5,10 +5,34 @@ package(
 )
 
 cc_library(
+    name = "aclnn_targets",
+    srcs = ["aclnn_targets.cc"],
+    hdrs = ["aclnn_targets.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "aclnn_config",
+    srcs = ["aclnn_config.cc"],
+    hdrs = ["aclnn_config.h"],
+    deps = [
+        ":aclnn_targets",
+        "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
     name = "aclnn_gemm_rewriter",
     srcs = ["aclnn_gemm_rewriter.cc"],
     hdrs = ["aclnn_gemm_rewriter.h"],
     deps = [
+        ":aclnn_config",
+        ":aclnn_targets",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:permutation_util",

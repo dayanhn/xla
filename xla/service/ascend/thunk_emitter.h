@@ -72,6 +72,11 @@ class ThunkEmitter {
   absl::StatusOr<ShapedSlice> GetShapedSliceForHlo(
       const HloInstruction* instr,
       const ShapeIndex& index = ShapeIndex{}) const;
+  
+  // Overload for fusion instruction inputs - handles cases where operations
+  // like bitcast are fused inline, sharing memory but changing shape
+  absl::StatusOr<ShapedSlice> GetInputParamShapedSliceForHlo(
+      const HloFusionInstruction* fusion, int64_t operand_index) const;
 
   // Wraps a thunk into a ThunkSequence
   xla::gpu::ThunkSequence GetThunkSequence(std::unique_ptr<xla::gpu::Thunk> thunk) {
@@ -152,6 +157,9 @@ class ThunkEmitter {
       const HloFusionInstruction* fusion);
  
   absl::StatusOr<xla::gpu::ThunkSequence> EmitGemmThunk(
+      const HloCustomCallInstruction* hlo);
+
+  absl::StatusOr<xla::gpu::ThunkSequence> EmitAclnnGemmThunk(
       const HloCustomCallInstruction* hlo);
 
   absl::StatusOr<xla::gpu::ThunkSequence> EmitConvolutionFusion(

@@ -4,36 +4,43 @@
 #include "xla/types.h"
 
 namespace xla::ffi {
-  template <DataType dtype, size_t rank>
-  aclTensor* ConvertToAclTensor(const Buffer<dtype, rank>& buffer) {
-  // Get buffer dimensions
-  auto dims = buffer.dimensions();
-  std::vector<int64_t> dimensions;
-  for (auto dim : dims) {
-    dimensions.push_back(dim);
+  template <DataType dtype>
+  aclTensor* ConvertToAclTensor(const Buffer<dtype>& buffer) {
+    // Get buffer dimensions
+    auto dims = buffer.dimensions();
+    std::vector<int64_t> dimensions;
+    for (auto dim : dims) {
+      dimensions.push_back(dim);
+    }
+
+    // Determine Ascend data type using template
+    aclDataType data_type = ConvertToAclDataType<dtype>();
+
+    // Calculate strides
+    std::vector<int64_t> strides(dimensions.size(), 1);
+    for (int i = dimensions.size() - 2; i >= 0; --i) {
+      strides[i] = strides[i + 1] * dimensions[i + 1];
+    }
+
+    // Handle scalar case (empty dimensions)
+    // For scalars, we need to pass [1] as dimensions
+    if (dimensions.empty()) {
+      dimensions.push_back(1);
+      strides.push_back(1);
+    }
+
+    // Create aclTensor
+    return aclCreateTensor(
+        dimensions.data(),
+        dimensions.size(),
+        data_type,
+        strides.data(),
+        0,
+        ACL_FORMAT_ND,
+        dimensions.data(),
+        dimensions.size(),
+        const_cast<void*>(buffer.untyped_data()));
   }
-
-  // Determine Ascend data type using template
-  aclDataType data_type = ConvertToAclDataType<dtype>();
-
-  // Calculate strides
-  std::vector<int64_t> strides(dimensions.size(), 1);
-  for (int i = dimensions.size() - 2; i >= 0; --i) {
-    strides[i] = strides[i + 1] * dimensions[i + 1];
-  }
-
-  // Create aclTensor
-  return aclCreateTensor(
-      dimensions.data(),
-      dimensions.size(),
-      data_type,
-      strides.data(),
-      0,
-      ACL_FORMAT_ND,
-      dimensions.data(),
-      dimensions.size(),
-      const_cast<void*>(buffer.untyped_data()));
-}
 
 // Template specialization for ConvertToAclDataType
 template <>
@@ -97,54 +104,17 @@ aclDataType ConvertToAclDataType<DataType::U16>() {
 }
 
 // Explicit instantiations for common types
-template aclTensor* ConvertToAclTensor<DataType::F32, 0>(const Buffer<DataType::F32, 0>&);
-template aclTensor* ConvertToAclTensor<DataType::F32, 1>(const Buffer<DataType::F32, 1>&);
-template aclTensor* ConvertToAclTensor<DataType::F32, 2>(const Buffer<DataType::F32, 2>&);
-template aclTensor* ConvertToAclTensor<DataType::F32, 3>(const Buffer<DataType::F32, 3>&);
-template aclTensor* ConvertToAclTensor<DataType::F32, 4>(const Buffer<DataType::F32, 4>&);
-
-template aclTensor* ConvertToAclTensor<DataType::F16, 0>(const Buffer<DataType::F16, 0>&);
-template aclTensor* ConvertToAclTensor<DataType::F16, 1>(const Buffer<DataType::F16, 1>&);
-template aclTensor* ConvertToAclTensor<DataType::F16, 2>(const Buffer<DataType::F16, 2>&);
-template aclTensor* ConvertToAclTensor<DataType::F16, 3>(const Buffer<DataType::F16, 3>&);
-template aclTensor* ConvertToAclTensor<DataType::F16, 4>(const Buffer<DataType::F16, 4>&);
-
-template aclTensor* ConvertToAclTensor<DataType::BF16, 0>(const Buffer<DataType::BF16, 0>&);
-template aclTensor* ConvertToAclTensor<DataType::BF16, 1>(const Buffer<DataType::BF16, 1>&);
-template aclTensor* ConvertToAclTensor<DataType::BF16, 2>(const Buffer<DataType::BF16, 2>&);
-template aclTensor* ConvertToAclTensor<DataType::BF16, 3>(const Buffer<DataType::BF16, 3>&);
-template aclTensor* ConvertToAclTensor<DataType::BF16, 4>(const Buffer<DataType::BF16, 4>&);
-
-template aclTensor* ConvertToAclTensor<DataType::S32, 0>(const Buffer<DataType::S32, 0>&);
-template aclTensor* ConvertToAclTensor<DataType::S32, 1>(const Buffer<DataType::S32, 1>&);
-template aclTensor* ConvertToAclTensor<DataType::S32, 2>(const Buffer<DataType::S32, 2>&);
-template aclTensor* ConvertToAclTensor<DataType::S32, 3>(const Buffer<DataType::S32, 3>&);
-template aclTensor* ConvertToAclTensor<DataType::S32, 4>(const Buffer<DataType::S32, 4>&);
-
-template aclTensor* ConvertToAclTensor<DataType::U32, 0>(const Buffer<DataType::U32, 0>&);
-template aclTensor* ConvertToAclTensor<DataType::U32, 1>(const Buffer<DataType::U32, 1>&);
-template aclTensor* ConvertToAclTensor<DataType::U32, 2>(const Buffer<DataType::U32, 2>&);
-template aclTensor* ConvertToAclTensor<DataType::U32, 3>(const Buffer<DataType::U32, 3>&);
-template aclTensor* ConvertToAclTensor<DataType::U32, 4>(const Buffer<DataType::U32, 4>&);
-
-template aclTensor* ConvertToAclTensor<DataType::S64, 0>(const Buffer<DataType::S64, 0>&);
-template aclTensor* ConvertToAclTensor<DataType::S64, 1>(const Buffer<DataType::S64, 1>&);
-template aclTensor* ConvertToAclTensor<DataType::S64, 2>(const Buffer<DataType::S64, 2>&);
-template aclTensor* ConvertToAclTensor<DataType::S64, 3>(const Buffer<DataType::S64, 3>&);
-template aclTensor* ConvertToAclTensor<DataType::S64, 4>(const Buffer<DataType::S64, 4>&);
-
-// Explicit instantiation for dynamic rank
-template aclTensor* ConvertToAclTensor<DataType::F32, std::numeric_limits<size_t>::max()>(const Buffer<DataType::F32, std::numeric_limits<size_t>::max()>&);
-template aclTensor* ConvertToAclTensor<DataType::F16, std::numeric_limits<size_t>::max()>(const Buffer<DataType::F16, std::numeric_limits<size_t>::max()>&);
-template aclTensor* ConvertToAclTensor<DataType::BF16, std::numeric_limits<size_t>::max()>(const Buffer<DataType::BF16, std::numeric_limits<size_t>::max()>&);
-template aclTensor* ConvertToAclTensor<DataType::S32, std::numeric_limits<size_t>::max()>(const Buffer<DataType::S32, std::numeric_limits<size_t>::max()>&);
-template aclTensor* ConvertToAclTensor<DataType::S64, std::numeric_limits<size_t>::max()>(const Buffer<DataType::S64, std::numeric_limits<size_t>::max()>&);
-template aclTensor* ConvertToAclTensor<DataType::U32, std::numeric_limits<size_t>::max()>(const Buffer<DataType::U32, std::numeric_limits<size_t>::max()>&);
-template aclTensor* ConvertToAclTensor<DataType::PRED, std::numeric_limits<size_t>::max()>(const Buffer<DataType::PRED, std::numeric_limits<size_t>::max()>&);
-template aclTensor* ConvertToAclTensor<DataType::S8, std::numeric_limits<size_t>::max()>(const Buffer<DataType::S8, std::numeric_limits<size_t>::max()>&);
-template aclTensor* ConvertToAclTensor<DataType::U8, std::numeric_limits<size_t>::max()>(const Buffer<DataType::U8, std::numeric_limits<size_t>::max()>&);
-template aclTensor* ConvertToAclTensor<DataType::S16, std::numeric_limits<size_t>::max()>(const Buffer<DataType::S16, std::numeric_limits<size_t>::max()>&);
-template aclTensor* ConvertToAclTensor<DataType::U16, std::numeric_limits<size_t>::max()>(const Buffer<DataType::U16, std::numeric_limits<size_t>::max()>&);
+template aclTensor* ConvertToAclTensor<DataType::F32>(const Buffer<DataType::F32>&);
+template aclTensor* ConvertToAclTensor<DataType::F16>(const Buffer<DataType::F16>&);
+template aclTensor* ConvertToAclTensor<DataType::BF16>(const Buffer<DataType::BF16>&);
+template aclTensor* ConvertToAclTensor<DataType::S32>(const Buffer<DataType::S32>&);
+template aclTensor* ConvertToAclTensor<DataType::U32>(const Buffer<DataType::U32>&);
+template aclTensor* ConvertToAclTensor<DataType::S64>(const Buffer<DataType::S64>&);
+template aclTensor* ConvertToAclTensor<DataType::PRED>(const Buffer<DataType::PRED>&);
+template aclTensor* ConvertToAclTensor<DataType::S8>(const Buffer<DataType::S8>&);
+template aclTensor* ConvertToAclTensor<DataType::U8>(const Buffer<DataType::U8>&);
+template aclTensor* ConvertToAclTensor<DataType::S16>(const Buffer<DataType::S16>&);
+template aclTensor* ConvertToAclTensor<DataType::U16>(const Buffer<DataType::U16>&);
 
 aclDataType ConvertToAclDataType(PrimitiveType type) {
   switch (type) {
