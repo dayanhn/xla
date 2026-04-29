@@ -50,6 +50,22 @@ class AclnnGemmConfig : public AclnnConfig {
   absl::Status FromString(const std::string& config_str) override;
 };
 
+// ACLNN Convolution config
+class AclnnConvolutionConfig : public AclnnConfig {
+ public:
+  std::vector<int64_t> stride;
+  std::vector<int64_t> padding;
+  std::vector<int64_t> dilation = {1, 1};
+  bool transposed = false;
+  std::vector<int64_t> output_padding = {0, 0};
+  int64_t groups = 1;
+  int8_t cube_math_type = 0;
+  bool has_bias = false;
+
+  std::string ToString() const override;
+  absl::Status FromString(const std::string& config_str) override;
+};
+
 // Config factory to create appropriate config based on target
 class AclnnConfigFactory {
  public:

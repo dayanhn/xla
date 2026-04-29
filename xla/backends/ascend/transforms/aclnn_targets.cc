@@ -28,5 +28,9 @@ bool IsAclnnGemmTarget(absl::string_view target) {
   return target == kAclnnGemmCallTarget;
 }
 
+bool IsAclnnConvolutionTarget(absl::string_view target) {
+  return target == kAclnnConvolutionCallTarget;
+}
+
 }  // namespace ascend
 }  // namespace xla

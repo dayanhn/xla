@@ -29,6 +29,8 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/backends/ascend/transforms/aclnn_config.h"
+#include "xla/backends/ascend/transforms/aclnn_targets.h"
 
 namespace xla {
 namespace ascend {
@@ -36,52 +38,11 @@ namespace {
 
 namespace m = match;
 
-constexpr char kAclnnConvolutionCallTarget[] = "__aclnn$convolution";
+using absl::StatusOr;
 
-struct ConvolutionConfig {
-  std::vector<int64_t> stride;
-  std::vector<int64_t> padding;
-  std::vector<int64_t> dilation = {1, 1};
-  bool transposed = false;
-  std::vector<int64_t> output_padding = {0, 0};
-  int64_t groups = 1;
-  int8_t cube_math_type = 0;  // 0: KEEP_DTYPE
-  bool has_bias = false;
-
-  std::string ToString() const {
-    std::string stride_str, padding_str, dilation_str, output_padding_str;
-    for (int64_t s : stride) stride_str += absl::StrCat(s, ",");
-    for (int64_t p : padding) padding_str += absl::StrCat(p, ",");
-    for (int64_t d : dilation) dilation_str += absl::StrCat(d, ",");
-    for (int64_t o : output_padding) output_padding_str += absl::StrCat(o, ",");
-    
-    return absl::StrCat(
-        "stride=", stride_str, 
-        "padding=", padding_str, 
-        "dilation=", dilation_str, 
-        "transposed=", transposed ? "true" : "false", 
-        "output_padding=", output_padding_str, 
-        "groups=", groups, 
-        "cube_math_type=", static_cast<int>(cube_math_type), 
-        "has_bias=", has_bias ? "true" : "false");
-  }
-};
-
-absl::Status SetName(HloModule* module, HloInstruction* conv) {
-  module->SetAndUniquifyInstrName(conv, "aclnn-convolution");
+absl::Status SetName(HloModule* module, HloInstruction* instr) {
+  module->SetAndUniquifyInstrName(instr, "aclnn-convolution");
   return absl::OkStatus();
-}
-
-template <typename Pattern>
-auto OptionalReshape(HloInstruction** optional_reshape, Pattern pattern) {
-  return m::AnyOf<HloInstruction>(m::Reshape(optional_reshape, pattern),
-                                  std::move(pattern));
-}
-
-template <typename Pattern>
-auto OptionalBroadcast(HloInstruction** optional_broadcast, Pattern pattern) {
-  return m::AnyOf<HloInstruction>(m::Broadcast(optional_broadcast, pattern),
-                                  std::move(pattern));
 }
 
 bool IsBiasCompatibleWithOutput(const HloInstruction* bias, const HloInstruction* conv) {
@@ -89,8 +50,7 @@ bool IsBiasCompatibleWithOutput(const HloInstruction* bias, const HloInstruction
   const Shape& conv_shape = conv->shape();
   
   if (bias_shape.rank() == 1) {
-    // Bias shape should match the output channel dimension
-    int64_t output_channel_dim = 3;  // NHWC format
+    int64_t output_channel_dim = 3;
     if (conv_shape.rank() == 4) {
       return bias_shape.dimensions(0) == conv_shape.dimensions(output_channel_dim);
     }
@@ -98,32 +58,63 @@ bool IsBiasCompatibleWithOutput(const HloInstruction* bias, const HloInstruction
   return false;
 }
 
-ConvolutionConfig ExtractConvolutionConfig(const HloConvolutionInstruction* conv) {
-  ConvolutionConfig config;
+bool IsAclnnSupportedConvolution(const HloConvolutionInstruction* conv) {
+  const Shape& input_shape = conv->operand(0)->shape();
+  const Shape& weight_shape = conv->operand(1)->shape();
   
-  // Extract stride for spatial dimensions
-  for (size_t i = 1; i < conv->window().dimensions().size(); ++i) {
-    config.stride.push_back(conv->window().dimensions(i).stride());
+  if (input_shape.rank() != 4 || weight_shape.rank() != 4) {
+    VLOG(4) << "Only 4D convolutions are supported";
+    return false;
   }
   
-  // Extract padding (only spatial dimensions, low and high)
-  for (size_t i = 1; i < conv->window().dimensions().size(); ++i) {
-    const auto& dim = conv->window().dimensions(i);
-    config.padding.push_back(dim.padding_low());
-    config.padding.push_back(dim.padding_high());
+  PrimitiveType input_type = input_shape.element_type();
+  if (input_type != F32 && input_type != F16 && input_type != BF16) {
+    VLOG(4) << "Unsupported input type: " << PrimitiveType_Name(input_type);
+    return false;
   }
   
-  // Dilation (default to 1 for all spatial dimensions)
-  config.dilation = std::vector<int64_t>(config.stride.size(), 1);
+  PrimitiveType weight_type = weight_shape.element_type();
+  if (weight_type != F32 && weight_type != F16 && weight_type != BF16) {
+    VLOG(4) << "Unsupported weight type: " << PrimitiveType_Name(weight_type);
+    return false;
+  }
   
-  // Transposed (default to false)
-  config.transposed = false;
+  if (conv->feature_group_count() != 1) {
+    VLOG(4) << "Group convolution not supported";
+    return false;
+  }
   
-  // Output padding (default to 0 for all spatial dimensions)
-  config.output_padding = std::vector<int64_t>(config.stride.size(), 0);
+  const auto& dn = conv->dimension_numbers();
+  if (dn.input_batch_dimension() != 0 || dn.output_batch_dimension() != 0) {
+    VLOG(4) << "Batch dimension must be 0";
+    return false;
+  }
   
-  // Groups (default to 1)
-  config.groups = 1;
+  return true;
+}
+
+AclnnConvolutionConfig ExtractConvolutionConfig(const HloConvolutionInstruction* conv) {
+  AclnnConvolutionConfig config;
+  
+  const auto& window = conv->window();
+  const auto& dn = conv->dimension_numbers();
+  
+  for (size_t i = 0; i < window.dimensions().size(); ++i) {
+    config.stride.push_back(window.dimensions(i).stride());
+    config.dilation.push_back(window.dimensions(i).dilation());
+    config.padding.push_back(window.dimensions(i).padding_low());
+    config.padding.push_back(window.dimensions(i).padding_high());
+  }
+  
+  config.transposed = conv->window().reverse().size() > 0;
+  
+  for (size_t i = 0; i < config.stride.size(); ++i) {
+    config.output_padding.push_back(0);
+  }
+  
+  config.groups = conv->feature_group_count();
+  config.cube_math_type = 0;
+  config.has_bias = false;
   
   return config;
 }
@@ -133,13 +124,16 @@ class AclnnConvolutionRewriterVisitor : public DfsHloRewriteVisitor {
   absl::Status HandleConvolution(HloInstruction* instr) override {
     auto* conv = Cast<HloConvolutionInstruction>(instr);
     
-    // Create custom call for convolution without bias
+    if (!IsAclnnSupportedConvolution(conv)) {
+      return absl::OkStatus();
+    }
+    
     std::vector<HloInstruction*> operands = {
-        conv->mutable_operand(0),  // input
-        conv->mutable_operand(1)   // weight
+        conv->mutable_operand(0),
+        conv->mutable_operand(1)
     };
     
-    ConvolutionConfig config = ExtractConvolutionConfig(conv);
+    AclnnConvolutionConfig config = ExtractConvolutionConfig(conv);
     config.has_bias = false;
     
     HloInstruction* conv_call = instr->AddInstruction(
@@ -160,30 +154,39 @@ class AclnnConvolutionRewriterVisitor : public DfsHloRewriteVisitor {
     HloInstruction* optional_reshape = nullptr;
     HloInstruction* optional_broadcast = nullptr;
     
-    // Match pattern: add(conv, broadcast(bias))
     if (Match(instr,
               m::AddAnyOrder(
                   m::Convolution(&conv).WithOneUser(),
-                  OptionalReshape(
-                      &optional_reshape,
-                      OptionalBroadcast(
-                          &optional_broadcast,
-                          m::Parameter(&bias)
-                      )
-                  )
-              ))) {
+                  m::Reshape(&optional_reshape,
+                             m::Broadcast(&optional_broadcast,
+                                          m::Parameter(&bias)))) ||
+        Match(instr,
+              m::AddAnyOrder(
+                  m::Convolution(&conv).WithOneUser(),
+                  m::Broadcast(&optional_broadcast,
+                               m::Parameter(&bias)))) ||
+        Match(instr,
+              m::AddAnyOrder(
+                  m::Convolution(&conv).WithOneUser(),
+                  m::Reshape(&optional_reshape,
+                             m::Parameter(&bias)))) ||
+        Match(instr,
+              m::AddAnyOrder(
+                  m::Convolution(&conv).WithOneUser(),
+                  m::Parameter(&bias)))) {
+      
       if (!IsBiasCompatibleWithOutput(bias, conv)) {
         return absl::OkStatus();
       }
       
-      // Create new custom call with bias
       std::vector<HloInstruction*> operands = {
-          conv->mutable_operand(0),  // input
-          conv->mutable_operand(1),  // weight
-          bias                       // bias
+          conv->mutable_operand(0),
+          conv->mutable_operand(1),
+          bias
       };
       
-      ConvolutionConfig config = ExtractConvolutionConfig(Cast<HloConvolutionInstruction>(conv));
+      AclnnConvolutionConfig config = ExtractConvolutionConfig(
+          Cast<HloConvolutionInstruction>(conv));
       config.has_bias = true;
       
       HloInstruction* fused_conv = instr->AddInstruction(
@@ -193,6 +196,57 @@ class AclnnConvolutionRewriterVisitor : public DfsHloRewriteVisitor {
               kAclnnConvolutionCallTarget));
       
       fused_conv->set_raw_backend_config_string(config.ToString());
+      TF_RETURN_IF_ERROR(SetName(instr->GetModule(), fused_conv));
+      TF_RETURN_IF_ERROR(ReplaceInstruction(instr, fused_conv));
+      
+      return absl::OkStatus();
+    }
+    
+    if (Match(instr,
+              m::AddAnyOrder(
+                  m::CustomCall(m::Op().WithCustomCallTarget(kAclnnConvolutionCallTarget), &conv),
+                  m::Reshape(&optional_reshape,
+                             m::Broadcast(&optional_broadcast,
+                                          m::Parameter(&bias)))) ||
+        Match(instr,
+              m::AddAnyOrder(
+                  m::CustomCall(m::Op().WithCustomCallTarget(kAclnnConvolutionCallTarget), &conv),
+                  m::Broadcast(&optional_broadcast,
+                               m::Parameter(&bias)))) ||
+        Match(instr,
+              m::AddAnyOrder(
+                  m::CustomCall(m::Op().WithCustomCallTarget(kAclnnConvolutionCallTarget), &conv),
+                  m::Reshape(&optional_reshape,
+                             m::Parameter(&bias)))) ||
+        Match(instr,
+              m::AddAnyOrder(
+                  m::CustomCall(m::Op().WithCustomCallTarget(kAclnnConvolutionCallTarget), &conv),
+                  m::Parameter(&bias)))) {
+      
+      if (!IsBiasCompatibleWithOutput(bias, conv)) {
+        return absl::OkStatus();
+      }
+      
+      TF_ASSIGN_OR_RETURN(auto config_or, ParseAclnnConfig(
+          kAclnnConvolutionCallTarget, conv->raw_backend_config_string()));
+      auto* conv_config = dynamic_cast<AclnnConvolutionConfig*>(config_or.get());
+      if (!conv_config) {
+        return absl::InternalError("Failed to cast to AclnnConvolutionConfig");
+      }
+      
+      conv_config->has_bias = true;
+      
+      std::vector<HloInstruction*> operands(conv->operands().begin(),
+                                            conv->operands().end());
+      operands.push_back(bias);
+      
+      HloInstruction* fused_conv = instr->AddInstruction(
+          HloInstruction::CreateCustomCall(
+              instr->shape(),
+              operands,
+              kAclnnConvolutionCallTarget));
+      
+      fused_conv->set_raw_backend_config_string(conv_config->ToString());
       TF_RETURN_IF_ERROR(SetName(instr->GetModule(), fused_conv));
       TF_RETURN_IF_ERROR(ReplaceInstruction(instr, fused_conv));
       
