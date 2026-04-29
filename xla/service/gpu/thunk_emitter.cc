@@ -2761,11 +2761,14 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloComputation(
   ThunkSequence thunk_sequence;
   const HloInstructionSequence& sequence = schedule.sequence(computation);
   absl::flat_hash_map<const HloInstruction*, Thunk*> instr_to_thunk;
-  //int i = 0;
+  int i = 0;
   for (const HloInstruction* instr : sequence.instructions()) {
-    //std::cerr << "Emitting thunk for instruction " << i++ << " / "
-    //          << sequence.instructions().size() << ": " << instr->ToString()
-    //          << "\n";
+    if(VLOG_IS_ON(5)){
+      std::cerr << "Emitting thunk for instruction " << i++ << " / "
+              << sequence.instructions().size() << ": " << instr->ToString()
+              << "\n";
+    }
+    
     TF_ASSIGN_OR_RETURN(auto thunks, EmitHloInstruction(instr));
     if (!thunks.empty()) {
       instr_to_thunk[instr] = thunks.back().get();

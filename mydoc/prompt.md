@@ -139,3 +139,14 @@ jax/xla/xla/service/ascend/ffi/BUILD
  ascend提供的卷积算子接口如下: `/home/zzw/code/google/ascend/ops-nn/conv/convolution_forward/docs/aclnnConvolution.md` 我现在需要你研究该接口，同时参考xla下Pass的写法，比如 `/home/zzw/code/google/jax/xla/xla/backends/gpu/transforms/gemm_rewriter.cc` ,帮我在jax/xla/xla/backends/ascend/transforms目录下写一个aclnn_convolution  pass,该PASS能将卷积,+bias等指令进行融合，重写为一个custom_call指令，该指令方便后续转换为aclnn_thunk来直接调用aclnnConvolution算子。以下是一个带bias的conv hlo ir示例：
  `/home/zzw/code/google/jax/tmp/xla_dump_conv_bias_net/module_0003.jit_convnet_forward_and_backward.0000.annotate-host-compute.after_pipeline-start.before_hlo_host_device_type_call_wrapper.txt#L132-140` ，要求PASS支持带bias,也不支持不带bias的情况。并且能提取出准确全面的信息用于构造custom_call指令
  ------------
+ 之前我们实现了一个在ascend上执行的aclnn_gemm_rewriter的pass，（输入包括要转换的hlo算子信息，aclnn算子接口说明手册），其主要步骤如下：
+1、分析输入的算子接口说明手册： `/data3/zhongzhw/code/google/ascend/ops-nn/matmul/gemm/docs/aclnnGemm.md` ，识别并理解它所支持功能，接口参数等关键信息。
+2、编写相应的PASS实现接口： `/data3/zhongzhw/code/google/jax/xla/xla/backends/ascend/transforms/aclnn_gemm_rewriter.cc` `/data3/zhongzhw/code/google/jax/xla/xla/backends/ascend/transforms/aclnn_gemm_rewriter.h` ，在实现这些接口时有几个关键的要点：a. 根据输入的aclnn算子功能去匹配hlo 算子，当匹配成功后，将相应的Hlo指令转换为customcall指令： `/data3/zhongzhw/code/google/jax/xla/xla/backends/ascend/transforms/aclnn_gemm_rewriter.cc#L237-251` ，这里要特别注意输出的布局约束，相应的customcall target在 `/data3/zhongzhw/code/google/jax/xla/xla/backends/ascend/transforms/aclnn_targets.h` 中定义。然后还要封装相应的backend_config信息，这些信息主要用来传递后续调用aclnn算子所需要的参数信息。l在转换时，可能要对一些Hlo算子做融合，要注意后续的算子融合前面已经转换完成的算子时依然要重新一个新的custom_call算子，且target保持不变。
+3、在 `/data3/zhongzhw/code/google/jax/xla/xla/backends/ascend/transforms/aclnn_config.cc` `/data3/zhongzhw/code/google/jax/xla/xla/backends/ascend/transforms/aclnn_config.h` 中增加相应算子的congig的定义，parse,serialize接口。
+4、修改 `/data3/zhongzhw/code/google/jax/xla/xla/backends/ascend/transforms/BUILD` ，增加新增的PASS的编译配置。
+5、修改 `/data3/zhongzhw/code/google/jax/xla/xla/backends/ascend/transforms/aclnn_targets.cc` `/data3/zhongzhw/code/google/jax/xla/xla/backends/ascend/transforms/aclnn_targets.h` ，增加识别新增的target的接口
+6、在 `/data3/zhongzhw/code/google/jax/xla/xla/service/ascend/thunk_emitter.cc#L4519-4520` ThunkEmitter::EmitHloInstruction接口增加target匹配的判断，识别出新增的custom_call指令，并返回aclnnthunk: `/data3/zhongzhw/code/google/jax/xla/xla/service/ascend/thunk_emitter.cc#L4552-4554` 。
+7、为相应的custom_call指令编写发射aclnnthunk的接口： `/data3/zhongzhw/code/google/jax/xla/xla/service/ascend/thunk_emitter.cc#L4037-4121` ， 这里主要是从backend_config解析出调用aclnn算子的参数信息，然后将算子的操作数，返回值，非张量参数等信息构造一个AclnnThunk返回。
+8、在 `/data3/zhongzhw/code/google/jax/xla/xla/service/ascend/thunk_emitter.h` 中声明新加的emit接口。
+现在我需要你对上述步骤转换成一个技能，指导下次类似功能的实现，当我提供Hlo算子输入，aclnn算子接口说明手册后，能正确的实现Pass转换，指令发射等功能。
+---------------

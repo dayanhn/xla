@@ -20,6 +20,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/service/buffer_assignment.h"
 #include "third_party/acl/inc/acl/acl.h"
+#include "aclnnop/aclnn_permute.h"
 #include <unordered_map>
 #include <functional>
 
@@ -71,6 +72,23 @@ static const std::unordered_map<std::string, ExecuteFunc> kOpExecutors = {
        const std::function<TensorTriplet(const NullableShapedSlice&)>& make_triplet) -> absl::Status {
       CHECK(operands.size() == 1 && results.size() == 1) << "aclnnTanh requires 1 input and 1 output";
       EXEC_ACLNN_CMD(aclnnTanh, stream, make_triplet(operands[0]),make_triplet(results[0]));
+      return absl::OkStatus();
+    }
+  },
+  {
+    "aclnnPermute",
+    [](const AclnnThunk::ExecuteParams& params, se::Stream* stream,
+       const std::vector<NullableShapedSlice>& operands,
+       const std::vector<NullableShapedSlice>& results,
+       const std::vector<AclnnThunk::Param>& params_list,
+       const std::function<TensorTriplet(const NullableShapedSlice&)>& make_triplet) -> absl::Status {
+      CHECK(operands.size() == 1 && results.size() == 1 && params_list.size() == 1) << "aclnnPermute requires 1 input, 1 output, and 1 parameter (dimensions)";
+      
+      // Extract dimensions from variant parameter
+      std::vector<int64_t> dims = std::get<std::vector<int64_t>>(params_list[0]);
+      
+      // Execute permute
+      EXEC_ACLNN_CMD(aclnnPermute, stream,make_triplet(operands[0]),dims,make_triplet(results[0]));
       return absl::OkStatus();
     }
   },

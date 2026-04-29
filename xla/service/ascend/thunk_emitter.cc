@@ -411,6 +411,90 @@ bool IsConvolutionFusion(const HloFusionInstruction* fusion) {
   return true;
 }
 
+// Helper function to check if a fusion matches the transpose pattern
+// Pattern: fusion { parameter -> transpose }
+bool IsTransposeFusion(const HloFusionInstruction* fusion) {
+  auto* computation = fusion->fused_instructions_computation();
+  
+  // Must have exactly 2 instructions: parameter + transpose
+  const auto& instructions = computation->instructions();
+  int64_t instruction_count = std::distance(instructions.begin(), instructions.end());
+  if (instruction_count != 2) {
+    return false;
+  }
+  
+  // Find the parameter and transpose instructions
+  const HloInstruction* param_instr = nullptr;
+  const HloInstruction* transpose_instr = nullptr;
+  
+  for (const auto* instr : instructions) {
+    if (instr->opcode() == HloOpcode::kParameter) {
+      param_instr = instr;
+    } else if (instr->opcode() == HloOpcode::kTranspose) {
+      transpose_instr = instr;
+    } else {
+      return false;
+    }
+  }
+  
+  // Both instructions must be present
+  if (!param_instr || !transpose_instr) {
+    return false;
+  }
+  
+  // Transpose must take parameter as its only operand
+  if (transpose_instr->operand_count() != 1 || 
+      transpose_instr->operand(0) != param_instr) {
+    return false;
+  }
+  
+  // Fusion's root must be the transpose instruction
+  if (computation->root_instruction() != transpose_instr) {
+    return false;
+  }
+  
+  // Check if dimensions are valid
+  const auto& dimensions = transpose_instr->dimensions();
+  if (dimensions.empty()) {
+    return false;
+  }
+  
+  
+  // Check if input and output types are the same (transpose preserves type)
+  PrimitiveType input_type = transpose_instr->operand(0)->shape().element_type();
+  PrimitiveType output_type = transpose_instr->shape().element_type();
+  
+  if (input_type != output_type) {
+    return false;
+  }
+  
+  // Check if it's a supported data type based on aclnnPermute documentation
+  bool is_supported = false;
+  
+  // Supported input/output types for permute
+  if (input_type == PrimitiveType::F32 ||
+      input_type == PrimitiveType::F16 ||
+      input_type == PrimitiveType::BF16 ||
+      input_type == PrimitiveType::F64 ||
+      input_type == PrimitiveType::S32 ||
+      input_type == PrimitiveType::S64 ||
+      input_type == PrimitiveType::U32 ||
+      input_type == PrimitiveType::U64 ||
+      input_type == PrimitiveType::S16 ||
+      input_type == PrimitiveType::U16 ||
+      input_type == PrimitiveType::S8 ||
+      input_type == PrimitiveType::U8 ||
+      input_type == PrimitiveType::PRED) {
+    is_supported = true;
+  }
+  
+  if (!is_supported) {
+    return false;
+  }
+  
+  return true;
+}
+
 // Helper function to check if a fusion matches the convert-element-type pattern
 // Pattern: fusion { parameter -> convert-element-type }
 bool IsConvertFusion(const HloFusionInstruction* fusion) {
@@ -1773,14 +1857,19 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitConstant(
 
 absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitFusion(
     const HloFusionInstruction* fusion) {
-  // Only handle kLoop fusion for now
-  if (fusion->fusion_kind() != HloInstruction::FusionKind::kLoop) {
+  // Handle kLoop and kInput fusion kinds
+  // kLoop: elementwise operations
+  // kInput: input fusion (often used for transpose, data rearrangement)
+  if (fusion->fusion_kind() != HloInstruction::FusionKind::kLoop &&
+      fusion->fusion_kind() != HloInstruction::FusionKind::kInput) {
     VLOG(3) << "Ascend ThunkEmitter: fusion kind not handled: " 
             << static_cast<int>(fusion->fusion_kind());
     return xla::gpu::ThunkSequence{};
   }
   
-  VLOG(2) << "EmitFusion (kLoop) for Ascend: " << fusion->name();
+  VLOG(2) << "EmitFusion (" 
+          << (fusion->fusion_kind() == HloInstruction::FusionKind::kLoop ? "kLoop" : "kInput")
+          << ") for Ascend: " << fusion->name();
   
   // Try to match and emit specific FFI patterns
   // Pattern 1: broadcast-constant -> ascend.full.f32 (for memset-like operation)
@@ -1908,6 +1997,14 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitFusion(
   // Pattern 2.5: tanh -> aclnnTanh
   if (IsTanhFusion(fusion)) {
     TF_ASSIGN_OR_RETURN(auto thunks, EmitTanhFusion(fusion));
+    if (!thunks.empty()) {
+      return thunks;
+    }
+  }
+
+  // Pattern 2.6: transpose -> aclnnPermute
+  if (IsTransposeFusion(fusion)) {
+    TF_ASSIGN_OR_RETURN(auto thunks, EmitTransposeFusion(fusion));
     if (!thunks.empty()) {
       return thunks;
     }
@@ -3521,6 +3618,57 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitConvertFusion(
   auto thunk = std::make_unique<xla::ascend::AclnnThunk>(
       xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
       "aclnnCast",
+      std::move(operands),
+      std::move(results),
+      std::move(params));
+  
+  // Add the thunk to the sequence
+  xla::gpu::ThunkSequence sequence;
+  sequence.push_back(std::move(thunk));
+  
+  return sequence;
+}
+
+// Helper function to emit transpose fusion as aclnnPermute
+absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitTransposeFusion(
+    const HloFusionInstruction* fusion) {
+  // Get the input and output buffer allocations
+  TF_ASSIGN_OR_RETURN(auto input_slice, GetInputParamShapedSliceForHlo(fusion, 0));
+  TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(fusion));
+  
+  // Create operands and results for AclnnThunk
+  std::vector<NullableShapedSlice> operands;
+  std::vector<NullableShapedSlice> results;
+  std::vector<xla::ascend::AclnnThunk::Param> params;
+  
+  // Add input and output slices
+  operands.push_back(input_slice);
+  results.push_back(output_slice);
+  
+  // Get transpose dimensions from the fusion
+  auto* computation = fusion->fused_instructions_computation();
+  const HloInstruction* transpose_instr = nullptr;
+  for (const auto* instr : computation->instructions()) {
+    if (instr->opcode() == HloOpcode::kTranspose) {
+      transpose_instr = instr;
+      break;
+    }
+  }
+  
+  std::vector<int64_t> pad_values;
+  // Add dimensions as parameters
+  const auto& dimensions = transpose_instr->dimensions();
+  for (int64_t dim : dimensions) {
+    pad_values.push_back(dim);
+  }
+  params.push_back(pad_values);
+  VLOG(2) << "Emitting transpose fusion as aclnnPermute: " << fusion->name()
+          << ", dimensions: " << absl::StrJoin(dimensions, ", ");
+  
+  // Create AclnnThunk for aclnnPermute
+  auto thunk = std::make_unique<xla::ascend::AclnnThunk>(
+      xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(fusion, ir_emitter_context_->GetNextThunkId()),
+      "aclnnPermute",
       std::move(operands),
       std::move(results),
       std::move(params));

@@ -233,14 +233,25 @@ class AclnnGemmRewriterVisitor : public DfsHloRewriteVisitor {
                      : rhs->shape().dimensions(lhs_batch_dims_size) *
                            rhs->shape().dimensions(lhs_batch_dims_size + 1);
 
-    const Shape& output_shape = instr->shape();
+    Shape output_shape = instr->shape();
+    // 确保输出的 layout 与原始指令保持一致，不随 transpose 配置变化
+    *output_shape.mutable_layout() = instr->shape().layout();
+    
+    // 创建操作数布局约束，确保操作数的布局也被保持
+    std::vector<Shape> operand_shapes_with_layout;
+    operand_shapes_with_layout.push_back(lhs->shape());
+    operand_shapes_with_layout.push_back(rhs->shape());
+    
+    // 使用带有布局约束的 CreateCustomCall 重载，约束操作数和结果的布局
     HloInstruction* gemm_call =
         instr->AddInstruction(HloInstruction::CreateCustomCall(
             output_shape,
             {lhs, rhs},
-            kAclnnGemmCallTarget));
+            kAclnnGemmCallTarget,
+            operand_shapes_with_layout));
 
     gemm_call->set_raw_backend_config_string(SerializeAclnnConfig(*config));
+    
     TF_RETURN_IF_ERROR(SetName(instr->GetModule(), gemm_call));
     TF_RETURN_IF_ERROR(ReplaceInstruction(instr, gemm_call));
 
