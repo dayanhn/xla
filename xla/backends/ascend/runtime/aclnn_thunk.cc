@@ -221,21 +221,35 @@ static const std::unordered_map<std::string, ExecuteFunc> kOpExecutors = {
         biasSizes.push_back(operands[1]->shape.dimensions(0));
       }
 
+      // Prepare optional input tensor
+      aclTensor* input_tensor = nullptr;
+      if (operands.size() > 2) {
+        input_tensor = ConvertType(make_triplet(operands[2]));
+      }
+
       // Map results to API parameters compactly based on outputMask.
       // Each true entry in the mask consumes one result, in order:
       //   gradInput (mask[0]), gradWeight (mask[1]), gradBias (mask[2])
       int result_idx = 0;
-      auto gradInput_triplet = (outputMask[0] && result_idx < results.size())
-          ? make_triplet(results[result_idx++]) : nullptr;
-      auto gradWeight_triplet = (outputMask[1] && result_idx < results.size())
-          ? make_triplet(results[result_idx++]) : nullptr;
-      auto gradBias_triplet = (outputMask[2] && result_idx < results.size())
-          ? make_triplet(results[result_idx++]) : nullptr;
+      aclTensor* gradInput_tensor = nullptr;
+      if (outputMask[0] && result_idx < results.size()) {
+        gradInput_tensor = ConvertType(make_triplet(results[result_idx++]));
+      }
+      
+      aclTensor* gradWeight_tensor = nullptr;
+      if (outputMask[1] && result_idx < results.size()) {
+        gradWeight_tensor = ConvertType(make_triplet(results[result_idx++]));
+      }
+      
+      aclTensor* gradBias_tensor = nullptr;
+      if (outputMask[2] && result_idx < results.size()) {
+        gradBias_tensor = ConvertType(make_triplet(results[result_idx++]));
+      }
 
       // Call aclnnConvolutionBackward
       EXEC_ACLNN_CMD(aclnnConvolutionBackward, stream,
                      make_triplet(operands[0]),  // gradOutput
-                     operands.size() > 2 ? make_triplet(operands[2]) : nullptr,  // input (optional)
+                     input_tensor,  // input (optional)
                      make_triplet(operands[1]),  // weight
                      biasSizes,  // biasSizes
                      stride,     // stride
@@ -245,9 +259,9 @@ static const std::unordered_map<std::string, ExecuteFunc> kOpExecutors = {
                      outputPadding, // outputPadding
                      groups,     // groups
                      outputMask, // outputMask
-                     gradInput_triplet,
-                     gradWeight_triplet,
-                     gradBias_triplet,
+                     gradInput_tensor,
+                     gradWeight_tensor,
+                     gradBias_tensor,
                      cubeMathType); // cubeMathType
 
       return absl::OkStatus();
