@@ -150,3 +150,5 @@ jax/xla/xla/service/ascend/ffi/BUILD
 8、在 `/data3/zhongzhw/code/google/jax/xla/xla/service/ascend/thunk_emitter.h` 中声明新加的emit接口。
 现在我需要你对上述步骤转换成一个技能，指导下次类似功能的实现，当我提供Hlo算子输入，aclnn算子接口说明手册后，能正确的实现Pass转换，指令发射等功能。
 ---------------
+`/data3/zhongzhw/code/google/jax/tmp/a.txt` 是需要优化的hlo ir,现在我需要匹配里面的卷积算子，然后可以转换成调用： `/data3/zhongzhw/code/google/ascend/ops-nn/conv/convolution_forward/docs/aclnnConvolution.md` ，请你根据aclnn-pass-implementer这个技能帮我完成功能，原来已经实现了部分功能，比如： `/data3/zhongzhw/code/google/jax/xla/xla/backends/ascend/transforms/aclnn_convolution_rewriter.cc` ，但存在很多的错误，请你重新依据技能帮我实现一遍。
+修改完成后需要你执行 `/data3/zhongzhw/code/google/jax/build.sh` 这个编译脚本，直到编译通过。在编译过程中如果出现错误，请认真解决，遵循功能正确，而不是 为了解决错误，直接裁剪功能。另外每次修改完成后要在同一个终端里执行build.sh，另外如果另外开一个终端编译会导致jax,xla又全量重编，需要大量的时间。
