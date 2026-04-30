@@ -158,7 +158,7 @@ static const std::unordered_map<std::string, ExecuteFunc> kOpExecutors = {
        const std::vector<NullableShapedSlice>& results,
        const std::vector<AclnnThunk::Param>& params_list,
        const std::function<TensorTriplet(const NullableShapedSlice&)>& make_triplet) -> absl::Status {
-      CHECK(operands.size() == 2 && results.size() == 1 && params_list.size() == 7) << "aclnnConvolution requires 2 inputs (input, weight), 1 output, and 7 parameters (stride, padding, dilation, transposed, outputPadding, groups, cubeMathType)";
+      CHECK((operands.size() == 2 || operands.size() == 3) && results.size() == 1 && params_list.size() == 7) << "aclnnConvolution requires 2 or 3 inputs (input, weight, [bias]), 1 output, and 7 parameters (stride, padding, dilation, transposed, outputPadding, groups, cubeMathType)";
       
       // Extract parameters
       auto stride = std::get<std::vector<int64_t>>(params_list[0]);
@@ -169,11 +169,17 @@ static const std::unordered_map<std::string, ExecuteFunc> kOpExecutors = {
       auto groups = std::get<int64_t>(params_list[5]);
       auto cubeMathType = std::get<int8_t>(params_list[6]);
       
+      // Prepare optional bias tensor
+      aclTensor* bias_tensor = nullptr;
+      if (operands.size() > 2 && operands[2].has_value()) {
+        bias_tensor = ConvertType(make_triplet(operands[2]));
+      }
+      
       // Call aclnnConvolution
       EXEC_ACLNN_CMD(aclnnConvolution, stream,
                      make_triplet(operands[0]),  // input
                      make_triplet(operands[1]),  // weight
-                     nullptr,  // bias (none)
+                     bias_tensor,  // bias (optional)
                      stride,   // stride
                      padding,  // padding
                      dilation, // dilation
@@ -216,9 +222,15 @@ static const std::unordered_map<std::string, ExecuteFunc> kOpExecutors = {
       // Determine output tensor sizes based on outputMask
       // In NCHW weight format: dim 0 = C_out; in HWIO format: last dim = C_out
       // The layout conversion pass ensures NCHW format at this point
+      // For transposed=true: biasSizes = [weight.shape[1] * groups]
+      // For transposed=false: biasSizes = [weight.shape[0]]
       std::vector<int64_t> biasSizes;
       if (outputMask[2]) {
-        biasSizes.push_back(operands[1]->shape.dimensions(0));
+        if (transposed) {
+          biasSizes.push_back(operands[1]->shape.dimensions(1) * groups);
+        } else {
+          biasSizes.push_back(operands[1]->shape.dimensions(0));
+        }
       }
 
       // Prepare optional input tensor

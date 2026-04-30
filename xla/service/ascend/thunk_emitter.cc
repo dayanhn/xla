@@ -4225,16 +4225,9 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitAclnnConvolutionBackwa
 
   TF_ASSIGN_OR_RETURN(auto grad_output_slice, GetShapedSliceForHlo(instr->operand(0)));
   TF_ASSIGN_OR_RETURN(auto weight_slice, GetShapedSliceForHlo(instr->operand(1)));
-  
-  TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(instr));
 
   const Shape& grad_output_shape = instr->operand(0)->shape();
   PrimitiveType element_type = grad_output_shape.element_type();
-
-  VLOG(2) << "ACLNN ConvolutionBackward: grad_output_shape=" << grad_output_shape.ToString()
-          << ", weight_shape=" << instr->operand(1)->shape().ToString()
-          << ", output_shape=" << instr->shape().ToString()
-          << ", element_type=" << PrimitiveType_Name(element_type);
 
   std::vector<int64_t> stride = {1, 1};
   std::vector<int64_t> padding = {0, 0, 0, 0};
@@ -4279,8 +4272,32 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitAclnnConvolutionBackwa
 
   operands.push_back(grad_output_slice);
   operands.push_back(weight_slice);
+  
+  if (output_mask[1] && instr->operand_count() > 2) {
+    TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(instr->operand(2)));
+    operands.push_back(input_slice);
+    VLOG(2) << "ACLNN ConvolutionBackward: added input operand for gradWeight computation";
+  }
 
-  results.push_back(output_slice);
+  int result_idx = 0;
+  if (output_mask[0]) {
+    TF_ASSIGN_OR_RETURN(auto grad_input_slice, GetShapedSliceForHlo(instr, {result_idx}));
+    results.push_back(grad_input_slice);
+    result_idx++;
+  }
+  if (output_mask[1]) {
+    TF_ASSIGN_OR_RETURN(auto grad_weight_slice, GetShapedSliceForHlo(instr, {result_idx}));
+    results.push_back(grad_weight_slice);
+    result_idx++;
+  }
+  if (output_mask[2]) {
+    TF_ASSIGN_OR_RETURN(auto grad_bias_slice, GetShapedSliceForHlo(instr, {result_idx}));
+    results.push_back(grad_bias_slice);
+    result_idx++;
+  }
+
+  VLOG(2) << "ACLNN ConvolutionBackward: operands=" << operands.size()
+          << ", results=" << results.size();
 
   std::vector<xla::ascend::AclnnThunk::Param> params;
   
