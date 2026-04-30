@@ -19,6 +19,7 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/backends/ascend/transforms/aclnn_convolution_rewriter.h"
+#include "xla/backends/ascend/transforms/aclnn_convolution_backward_rewriter.h"
 
 namespace xla {
 namespace ascend {
@@ -28,6 +29,7 @@ absl::Status RunAclnnFusionPass(HloModule* hlo_module, const xla::gpu::GpuTarget
   HloPassPipeline pipeline("aclnn-fusion");
 
   pipeline.AddPass<AclnnGemmRewriter>(gpu_version);
+  pipeline.AddPass<AclnnConvolutionBackwardRewriter>();
   pipeline.AddPass<AclnnConvolutionRewriter>(gpu_version);
   return pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread}).status();
 }

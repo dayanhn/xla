@@ -165,6 +165,9 @@ class ThunkEmitter {
   absl::StatusOr<xla::gpu::ThunkSequence> EmitAclnnConvolutionThunk(
       const HloCustomCallInstruction* hlo);
 
+  absl::StatusOr<xla::gpu::ThunkSequence> EmitAclnnConvolutionBackwardThunk(
+      const HloCustomCallInstruction* hlo);
+
   absl::StatusOr<xla::gpu::ThunkSequence> EmitConvolutionFusion(
       const HloFusionInstruction* fusion);
 

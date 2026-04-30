@@ -127,13 +127,18 @@ cc_library(
     srcs = ["aclnn_convolution_backward_rewriter.cc"],
     hdrs = ["aclnn_convolution_backward_rewriter.h"],
     deps = [
-        "//xla/hlo/ir",
-        "//xla/hlo/pass",
-        "//xla/service",
-        "//xla/util",
+        ":aclnn_config",
+        ":aclnn_targets",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/service:hlo_creation_utils",
+        "//xla/service:pattern_matcher",
+        "//xla:shape_util",
+        "//xla/tsl/platform:errors",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/algorithm:container",
     ],
 )
@@ -145,11 +150,12 @@ cc_library(
     deps = [
         ":aclnn_gemm_rewriter",
         ":aclnn_convolution_rewriter",
+        ":aclnn_convolution_backward_rewriter",
         "//xla/backends/gpu/target_config:target_config",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/pass:hlo_pass_pipeline",
-
     ],
+    alwayslink = True,
 )
 
 cc_binary(

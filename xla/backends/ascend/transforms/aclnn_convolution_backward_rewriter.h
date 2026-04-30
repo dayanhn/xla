@@ -25,17 +25,8 @@ limitations under the License.
 namespace xla {
 namespace ascend {
 
-// A pass that rewrites convolution backward operations to use aclnnConvolutionBackward.
-//
-// This pass identifies transposed convolution patterns used in backward pass computation:
-// 1. gradInput: convolution with reverse(weight) -> input gradient
-// 2. gradWeight: transposed convolution without reverse -> weight gradient
-//
-// The pass creates custom calls that can invoke aclnnConvolutionBackward to compute
-// both gradients in a single kernel call.
 class AclnnConvolutionBackwardRewriter : public HloModulePass {
  public:
-  AclnnConvolutionBackwardRewriter() = default;
   absl::string_view name() const override { return "aclnn-convolution-backward-rewriter"; }
 
  protected:

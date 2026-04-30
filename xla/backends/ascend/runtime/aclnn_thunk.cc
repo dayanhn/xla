@@ -187,6 +187,53 @@ static const std::unordered_map<std::string, ExecuteFunc> kOpExecutors = {
     }
   },
   {
+    "aclnnConvolutionBackward",
+    [](const AclnnThunk::ExecuteParams& params, se::Stream* stream,
+       const std::vector<NullableShapedSlice>& operands,
+       const std::vector<NullableShapedSlice>& results,
+       const std::vector<AclnnThunk::Param>& params_list,
+       const std::function<TensorTriplet(const NullableShapedSlice&)>& make_triplet) -> absl::Status {
+      CHECK(operands.size() >= 2 && results.size() >= 1 && params_list.size() == 8) 
+          << "aclnnConvolutionBackward requires at least 2 inputs (gradOutput, weight), at least 1 output, and 8 parameters";
+      
+      // Extract parameters
+      auto stride = std::get<std::vector<int64_t>>(params_list[0]);
+      auto padding = std::get<std::vector<int64_t>>(params_list[1]);
+      auto dilation = std::get<std::vector<int64_t>>(params_list[2]);
+      auto transposed = std::get<bool>(params_list[3]);
+      auto outputPadding = std::get<std::vector<int64_t>>(params_list[4]);
+      auto groups = std::get<int64_t>(params_list[5]);
+      auto cubeMathType = std::get<int8_t>(params_list[6]);
+      auto outputMask = std::get<std::vector<bool>>(params_list[7]);
+      
+      // Determine output tensor sizes based on outputMask
+      std::vector<int64_t> biasSizes;
+      if (outputMask[2]) {
+        biasSizes.push_back(operands[1]->shape.dimensions(0));
+      }
+      
+      // Call aclnnConvolutionBackward
+      EXEC_ACLNN_CMD(aclnnConvolutionBackward, stream,
+                     make_triplet(operands[0]),  // gradOutput
+                     operands.size() > 2 ? make_triplet(operands[2]) : nullptr,  // input (optional)
+                     make_triplet(operands[1]),  // weight
+                     biasSizes,  // biasSizes
+                     stride,     // stride
+                     padding,    // padding
+                     dilation,   // dilation
+                     transposed, // transposed
+                     outputPadding, // outputPadding
+                     groups,     // groups
+                     outputMask, // outputMask
+                     make_triplet(results[0]), // gradInput (optional)
+                     results.size() > 1 ? make_triplet(results[1]) : nullptr, // gradWeight (optional)
+                     results.size() > 2 ? make_triplet(results[2]) : nullptr, // gradBias (optional)
+                     cubeMathType); // cubeMathType
+
+      return absl::OkStatus();
+    }
+  },
+  {
     "aclnnMaxPool",
     [](const AclnnThunk::ExecuteParams& params, se::Stream* stream,
        const std::vector<NullableShapedSlice>& operands,

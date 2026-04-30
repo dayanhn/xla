@@ -37,8 +37,9 @@ class AclnnThunk : public gpu::Thunk {
       float,                // Float parameter
       int64_t,              // Integer parameter
       bool,                 // Boolean parameter
-      int8_t,                // Int8 parameter (e.g., cubeMathType)
-      std::vector<int64_t>  // Dimensions parameter
+      int8_t,               // Int8 parameter (e.g., cubeMathType)
+      std::vector<int64_t>, // Dimensions parameter
+      std::vector<bool>     // Boolean mask parameter (e.g., outputMask)
   >;
 
   AclnnThunk(gpu::Thunk::ThunkInfo thunk_info, std::string op_name,

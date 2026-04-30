@@ -24,6 +24,7 @@ namespace ascend {
 // ACLNN target constants
 constexpr absl::string_view kAclnnGemmCallTarget = "__aclnn$gemm";
 constexpr absl::string_view kAclnnConvolutionCallTarget = "__aclnn$convolution";
+constexpr absl::string_view kAclnnConvolutionBackwardCallTarget = "__aclnn$convolution_backward";
 
 // Check if a custom call target is an ACLNN target
 bool IsAclnnTarget(absl::string_view target);
@@ -33,6 +34,9 @@ bool IsAclnnGemmTarget(absl::string_view target);
 
 // Check if a custom call target is an ACLNN Convolution target
 bool IsAclnnConvolutionTarget(absl::string_view target);
+
+// Check if a custom call target is an ACLNN ConvolutionBackward target
+bool IsAclnnConvolutionBackwardTarget(absl::string_view target);
 
 }  // namespace ascend
 }  // namespace xla

@@ -34,3 +34,5 @@ tools/python_bin_path.sh
 .cache
 compile_commands.json
 external
+xla/backends/ascend/transforms/test_hlo.txt
+xla/backends/ascend/transforms/test_out.txt

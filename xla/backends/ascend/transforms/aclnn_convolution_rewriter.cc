@@ -90,6 +90,13 @@ bool IsAclnnSupportedConvolution(const HloConvolutionInstruction* conv) {
     return false;
   }
   
+  for (int i = 0; i < conv->operand_count(); ++i) {
+    if (conv->operand(i)->opcode() == HloOpcode::kReverse) {
+      VLOG(4) << "Convolution with reverse operand is backward convolution, skipping";
+      return false;
+    }
+  }
+  
   return true;
 }
 
@@ -98,6 +105,9 @@ AclnnConvolutionConfig ExtractConvolutionConfig(const HloConvolutionInstruction*
 
   const auto& window = conv->window();
 
+  config.dilation.clear();
+  config.output_padding.clear();
+  
   for (size_t i = 0; i < window.dimensions().size(); ++i) {
     config.stride.push_back(window.dimensions(i).stride());
     config.dilation.push_back(window.dimensions(i).base_dilation());
@@ -125,36 +135,52 @@ AclnnConvolutionConfig ExtractConvolutionConfig(const HloConvolutionInstruction*
   return config;
 }
 
-class AclnnConvolutionRewriterVisitor : public DfsHloRewriteVisitor {
- public:
-  absl::Status HandleConvolution(HloInstruction* instr) override {
-    auto* conv = Cast<HloConvolutionInstruction>(instr);
-    
-    if (!IsAclnnSupportedConvolution(conv)) {
-      return absl::OkStatus();
+absl::StatusOr<bool> ProcessConvolution(HloInstruction* instr) {
+  auto* conv = Cast<HloConvolutionInstruction>(instr);
+  
+  // 跳过任何看起来像是反向卷积的卷积
+  // 1. 检查是否有 reverse 操作数 - 这是输入梯度模式
+  for (int i = 0; i < conv->operand_count(); ++i) {
+    if (conv->operand(i)->opcode() == HloOpcode::kReverse) {
+      return false;
     }
-    
-    std::vector<HloInstruction*> operands = {
-        conv->mutable_operand(0),
-        conv->mutable_operand(1)
-    };
-    
-    AclnnConvolutionConfig config = ExtractConvolutionConfig(conv);
-    config.has_bias = false;
-    
-    HloInstruction* conv_call = instr->AddInstruction(
-        HloInstruction::CreateCustomCall(
-            instr->shape(),
-            operands,
-            kAclnnConvolutionCallTarget));
-    
-    conv_call->set_raw_backend_config_string(config.ToString());
-    TF_RETURN_IF_ERROR(SetName(instr->GetModule(), conv_call));
-    TF_RETURN_IF_ERROR(ReplaceInstruction(instr, conv_call));
-    
-    return absl::OkStatus();
   }
   
+  // 2. 检查维度标签是否是反向卷积的标签（权重梯度）
+  const auto& dn = conv->convolution_dimension_numbers();
+  std::string dim_labels = ConvolutionDimensionNumbersToString(dn);
+  if (dim_labels.find("->01bf") != std::string::npos) {
+    return false;
+  }
+  
+  if (!IsAclnnSupportedConvolution(conv)) {
+    return false;
+  }
+  
+  std::vector<HloInstruction*> operands = {
+      conv->mutable_operand(0),
+      conv->mutable_operand(1)
+  };
+  
+  AclnnConvolutionConfig config = ExtractConvolutionConfig(conv);
+  config.has_bias = false;
+  
+  HloInstruction* conv_call = instr->AddInstruction(
+      HloInstruction::CreateCustomCall(
+          instr->shape(),
+          operands,
+          kAclnnConvolutionCallTarget));
+  
+  conv_call->set_raw_backend_config_string(config.ToString());
+  TF_RETURN_IF_ERROR(SetName(instr->GetModule(), conv_call));
+  TF_RETURN_IF_ERROR(instr->ReplaceAllUsesWith(conv_call));
+  TF_RETURN_IF_ERROR(instr->parent()->RemoveInstruction(instr));
+  
+  return true;
+}
+
+class AclnnConvolutionRewriterVisitor : public DfsHloRewriteVisitor {
+ public:
   absl::Status HandleAdd(HloInstruction* instr) override {
     HloInstruction *bias = nullptr, *conv = nullptr;
     HloInstruction* optional_reshape = nullptr;
@@ -203,7 +229,8 @@ class AclnnConvolutionRewriterVisitor : public DfsHloRewriteVisitor {
 
       fused_conv->set_raw_backend_config_string(config.ToString());
       TF_RETURN_IF_ERROR(SetName(instr->GetModule(), fused_conv));
-      TF_RETURN_IF_ERROR(ReplaceInstruction(instr, fused_conv));
+      TF_RETURN_IF_ERROR(instr->ReplaceAllUsesWith(fused_conv));
+      TF_RETURN_IF_ERROR(instr->parent()->RemoveInstruction(instr));
 
       return absl::OkStatus();
     }
@@ -254,7 +281,8 @@ class AclnnConvolutionRewriterVisitor : public DfsHloRewriteVisitor {
 
       fused_conv->set_raw_backend_config_string(conv_config->ToString());
       TF_RETURN_IF_ERROR(SetName(instr->GetModule(), fused_conv));
-      TF_RETURN_IF_ERROR(ReplaceInstruction(instr, fused_conv));
+      TF_RETURN_IF_ERROR(instr->ReplaceAllUsesWith(fused_conv));
+      TF_RETURN_IF_ERROR(instr->parent()->RemoveInstruction(instr));
 
       return absl::OkStatus();
     }
@@ -264,9 +292,28 @@ class AclnnConvolutionRewriterVisitor : public DfsHloRewriteVisitor {
 };
 
 absl::StatusOr<bool> RunOnComputation(HloComputation* computation) {
+  bool changed = false;
+  
+  // 收集需要处理的卷积指令
+  std::vector<HloInstruction*> to_process;
+  for (auto* instr : computation->MakeInstructionPostOrder()) {
+    if (instr->opcode() == HloOpcode::kConvolution) {
+      to_process.push_back(instr);
+    }
+  }
+  
+  // 处理卷积指令
+  for (auto* instr : to_process) {
+    TF_ASSIGN_OR_RETURN(bool result, ProcessConvolution(instr));
+    changed |= result;
+  }
+  
+  // 使用 visitor 处理 bias fusion
   AclnnConvolutionRewriterVisitor visitor;
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
-  return visitor.changed();
+  changed |= visitor.changed();
+  
+  return changed;
 }
 
 }  // anonymous namespace

@@ -19,5 +19,5 @@ echo "Building Ascend ACLNN Fusion Analyzer..."
 
 echo "Build completed successfully!"
 
-export PATH=/data3/zhongzhw/code/uni_ai/google/xla/bazel-bin/xla/backends/ascend/transforms:$PATH
-bazel-bin/xla/backends/ascend/transforms/aclnn_fusion_analyzer xla/backends/ascend/transforms/test_conv.hlo
+#export PATH=/data3/zhongzhw/code/uni_ai/google/xla/bazel-bin/xla/backends/ascend/transforms:$PATH
+#bazel-bin/xla/backends/ascend/transforms/aclnn_fusion_analyzer xla/backends/ascend/transforms/test_conv.hlo

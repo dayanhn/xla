@@ -4219,6 +4219,93 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitAclnnConvolutionThunk(
   return thunk_sequence;
 }
 
+absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitAclnnConvolutionBackwardThunk(
+    const HloCustomCallInstruction* instr) {
+  VLOG(2) << "Emitting ACLNN ConvolutionBackward: " << instr->name();
+
+  TF_ASSIGN_OR_RETURN(auto grad_output_slice, GetShapedSliceForHlo(instr->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto weight_slice, GetShapedSliceForHlo(instr->operand(1)));
+  
+  TF_ASSIGN_OR_RETURN(auto output_slice, GetShapedSliceForHlo(instr));
+
+  const Shape& grad_output_shape = instr->operand(0)->shape();
+  PrimitiveType element_type = grad_output_shape.element_type();
+
+  VLOG(2) << "ACLNN ConvolutionBackward: grad_output_shape=" << grad_output_shape.ToString()
+          << ", weight_shape=" << instr->operand(1)->shape().ToString()
+          << ", output_shape=" << instr->shape().ToString()
+          << ", element_type=" << PrimitiveType_Name(element_type);
+
+  std::vector<int64_t> stride = {1, 1};
+  std::vector<int64_t> padding = {0, 0, 0, 0};
+  std::vector<int64_t> dilation = {1, 1};
+  bool transposed = false;
+  std::vector<int64_t> output_padding = {0, 0};
+  int64_t groups = 1;
+  int8_t cube_math_type = 0;
+  std::vector<bool> output_mask = {true, true, false};
+
+  const std::string& backend_config = instr->raw_backend_config_string();
+  VLOG(2) << "Backend config: " << backend_config;
+  
+  if (!backend_config.empty()) {
+    TF_ASSIGN_OR_RETURN(auto config, ParseAclnnConfig(
+        instr->custom_call_target(), backend_config));
+    auto* conv_backward_config = dynamic_cast<AclnnConvolutionBackwardConfig*>(config.get());
+    if (!conv_backward_config) {
+      return absl::InternalError("Failed to cast to AclnnConvolutionBackwardConfig");
+    }
+    stride = conv_backward_config->stride;
+    padding = conv_backward_config->padding;
+    dilation = conv_backward_config->dilation;
+    transposed = conv_backward_config->transposed;
+    output_padding = conv_backward_config->output_padding;
+    groups = conv_backward_config->groups;
+    cube_math_type = conv_backward_config->cube_math_type;
+    output_mask = conv_backward_config->output_mask;
+  }
+
+  VLOG(2) << "ACLNN ConvolutionBackward parameters: stride=" << absl::StrJoin(stride, ",")
+          << ", padding=" << absl::StrJoin(padding, ",")
+          << ", dilation=" << absl::StrJoin(dilation, ",")
+          << ", transposed=" << transposed
+          << ", output_padding=" << absl::StrJoin(output_padding, ",")
+          << ", groups=" << groups
+          << ", cube_math_type=" << static_cast<int>(cube_math_type)
+          << ", output_mask=[" << output_mask[0] << "," << output_mask[1] << "," << output_mask[2] << "]";
+
+  std::vector<NullableShapedSlice> operands;
+  std::vector<NullableShapedSlice> results;
+
+  operands.push_back(grad_output_slice);
+  operands.push_back(weight_slice);
+
+  results.push_back(output_slice);
+
+  std::vector<xla::ascend::AclnnThunk::Param> params;
+  
+  params.push_back(stride);
+  params.push_back(padding);
+  params.push_back(dilation);
+  params.push_back(transposed);
+  params.push_back(output_padding);
+  params.push_back(groups);
+  params.push_back(static_cast<int64_t>(cube_math_type));
+  params.push_back(output_mask);
+
+  auto thunk = std::make_unique<xla::ascend::AclnnThunk>(
+      xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(instr, ir_emitter_context_->GetNextThunkId()),
+      "aclnnConvolutionBackward",
+      std::move(operands),
+      std::move(results),
+      std::move(params));
+
+  xla::gpu::ThunkSequence thunk_sequence;
+  thunk_sequence.push_back(std::move(thunk));
+
+  return thunk_sequence;
+}
+
 #if 0
 // Original code for CustomCallThunk
 absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitGemmThunk(
@@ -4653,6 +4740,9 @@ absl::StatusOr<std::optional<xla::gpu::ThunkSequence>> ThunkEmitter::EmitHloInst
       }
       if (xla::ascend::IsAclnnConvolutionTarget(custom_call->custom_call_target())) {
         return EmitAclnnConvolutionThunk(custom_call);
+      }
+      if (xla::ascend::IsAclnnConvolutionBackwardTarget(custom_call->custom_call_target())) {
+        return EmitAclnnConvolutionBackwardThunk(custom_call);
       }
     }
     

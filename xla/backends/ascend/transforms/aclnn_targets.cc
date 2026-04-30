@@ -32,5 +32,9 @@ bool IsAclnnConvolutionTarget(absl::string_view target) {
   return target == kAclnnConvolutionCallTarget;
 }
 
+bool IsAclnnConvolutionBackwardTarget(absl::string_view target) {
+  return target == kAclnnConvolutionBackwardCallTarget;
+}
+
 }  // namespace ascend
 }  // namespace xla
