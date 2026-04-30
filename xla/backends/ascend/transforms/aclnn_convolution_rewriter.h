@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace ascend {
@@ -31,13 +32,17 @@ namespace ascend {
 // rewrites them as custom calls to aclnnConvolution, which supports fused bias.
 class AclnnConvolutionRewriter : public HloModulePass {
  public:
-  AclnnConvolutionRewriter() = default;
+  explicit AclnnConvolutionRewriter(se::GpuComputeCapability gpu_version)
+      : gpu_version_(gpu_version) {}
   absl::string_view name() const override { return "aclnn-convolution-rewriter"; }
 
  protected:
   absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  se::GpuComputeCapability gpu_version_;
 };
 
 }  // namespace ascend

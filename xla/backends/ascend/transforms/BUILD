@@ -144,10 +144,30 @@ cc_library(
     hdrs = ["aclnn_fusion_pass.h"],
     deps = [
         ":aclnn_gemm_rewriter",
+        ":aclnn_convolution_rewriter",
         "//xla/backends/gpu/target_config:target_config",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/pass:hlo_pass_pipeline",
 
+    ],
+)
+
+cc_binary(
+    name = "aclnn_fusion_analyzer",
+    srcs = ["aclnn_fusion_analyzer.cc"],
+    deps = [
+        ":aclnn_fusion_pass",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/pass:hlo_pass_pipeline",
+        "//xla/service:hlo_module_config",
+        "//xla/stream_executor:device_description",
+        "//xla/backends/gpu/target_config:target_config",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 

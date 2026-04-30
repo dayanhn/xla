@@ -1,15 +1,13 @@
 #!/bin/bash
 
-# Build script for Ascend PJRT client
+# Build script for Ascend ACLNN Fusion Analyzer
 clear
 set -e
 
-# 设置ascend环境变量
 source ~/Ascend8.5REL/ascend-toolkit/latest/set_env.sh
 
-echo "Building Ascend PJRT client..."
+echo "Building Ascend ACLNN Fusion Analyzer..."
 
-# Build the Ascend PJRT client
 ./bazel-7.4.1-linux-arm64 build \
     --compilation_mode=dbg --copt=-g --copt=-O0 --strip=never \
     --action_env=ASCEND_TOOLKIT_HOME=$ASCEND_TOOLKIT_HOME   \
@@ -17,8 +15,9 @@ echo "Building Ascend PJRT client..."
     --linkopt=-Wl,-rpath,$ASCEND_TOOLKIT_HOME/lib64 \
     --linkopt=-lascendcl --linkopt=-lnnopbase --linkopt=-lopapi_nn \
     --linkopt=-lhccl --linkopt=-lhcomm  --linkopt=-lopapi_math \
-    //xla/pjrt/plugin/xla_npu:xla_npu_pjrt_client_test
+    //xla/backends/ascend/transforms:aclnn_fusion_analyzer
 
 echo "Build completed successfully!"
-#./bazel-bin/xla/pjrt/plugin/xla_npu/xla_npu_pjrt_client_test \
-#     /data3/zhongzhw/code/uni_ai/google/xla/xla/pjrt/plugin/xla_npu/test_ffi_matmul_gelu_stablehlo.mlir
+
+export PATH=/data3/zhongzhw/code/uni_ai/google/xla/bazel-bin/xla/backends/ascend/transforms:$PATH
+bazel-bin/xla/backends/ascend/transforms/aclnn_fusion_analyzer xla/backends/ascend/transforms/test_conv.hlo
