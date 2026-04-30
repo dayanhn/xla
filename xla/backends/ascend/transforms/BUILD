@@ -136,6 +136,7 @@ cc_library(
         "//xla:shape_util",
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

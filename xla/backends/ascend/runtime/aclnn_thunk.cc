@@ -193,10 +193,7 @@ static const std::unordered_map<std::string, ExecuteFunc> kOpExecutors = {
        const std::vector<NullableShapedSlice>& results,
        const std::vector<AclnnThunk::Param>& params_list,
        const std::function<TensorTriplet(const NullableShapedSlice&)>& make_triplet) -> absl::Status {
-      CHECK(operands.size() >= 2 && results.size() >= 1 && params_list.size() == 8) 
-          << "aclnnConvolutionBackward requires at least 2 inputs (gradOutput, weight), at least 1 output, and 8 parameters";
-      
-      // Extract parameters
+      // Extract parameters first (used to validate results size)
       auto stride = std::get<std::vector<int64_t>>(params_list[0]);
       auto padding = std::get<std::vector<int64_t>>(params_list[1]);
       auto dilation = std::get<std::vector<int64_t>>(params_list[2]);
@@ -205,13 +202,36 @@ static const std::unordered_map<std::string, ExecuteFunc> kOpExecutors = {
       auto groups = std::get<int64_t>(params_list[5]);
       auto cubeMathType = std::get<int8_t>(params_list[6]);
       auto outputMask = std::get<std::vector<bool>>(params_list[7]);
-      
+
+      int expected_results = (outputMask[0] ? 1 : 0) +
+                             (outputMask[1] ? 1 : 0) +
+                             (outputMask[2] ? 1 : 0);
+      CHECK(operands.size() >= 2 && operands.size() <= 3 &&
+            results.size() == expected_results && params_list.size() == 8)
+          << "aclnnConvolutionBackward: expected " << expected_results
+          << " results for output_mask=[" << outputMask[0] << ","
+          << outputMask[1] << "," << outputMask[2] << "], got "
+          << results.size() << " results, " << operands.size() << " operands";
+
       // Determine output tensor sizes based on outputMask
+      // In NCHW weight format: dim 0 = C_out; in HWIO format: last dim = C_out
+      // The layout conversion pass ensures NCHW format at this point
       std::vector<int64_t> biasSizes;
       if (outputMask[2]) {
         biasSizes.push_back(operands[1]->shape.dimensions(0));
       }
-      
+
+      // Map results to API parameters compactly based on outputMask.
+      // Each true entry in the mask consumes one result, in order:
+      //   gradInput (mask[0]), gradWeight (mask[1]), gradBias (mask[2])
+      int result_idx = 0;
+      auto gradInput_triplet = (outputMask[0] && result_idx < results.size())
+          ? make_triplet(results[result_idx++]) : nullptr;
+      auto gradWeight_triplet = (outputMask[1] && result_idx < results.size())
+          ? make_triplet(results[result_idx++]) : nullptr;
+      auto gradBias_triplet = (outputMask[2] && result_idx < results.size())
+          ? make_triplet(results[result_idx++]) : nullptr;
+
       // Call aclnnConvolutionBackward
       EXEC_ACLNN_CMD(aclnnConvolutionBackward, stream,
                      make_triplet(operands[0]),  // gradOutput
@@ -225,9 +245,9 @@ static const std::unordered_map<std::string, ExecuteFunc> kOpExecutors = {
                      outputPadding, // outputPadding
                      groups,     // groups
                      outputMask, // outputMask
-                     make_triplet(results[0]), // gradInput (optional)
-                     results.size() > 1 ? make_triplet(results[1]) : nullptr, // gradWeight (optional)
-                     results.size() > 2 ? make_triplet(results[2]) : nullptr, // gradBias (optional)
+                     gradInput_triplet,
+                     gradWeight_triplet,
+                     gradBias_triplet,
                      cubeMathType); // cubeMathType
 
       return absl::OkStatus();
