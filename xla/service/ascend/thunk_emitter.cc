@@ -1804,10 +1804,11 @@ absl::StatusOr<xla::ShapedSlice> ThunkEmitter::GetShapedSliceForHlo(
     const xla::HloInstruction* instr, const xla::ShapeIndex& index) const {
   TF_ASSIGN_OR_RETURN(xla::BufferAllocation::Slice slice,
                       GetAllocationSliceForHlo(instr, index));
-  TF_ASSIGN_OR_RETURN(
-      xla::Shape shape,
-      ir_emitter_context_->buffer_assignment().GetShapeForUniqueSlice(instr,
-                                                                      index));
+  // Use the instruction's logical shape directly instead of relying on
+  // GetShapeForUniqueSlice which may return incorrect shapes for operations
+  // like bitcast inside fusions where dataflow analysis traces back to
+  // the original value's shape.
+  xla::Shape shape = instr->shape();
   return xla::ShapedSlice{slice, shape};
 }
 
@@ -4040,6 +4041,26 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitAclnnGemmThunk(
 
   TF_ASSIGN_OR_RETURN(auto a_slice, GetShapedSliceForHlo(instr->operand(0)));
   TF_ASSIGN_OR_RETURN(auto b_slice, GetShapedSliceForHlo(instr->operand(1)));
+#if 0  
+  // Debug print: verify the actual shape of slices
+  std::cerr << "[DEBUG EmitAclnnGemmThunk] instr=" << instr->name() << std::endl;
+  std::cerr << "[DEBUG EmitAclnnGemmThunk] operand(0) HLO shape: " 
+            << instr->operand(0)->shape().ToString() << std::endl;
+  std::cerr << "[DEBUG EmitAclnnGemmThunk] a_slice.shape.dimensions: ";
+  for (int64_t i = 0; i < a_slice.shape.dimensions().size(); ++i) {
+    std::cerr << a_slice.shape.dimensions()[i];
+    if (i < a_slice.shape.dimensions().size() - 1) std::cerr << ",";
+  }
+  std::cerr << std::endl;
+  std::cerr << "[DEBUG EmitAclnnGemmThunk] operand(1) HLO shape: " 
+            << instr->operand(1)->shape().ToString() << std::endl;
+  std::cerr << "[DEBUG EmitAclnnGemmThunk] b_slice.shape.dimensions: ";
+  for (int64_t i = 0; i < b_slice.shape.dimensions().size(); ++i) {
+    std::cerr << b_slice.shape.dimensions()[i];
+    if (i < b_slice.shape.dimensions().size() - 1) std::cerr << ",";
+  }
+  std::cerr << std::endl;
+#endif
   
   // Handle result
   TF_ASSIGN_OR_RETURN(auto c_slice, GetShapedSliceForHlo(instr));
@@ -4145,6 +4166,7 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitAclnnConvolutionThunk(
   int64_t groups = 1;
   int8_t cube_math_type = 0;
   bool has_bias = false;
+  std::string dim_labels;
 
   const std::string& backend_config = instr->raw_backend_config_string();
   VLOG(2) << "Backend config: " << backend_config;
@@ -4164,6 +4186,7 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitAclnnConvolutionThunk(
     groups = conv_config->groups;
     cube_math_type = conv_config->cube_math_type;
     has_bias = conv_config->has_bias;
+    dim_labels = conv_config->dim_labels;
   }
 
   VLOG(2) << "ACLNN Convolution parameters: stride=" << absl::StrJoin(stride, ",")
@@ -4173,7 +4196,74 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitAclnnConvolutionThunk(
           << ", output_padding=" << absl::StrJoin(output_padding, ",")
           << ", groups=" << groups
           << ", cube_math_type=" << static_cast<int>(cube_math_type)
-          << ", has_bias=" << has_bias;
+          << ", has_bias=" << has_bias
+          << ", dim_labels=" << dim_labels;
+
+  // Determine ACL format based on dim_labels
+  // dim_labels format: "input_weight->output", e.g., "b01f_01io->b01f"
+  // For 4D tensors:
+  //   Input:  "b01f" -> NHWC, "bf01" -> NCHW
+  //   Weight: "01io" -> HWIO, "oi01" -> OIHW
+  //   Output: "b01f" -> NHWC, "bf01" -> NCHW
+  aclFormat input_format = ACL_FORMAT_ND;
+  aclFormat weight_format = ACL_FORMAT_ND;
+  aclFormat output_format = ACL_FORMAT_ND;
+  
+  if (!dim_labels.empty()) {
+    // Parse dim_labels: "input_weight->output"
+    size_t underscore_pos = dim_labels.find('_');
+    size_t arrow_pos = dim_labels.find("->");
+    
+    if (underscore_pos == std::string::npos || arrow_pos == std::string::npos) {
+      return absl::InternalError("Invalid dim_labels format: " + dim_labels);
+    }
+    
+    std::string input_label = dim_labels.substr(0, underscore_pos);
+    std::string weight_label = dim_labels.substr(underscore_pos + 1, arrow_pos - underscore_pos - 1);
+    std::string output_label = dim_labels.substr(arrow_pos + 2);
+    
+    VLOG(2) << "Parsed dim_labels: input=" << input_label 
+            << ", weight=" << weight_label << ", output=" << output_label;
+    
+    // Validate and determine input format (4D only)
+    if (input_label == "b01f") {
+      input_format = ACL_FORMAT_NHWC;  // N H W C
+    } else if (input_label == "bf01") {
+      input_format = ACL_FORMAT_NCHW;  // N C H W
+    } else {
+      return absl::UnimplementedError(
+          "Unsupported input dim_labels: " + input_label + 
+          ". Only 'b01f' (NHWC) and 'bf01' (NCHW) are supported for 4D tensors.");
+    }
+    
+    // Validate and determine weight format (4D only)
+    if (weight_label == "01io") {
+      // HWIO format -> need to map to ACL's OIHW format
+      // ACL expects weight in OIHW format for NCHW input
+      weight_format = ACL_FORMAT_NCHW;  // Use NCHW to represent OIHW layout
+    } else if (weight_label == "oi01") {
+      // OIHW format -> matches ACL's expected format
+      weight_format = ACL_FORMAT_NCHW;
+    } else {
+      return absl::UnimplementedError(
+          "Unsupported weight dim_labels: " + weight_label + 
+          ". Only '01io' (HWIO) and 'oi01' (OIHW) are supported for 4D tensors.");
+    }
+    
+    // Validate and determine output format (4D only)
+    if (output_label == "b01f") {
+      output_format = ACL_FORMAT_NHWC;  // N H W C
+    } else if (output_label == "bf01") {
+      output_format = ACL_FORMAT_NCHW;  // N C H W
+    } else {
+      return absl::UnimplementedError(
+          "Unsupported output dim_labels: " + output_label + 
+          ". Only 'b01f' (NHWC) and 'bf01' (NCHW) are supported for 4D tensors.");
+    }
+    
+    VLOG(2) << "Determined ACL formats: input=" << input_format 
+            << ", weight=" << weight_format << ", output=" << output_format;
+  }
 
   std::vector<NullableShapedSlice> operands;
   std::vector<NullableShapedSlice> results;
@@ -4189,29 +4279,36 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitAclnnConvolutionThunk(
   results.push_back(output_slice);
 
   std::vector<xla::ascend::AclnnThunk::Param> params;
-  
-  for (int64_t s : stride) {
-    params.push_back(s);
-  }
-  for (int64_t p : padding) {
-    params.push_back(p);
-  }
-  for (int64_t d : dilation) {
-    params.push_back(d);
-  }
-  params.push_back(static_cast<int64_t>(transposed));
-  for (int64_t o : output_padding) {
-    params.push_back(o);
-  }
+  params.push_back(stride);
+  params.push_back(padding);
+  params.push_back(dilation);
+  params.push_back(transposed);
+  params.push_back(output_padding);
   params.push_back(groups);
-  params.push_back(static_cast<int64_t>(cube_math_type));
+  params.push_back(cube_math_type);
+
+  // Create format vectors for operands and results
+  std::vector<aclFormat> operand_formats;
+  std::vector<aclFormat> result_formats;
+  
+  if (!dim_labels.empty()) {
+    operand_formats.push_back(input_format);
+    operand_formats.push_back(weight_format);
+    if (has_bias && instr->operand_count() > 2) {
+      // Bias typically uses ND format
+      operand_formats.push_back(ACL_FORMAT_ND);
+    }
+    result_formats.push_back(output_format);
+  }
 
   auto thunk = std::make_unique<xla::ascend::AclnnThunk>(
       xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(instr, ir_emitter_context_->GetNextThunkId()),
       "aclnnConvolution",
       std::move(operands),
       std::move(results),
-      std::move(params));
+      std::move(params),
+      std::move(operand_formats),
+      std::move(result_formats));
 
   xla::gpu::ThunkSequence thunk_sequence;
   thunk_sequence.push_back(std::move(thunk));
@@ -4264,7 +4361,7 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitAclnnConvolutionBackwa
           << ", transposed=" << transposed
           << ", output_padding=" << absl::StrJoin(output_padding, ",")
           << ", groups=" << groups
-          << ", cube_math_type=" << static_cast<int>(cube_math_type)
+          << ", cube_math_type=" << cube_math_type
           << ", output_mask=[" << output_mask[0] << "," << output_mask[1] << "," << output_mask[2] << "]";
 
   std::vector<NullableShapedSlice> operands;
@@ -4307,7 +4404,7 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitAclnnConvolutionBackwa
   params.push_back(transposed);
   params.push_back(output_padding);
   params.push_back(groups);
-  params.push_back(static_cast<int64_t>(cube_math_type));
+  params.push_back(cube_math_type);
   params.push_back(output_mask);
 
   auto thunk = std::make_unique<xla::ascend::AclnnThunk>(

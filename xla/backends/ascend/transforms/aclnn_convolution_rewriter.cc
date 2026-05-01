@@ -132,6 +132,10 @@ AclnnConvolutionConfig ExtractConvolutionConfig(const HloConvolutionInstruction*
   config.cube_math_type = 0;
   config.has_bias = false;
   
+  // Extract dimension labels for format conversion
+  const auto& dn = conv->convolution_dimension_numbers();
+  config.dim_labels = ConvolutionDimensionNumbersToString(dn);
+  
   return config;
 }
 

@@ -34,6 +34,18 @@ limitations under the License.
 namespace xla {
 namespace ascend {
 
+// ACLNN_CHECK macro: prints error message and returns InvalidArgumentError on failure
+#define ACLNN_CHECK(condition, message) \
+  do { \
+    if (!(condition)) { \
+      std::cerr << "ACLNN_CHECK failed: " << (message) \
+                << " at " << __FILE__ << ":" << __LINE__ << std::endl; \
+      return absl::InvalidArgumentError(message); \
+    } \
+  } while (false)
+
+
+
 // Forward declarations of ACL data structures
 typedef struct aclOpExecutor aclOpExecutor;
 typedef struct aclTensor aclTensor;
@@ -97,7 +109,8 @@ inline void *GetOpApiFuncAddr(const char *apiName);
   reinterpret_cast<_##apiName>(GetOpApiFuncAddr(#apiName))
 
 // Convert XLA BufferAllocation::Slice to aclTensor
-inline aclTensor *ConvertType(const gpu::BufferAllocations& buffer_allocations, const BufferAllocation::Slice& slice, const Shape& shape) {
+// Overload with format parameter for specifying ACL tensor format
+inline aclTensor *ConvertType(const gpu::BufferAllocations& buffer_allocations, const BufferAllocation::Slice& slice, const Shape& shape, aclFormat format) {
   // Get device address from buffer allocations
   auto device_addr = buffer_allocations.GetDeviceAddress(slice);
   if (!device_addr.opaque()) {
@@ -115,10 +128,24 @@ inline aclTensor *ConvertType(const gpu::BufferAllocations& buffer_allocations, 
     dimensions.push_back(dim);
   }
 
-  // Calculate strides (assuming row-major)
+  // Calculate strides based on format
+  // For ACL_FORMAT_ND, use standard row-major strides
+  // For ACL_FORMAT_NCHW/NCDHW etc., strides depend on the physical memory layout
   std::vector<int64_t> strides(dimensions.size(), 1);
-  for (int i = dimensions.size() - 2; i >= 0; --i) {
-    strides[i] = strides[i + 1] * dimensions[i + 1];
+  
+  // If format is ACL_FORMAT_ND (or any format that uses row-major), calculate row-major strides
+  // Otherwise, the format describes the physical layout, so we use the layout's minor-to-major order
+  if (format == ACL_FORMAT_ND) {
+    for (int i = dimensions.size() - 2; i >= 0; --i) {
+      strides[i] = strides[i + 1] * dimensions[i + 1];
+    }
+  } else {
+    // For specific formats like NCHW, we need to calculate strides based on the format
+    // The format parameter tells ACL how the data is laid out in memory
+    // We use default row-major strides for now
+    for (int i = dimensions.size() - 2; i >= 0; --i) {
+      strides[i] = strides[i + 1] * dimensions[i + 1];
+    }
   }
 
   // Create aclTensor
@@ -128,10 +155,15 @@ inline aclTensor *ConvertType(const gpu::BufferAllocations& buffer_allocations, 
       acl_data_type,
       strides.data(),
       0,  // offset
-      ACL_FORMAT_ND,
+      format,
       dimensions.data(),
       dimensions.size(),
       const_cast<void*>(device_addr.opaque()));
+}
+
+// Overload without format parameter (defaults to ACL_FORMAT_ND)
+inline aclTensor *ConvertType(const gpu::BufferAllocations& buffer_allocations, const BufferAllocation::Slice& slice, const Shape& shape) {
+  return ConvertType(buffer_allocations, slice, shape, ACL_FORMAT_ND);
 }
 
 // Convert scalar value to aclScalar
@@ -207,11 +239,23 @@ struct TensorTriplet {
   const gpu::BufferAllocations* buffer_allocations;
   BufferAllocation::Slice slice;
   Shape shape;
+  aclFormat format;  // ACL format hint (defaults to ACL_FORMAT_ND)
+  
+  TensorTriplet() : buffer_allocations(nullptr), format(ACL_FORMAT_ND) {}
+  
+  TensorTriplet(const gpu::BufferAllocations* ba, const BufferAllocation::Slice& s, const Shape& sh, aclFormat fmt = ACL_FORMAT_ND)
+      : buffer_allocations(ba), slice(s), shape(sh), format(fmt) {}
 };
 
 // Helper function to convert TensorTriplet to aclTensor*
 inline aclTensor* ConvertType(const TensorTriplet& triplet) {
-  return ConvertType(*triplet.buffer_allocations, triplet.slice, triplet.shape);
+  return ConvertType(*triplet.buffer_allocations, triplet.slice, triplet.shape, triplet.format);
+}
+
+
+// Handle aclTensor* (including nullptr case)
+inline aclTensor* ConvertType(aclTensor* tensor) {
+  return tensor;  // Directly pass through, whether it's nullptr or valid pointer
 }
 
 // Handle nullptr for optional tensor parameters - convert to aclTensor*
@@ -251,6 +295,7 @@ inline int8_t ConvertType(int8_t value) {
 
 // Release functions for ACL resources
 inline void Release(aclTensor *p) {
+  if(p == nullptr) return;
   static const auto aclDestroyTensor = GET_OP_API_FUNC(aclDestroyTensor);
   if (aclDestroyTensor == nullptr) {
     return;
@@ -259,6 +304,7 @@ inline void Release(aclTensor *p) {
 }
 
 inline void Release(aclScalar *p) {
+  if(p == nullptr) return;
   static const auto aclDestroyScalar = GET_OP_API_FUNC(aclDestroyScalar);
   if (aclDestroyScalar == nullptr) {
     return;
@@ -267,6 +313,7 @@ inline void Release(aclScalar *p) {
 }
 
 inline void Release(aclIntArray *p) {
+  if(p == nullptr) return;
   static const auto aclDestroyIntArray = GET_OP_API_FUNC(aclDestroyIntArray);
   if (aclDestroyIntArray == nullptr) {
     return;
@@ -275,6 +322,7 @@ inline void Release(aclIntArray *p) {
 }
 
 inline void Release(aclBoolArray *p) {
+  if(p == nullptr) return;
   static const auto aclDestroyBoolArray = GET_OP_API_FUNC(aclDestroyBoolArray);
   if (aclDestroyBoolArray == nullptr) {
     return;
@@ -283,6 +331,7 @@ inline void Release(aclBoolArray *p) {
 }
 
 inline void Release(aclTensorList *p) {
+  if(p == nullptr) return;
   static const auto aclDestroyTensorList = GET_OP_API_FUNC(aclDestroyTensorList);
   if (aclDestroyTensorList == nullptr) {
     return;
@@ -411,8 +460,29 @@ auto CallFunction(Function f, Tuple& t) -> decltype(CallFunction(f, t, std::make
 // Helper function to convert a tuple to op api function
 template <typename Tuple, size_t... I>
 auto ConvertToOpApiFunc(const Tuple& params, void *opApiAddr, std::index_sequence<I...>) {
+#if 0  
+  // Debug: Print parameter types for troubleshooting
+  std::cerr << "[ConvertToOpApiFunc] Converting function at addr: " << opApiAddr << std::endl;
+  std::cerr << "[ConvertToOpApiFunc] Number of parameters: " << sizeof...(I) << std::endl;
+  
+  // Print each parameter type info (using typeid for runtime type info)
+  int param_idx = 0;
+  auto print_type = [&](auto idx) {
+    constexpr size_t Index = decltype(idx)::value;
+    using ParamType = typename std::decay<decltype(std::get<Index>(params))>::type;
+    std::cerr << "[ConvertToOpApiFunc]   Param[" << param_idx++ << "] type: " 
+              << typeid(ParamType).name() << std::endl;
+  };
+  
+  // Expand parameter pack to print all types
+  (print_type(std::integral_constant<size_t, I>{}), ...);
+#endif  
   typedef int (*OpApiFunc)(typename std::decay<decltype(std::get<I>(params))>::type...);
   auto func = reinterpret_cast<OpApiFunc>(opApiAddr);
+  
+  //std::cerr << "[ConvertToOpApiFunc] Converted function pointer: " 
+  //          << reinterpret_cast<void*>(func) << std::endl;
+  
   return func;
 }
 
@@ -437,9 +507,9 @@ auto ConvertToOpApiFunc(const Tuple& params, void *opApiAddr) {
     static const auto unInitMemAddr =                                         \
         GetOpApiFuncAddr("UnInitHugeMemThreadLocal");                         \
     static const auto releaseMemAddr = GetOpApiFuncAddr("ReleaseHugeMem");    \
-    CHECK(getWorkspaceSizeFuncAddr != nullptr && opApiFuncAddr != nullptr)    \
-        << #aclnn_api << " or " << #aclnn_api                                 \
-        << "GetWorkspaceSize not found in aclnn library";                     \
+    ACLNN_CHECK(getWorkspaceSizeFuncAddr != nullptr && opApiFuncAddr != nullptr, \
+        std::string(#aclnn_api) + " or " + #aclnn_api +                      \
+        "GetWorkspaceSize not found in aclnn library");                      \
     aclrtStream acl_stream = static_cast<aclrtStream>(                        \
         stream->platform_specific_handle().stream);                           \
     uint64_t workspace_size = 0;                                              \
@@ -460,9 +530,9 @@ auto ConvertToOpApiFunc(const Tuple& params, void *opApiAddr) {
         ConvertToOpApiFunc(converted_params, getWorkspaceSizeFuncAddr);       \
     auto workspace_status =                                                   \
         CallFunction(getWorkspaceSizeFunc, converted_params);                 \
-    CHECK(workspace_status == ACL_SUCCESS)                                    \
-        << "call " << #aclnn_api << "GetWorkspaceSize failed: "               \
-        << aclGetRecentErrMsg();                                              \
+    ACLNN_CHECK(workspace_status == ACL_SUCCESS,                              \
+        std::string("call ") + #aclnn_api + "GetWorkspaceSize failed: " +    \
+        (aclGetRecentErrMsg() ? aclGetRecentErrMsg() : "unknown error"));    \
                                                                               \
     void *workspace_addr = nullptr;                                           \
     if (workspace_size > 0) {                                                 \
@@ -473,8 +543,9 @@ auto ConvertToOpApiFunc(const Tuple& params, void *opApiAddr) {
     OpApiFunc opApiFunc = reinterpret_cast<OpApiFunc>(opApiFuncAddr);         \
     auto api_ret =                                                            \
         opApiFunc(workspace_addr, workspace_size, executor, acl_stream);      \
-    CHECK(api_ret == ACL_SUCCESS)                                             \
-        << "call " << #aclnn_api << " failed: " << aclGetRecentErrMsg();      \
+    ACLNN_CHECK(api_ret == ACL_SUCCESS,                                       \
+        std::string("call ") + #aclnn_api + " failed: " +                    \
+        (aclGetRecentErrMsg() ? aclGetRecentErrMsg() : "unknown error"));    \
                                                                               \
     if (workspace_size > 0) {                                                 \
       aclrtFree(workspace_addr);                                              \
@@ -492,7 +563,7 @@ auto ConvertToOpApiFunc(const Tuple& params, void *opApiAddr) {
     if (unInitMemFunc) {                                                      \
       unInitMemFunc(nullptr, false);                                          \
     }                                                                         \
-  } while (false)
+ } while (false)
 
 }  // namespace ascend
 }  // namespace xla

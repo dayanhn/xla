@@ -70,19 +70,19 @@ absl::Status AclnnGemmConfig::FromString(const std::string& config_str) {
 std::string AclnnConvolutionConfig::ToString() const {
   std::string stride_str, padding_str, dilation_str, output_padding_str;
   for (size_t i = 0; i < stride.size(); ++i) {
-    if (i > 0) stride_str += ",";
+    if (i > 0) stride_str += "-";
     stride_str += absl::StrCat(stride[i]);
   }
   for (size_t i = 0; i < padding.size(); ++i) {
-    if (i > 0) padding_str += ",";
+    if (i > 0) padding_str += "-";
     padding_str += absl::StrCat(padding[i]);
   }
   for (size_t i = 0; i < dilation.size(); ++i) {
-    if (i > 0) dilation_str += ",";
+    if (i > 0) dilation_str += "-";
     dilation_str += absl::StrCat(dilation[i]);
   }
   for (size_t i = 0; i < output_padding.size(); ++i) {
-    if (i > 0) output_padding_str += ",";
+    if (i > 0) output_padding_str += "-";
     output_padding_str += absl::StrCat(output_padding[i]);
   }
 
@@ -94,7 +94,8 @@ std::string AclnnConvolutionConfig::ToString() const {
       ",output_padding=", output_padding_str,
       ",groups=", groups,
       ",cube_math_type=", static_cast<int>(cube_math_type),
-      ",has_bias=", (has_bias ? "1" : "0"));
+      ",has_bias=", (has_bias ? "1" : "0"),
+      ",dim_labels=", dim_labels);
 }
 
 absl::Status AclnnConvolutionConfig::FromString(const std::string& config_str) {
@@ -113,7 +114,7 @@ absl::Status AclnnConvolutionConfig::FromString(const std::string& config_str) {
 
     if (key == "stride") {
       stride.clear();
-      for (const auto& s : absl::StrSplit(value, ',')) {
+      for (const auto& s : absl::StrSplit(value, '-')) {
         int64_t val;
         if (!absl::SimpleAtoi(s, &val)) {
           return absl::InvalidArgumentError(absl::StrCat("Invalid stride value: ", s));
@@ -122,7 +123,7 @@ absl::Status AclnnConvolutionConfig::FromString(const std::string& config_str) {
       }
     } else if (key == "padding") {
       padding.clear();
-      for (const auto& p : absl::StrSplit(value, ',')) {
+      for (const auto& p : absl::StrSplit(value, '-')) {
         int64_t val;
         if (!absl::SimpleAtoi(p, &val)) {
           return absl::InvalidArgumentError(absl::StrCat("Invalid padding value: ", p));
@@ -131,7 +132,7 @@ absl::Status AclnnConvolutionConfig::FromString(const std::string& config_str) {
       }
     } else if (key == "dilation") {
       dilation.clear();
-      for (const auto& d : absl::StrSplit(value, ',')) {
+      for (const auto& d : absl::StrSplit(value, '-')) {
         int64_t val;
         if (!absl::SimpleAtoi(d, &val)) {
           return absl::InvalidArgumentError(absl::StrCat("Invalid dilation value: ", d));
@@ -142,7 +143,7 @@ absl::Status AclnnConvolutionConfig::FromString(const std::string& config_str) {
       transposed = (value == "1");
     } else if (key == "output_padding") {
       output_padding.clear();
-      for (const auto& o : absl::StrSplit(value, ',')) {
+      for (const auto& o : absl::StrSplit(value, '-')) {
         int64_t val;
         if (!absl::SimpleAtoi(o, &val)) {
           return absl::InvalidArgumentError(absl::StrCat("Invalid output_padding value: ", o));
@@ -161,6 +162,8 @@ absl::Status AclnnConvolutionConfig::FromString(const std::string& config_str) {
       cube_math_type = static_cast<int8_t>(cube_val);
     } else if (key == "has_bias") {
       has_bias = (value == "1");
+    } else if (key == "dim_labels") {
+      dim_labels = value;
     }
   }
   return absl::OkStatus();
@@ -169,23 +172,23 @@ absl::Status AclnnConvolutionConfig::FromString(const std::string& config_str) {
 std::string AclnnConvolutionBackwardConfig::ToString() const {
   std::string stride_str, padding_str, dilation_str, output_padding_str, output_mask_str;
   for (size_t i = 0; i < stride.size(); ++i) {
-    if (i > 0) stride_str += ",";
+    if (i > 0) stride_str += "-";
     stride_str += absl::StrCat(stride[i]);
   }
   for (size_t i = 0; i < padding.size(); ++i) {
-    if (i > 0) padding_str += ",";
+    if (i > 0) padding_str += "-";
     padding_str += absl::StrCat(padding[i]);
   }
   for (size_t i = 0; i < dilation.size(); ++i) {
-    if (i > 0) dilation_str += ",";
+    if (i > 0) dilation_str += "-";
     dilation_str += absl::StrCat(dilation[i]);
   }
   for (size_t i = 0; i < output_padding.size(); ++i) {
-    if (i > 0) output_padding_str += ",";
+    if (i > 0) output_padding_str += "-";
     output_padding_str += absl::StrCat(output_padding[i]);
   }
   for (size_t i = 0; i < output_mask.size(); ++i) {
-    if (i > 0) output_mask_str += ",";
+    if (i > 0) output_mask_str += "-";
     output_mask_str += output_mask[i] ? "1" : "0";
   }
 
@@ -216,7 +219,7 @@ absl::Status AclnnConvolutionBackwardConfig::FromString(const std::string& confi
 
     if (key == "stride") {
       stride.clear();
-      for (const auto& s : absl::StrSplit(value, ',')) {
+      for (const auto& s : absl::StrSplit(value, '-')) {
         int64_t val;
         if (!absl::SimpleAtoi(s, &val)) {
           return absl::InvalidArgumentError(absl::StrCat("Invalid stride value: ", s));
@@ -225,7 +228,7 @@ absl::Status AclnnConvolutionBackwardConfig::FromString(const std::string& confi
       }
     } else if (key == "padding") {
       padding.clear();
-      for (const auto& p : absl::StrSplit(value, ',')) {
+      for (const auto& p : absl::StrSplit(value, '-')) {
         int64_t val;
         if (!absl::SimpleAtoi(p, &val)) {
           return absl::InvalidArgumentError(absl::StrCat("Invalid padding value: ", p));
@@ -234,7 +237,7 @@ absl::Status AclnnConvolutionBackwardConfig::FromString(const std::string& confi
       }
     } else if (key == "dilation") {
       dilation.clear();
-      for (const auto& d : absl::StrSplit(value, ',')) {
+      for (const auto& d : absl::StrSplit(value, '-')) {
         int64_t val;
         if (!absl::SimpleAtoi(d, &val)) {
           return absl::InvalidArgumentError(absl::StrCat("Invalid dilation value: ", d));
@@ -245,7 +248,7 @@ absl::Status AclnnConvolutionBackwardConfig::FromString(const std::string& confi
       transposed = (value == "1");
     } else if (key == "output_padding") {
       output_padding.clear();
-      for (const auto& o : absl::StrSplit(value, ',')) {
+      for (const auto& o : absl::StrSplit(value, '-')) {
         int64_t val;
         if (!absl::SimpleAtoi(o, &val)) {
           return absl::InvalidArgumentError(absl::StrCat("Invalid output_padding value: ", o));
@@ -264,7 +267,7 @@ absl::Status AclnnConvolutionBackwardConfig::FromString(const std::string& confi
       cube_math_type = static_cast<int8_t>(cube_val);
     } else if (key == "output_mask") {
       output_mask.clear();
-      for (const auto& o : absl::StrSplit(value, ',')) {
+      for (const auto& o : absl::StrSplit(value, '-')) {
         output_mask.push_back((o == "1"));
       }
     }

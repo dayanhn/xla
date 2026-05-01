@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_ASCEND_RUNTIME_ACLNN_THUNK_H_
 
 #include <variant>
+#include <iostream>
 
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
@@ -24,6 +25,8 @@ limitations under the License.
 #include "third_party/acl/inc/acl/acl.h"
 #include "third_party/acl/inc/aclnn/acl_meta.h"
 #include "absl/types/span.h"
+#include "absl/status/status.h"
+
 
 namespace xla {
 namespace ascend {
@@ -45,7 +48,9 @@ class AclnnThunk : public gpu::Thunk {
   AclnnThunk(gpu::Thunk::ThunkInfo thunk_info, std::string op_name,
              std::vector<NullableShapedSlice> operands,
              std::vector<NullableShapedSlice> results,
-             std::vector<Param> params);
+             std::vector<Param> params,
+             std::vector<aclFormat> operand_formats = {},
+             std::vector<aclFormat> result_formats = {});
 
   // Execute the aclnn operation
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
@@ -55,6 +60,8 @@ class AclnnThunk : public gpu::Thunk {
   std::vector<NullableShapedSlice> operands_;  // Input operands
   std::vector<NullableShapedSlice> results_;  // Output results
   std::vector<Param> params_;  // Additional parameters for the operation
+  std::vector<aclFormat> operand_formats_;  // Format for each operand (defaults to ACL_FORMAT_ND)
+  std::vector<aclFormat> result_formats_;  // Format for each result (defaults to ACL_FORMAT_ND)
 };
 
 }  // namespace ascend

@@ -61,6 +61,8 @@ class AclnnConvolutionConfig : public AclnnConfig {
   int64_t groups = 1;
   int8_t cube_math_type = 0;
   bool has_bias = false;
+  
+  std::string dim_labels;  // e.g., "b01f_01io->b01f" for NHWC input/output
 
   std::string ToString() const override;
   absl::Status FromString(const std::string& config_str) override;

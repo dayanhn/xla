@@ -47,31 +47,31 @@ ffi::Error ExpandHandlerImpl(aclrtStream stream, ffi::Buffer<DType> self, int64_
     self_tensor = ConvertToAclTensor(self);
     LOG(INFO) << "Handling scalar input for Expand operation";
   } else {
-    // Validate dim parameter: only support dim == 0 or dim == self_ndim
-    if (dim != 0 && dim != static_cast<int64_t>(self_ndim)) {
+    // Handle non-scalar input case
+    // Validate dim parameter: dim should be in valid range [0, out_ndim-1]
+    if (dim < 0 || dim >= static_cast<int64_t>(out_ndim)) {
       return ffi::Error::Internal(
-          absl::StrCat("Invalid dim: ", dim, ". Only support dim == 0 or dim == self.ndim (", self_ndim, ")"));
+          absl::StrCat("Invalid dim: ", dim, ". dim should be in range [0, ", out_ndim - 1, "]"));
     }
     
-    // Handle different dim cases
-    if (dim == static_cast<int64_t>(self_ndim)) {
-      // dim equals self's max dimension
-      // aclnnExpand automatically handles dimension alignment by prepending 1s
-      // Example: self=[10], out=[128,10], dim=1 -> aclnnExpand treats it as [1,10] -> [128,10]
+    // For 1D input with dim pointing to the matching dimension
+    // aclnnExpand automatically handles dimension alignment by prepending 1s
+    // Example: self=[32], out=[2,32,32,32], dim=1 -> aclnnExpand treats it as [1,32,1,1] -> [2,32,32,32]
+    if (self_ndim == 1 && dim == 0 && out_dims[dim] == self_dims[0]) {
       self_tensor = ConvertToAclTensor(self);
-    } else if (dim == 0) {
-      // dim == 0: need to reshape self to match output dimensions
-      // Example: self=[128], out=[128,10], dim=0 -> reshape self to [128,1]
-      // Example: self=[10], out=[128,10], dim=0 -> this case is invalid
+      LOG(INFO) << "Handling 1D input broadcast with dim=1 for Expand operation";
+    } else {
+      // General case: need to reshape self to match output dimensions
+      // Build reshaped dimensions: fill with 1, place self dims starting at dim position
+      // Example: self=[32], out=[2,32,32,32], dim=1 -> reshape self to [1,32,1,1]
+      // Example: self=[10,20], out=[2,10,20,3], dim=2 -> reshape self to [1,10,20,1]
       
-      // Build reshaped dimensions: place self dims at the beginning, fill rest with 1
       std::vector<int64_t> reshaped_dims(out_ndim, 1);
       for (size_t i = 0; i < self_ndim; i++) {
-        reshaped_dims[i] = self_dims[i];
+        reshaped_dims[dim + i] = self_dims[i];
       }
       
       // Create reshaped tensor by constructing a new aclTensor with modified shape
-      // Use ConvertToAclDataType template function to get correct data type
       aclDataType dtype = ConvertToAclDataType<DType>();
       
       // Calculate strides for the reshaped tensor (matching tensor_utils.cc implementation)
@@ -100,7 +100,7 @@ ffi::Error ExpandHandlerImpl(aclrtStream stream, ffi::Buffer<DType> self, int64_
       }
       
       LOG(INFO) << "Reshaped self from [" << absl::StrJoin(self_dims, ",") 
-                << "] to [" << absl::StrJoin(reshaped_dims, ",") << "] for broadcast with dim=0";
+                << "] to [" << absl::StrJoin(reshaped_dims, ",") << "] for broadcast with dim=" << dim;
     }
   }
   
