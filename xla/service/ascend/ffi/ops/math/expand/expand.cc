@@ -57,10 +57,11 @@ ffi::Error ExpandHandlerImpl(aclrtStream stream, ffi::Buffer<DType> self, int64_
     // For 1D input with dim pointing to the matching dimension
     // aclnnExpand automatically handles dimension alignment by prepending 1s
     // Example: self=[32], out=[2,32,32,32], dim=1 -> aclnnExpand treats it as [1,32,1,1] -> [2,32,32,32]
-    if (self_ndim == 1 && dim == 0 && out_dims[dim] == self_dims[0]) {
-      self_tensor = ConvertToAclTensor(self);
-      LOG(INFO) << "Handling 1D input broadcast with dim=1 for Expand operation";
-    } else {
+    //if (self_ndim == 1 && dim == 0 && out_dims[dim] == self_dims[0]) {
+    //  self_tensor = ConvertToAclTensor(self);
+    //  LOG(INFO) << "Handling 1D input broadcast with dim=0 for Expand operation";
+    //} else 
+    {
       // General case: need to reshape self to match output dimensions
       // Build reshaped dimensions: fill with 1, place self dims starting at dim position
       // Example: self=[32], out=[2,32,32,32], dim=1 -> reshape self to [1,32,1,1]

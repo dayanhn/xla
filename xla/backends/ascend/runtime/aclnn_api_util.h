@@ -530,9 +530,20 @@ auto ConvertToOpApiFunc(const Tuple& params, void *opApiAddr) {
         ConvertToOpApiFunc(converted_params, getWorkspaceSizeFuncAddr);       \
     auto workspace_status =                                                   \
         CallFunction(getWorkspaceSizeFunc, converted_params);                 \
-    ACLNN_CHECK(workspace_status == ACL_SUCCESS,                              \
-        std::string("call ") + #aclnn_api + "GetWorkspaceSize failed: " +    \
-        (aclGetRecentErrMsg() ? aclGetRecentErrMsg() : "unknown error"));    \
+    if (workspace_status != ACL_SUCCESS) {                                    \
+      const char* err_msg = aclGetRecentErrMsg();                             \
+      std::string error_detail = std::string("call ") + #aclnn_api +         \
+          "GetWorkspaceSize failed with code " + std::to_string(workspace_status); \
+      if (err_msg != nullptr && err_msg[0] != '\0') {                         \
+        error_detail += ", error message: " + std::string(err_msg);           \
+      } else {                                                                \
+        error_detail += ", no error message available";                       \
+      }                                                                       \
+      std::cerr << "[ACLNN ERROR] " << error_detail                           \
+                << " at " << __FILE__ << ":" << __LINE__ << std::endl;        \
+      ReleaseConvertTypes(converted_params);                                  \
+      return absl::InvalidArgumentError(error_detail);                        \
+    }                                                                         \
                                                                               \
     void *workspace_addr = nullptr;                                           \
     if (workspace_size > 0) {                                                 \
@@ -543,9 +554,23 @@ auto ConvertToOpApiFunc(const Tuple& params, void *opApiAddr) {
     OpApiFunc opApiFunc = reinterpret_cast<OpApiFunc>(opApiFuncAddr);         \
     auto api_ret =                                                            \
         opApiFunc(workspace_addr, workspace_size, executor, acl_stream);      \
-    ACLNN_CHECK(api_ret == ACL_SUCCESS,                                       \
-        std::string("call ") + #aclnn_api + " failed: " +                    \
-        (aclGetRecentErrMsg() ? aclGetRecentErrMsg() : "unknown error"));    \
+    if (api_ret != ACL_SUCCESS) {                                             \
+      const char* err_msg = aclGetRecentErrMsg();                             \
+      std::string error_detail = std::string("call ") + #aclnn_api +         \
+          " failed with code " + std::to_string(api_ret);                     \
+      if (err_msg != nullptr && err_msg[0] != '\0') {                         \
+        error_detail += ", error message: " + std::string(err_msg);           \
+      } else {                                                                \
+        error_detail += ", no error message available";                       \
+      }                                                                       \
+      std::cerr << "[ACLNN ERROR] " << error_detail                           \
+                << " at " << __FILE__ << ":" << __LINE__ << std::endl;        \
+      if (workspace_size > 0) {                                               \
+        aclrtFree(workspace_addr);                                            \
+      }                                                                       \
+      ReleaseConvertTypes(converted_params);                                  \
+      return absl::InvalidArgumentError(error_detail);                        \
+    }                                                                         \
                                                                               \
     if (workspace_size > 0) {                                                 \
       aclrtFree(workspace_addr);                                              \
