@@ -4321,7 +4321,6 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitAclnnConvolutionBackwa
   VLOG(2) << "Emitting ACLNN ConvolutionBackward: " << instr->name();
 
   TF_ASSIGN_OR_RETURN(auto grad_output_slice, GetShapedSliceForHlo(instr->operand(0)));
-  TF_ASSIGN_OR_RETURN(auto weight_slice, GetShapedSliceForHlo(instr->operand(1)));
 
   const Shape& grad_output_shape = instr->operand(0)->shape();
   PrimitiveType element_type = grad_output_shape.element_type();
@@ -4334,6 +4333,7 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitAclnnConvolutionBackwa
   int64_t groups = 1;
   int8_t cube_math_type = 0;
   std::vector<bool> output_mask = {true, true, false};
+  std::string dim_labels;
 
   const std::string& backend_config = instr->raw_backend_config_string();
   VLOG(2) << "Backend config: " << backend_config;
@@ -4353,6 +4353,7 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitAclnnConvolutionBackwa
     groups = conv_backward_config->groups;
     cube_math_type = conv_backward_config->cube_math_type;
     output_mask = conv_backward_config->output_mask;
+    dim_labels = conv_backward_config->dim_labels;
   }
 
   VLOG(2) << "ACLNN ConvolutionBackward parameters: stride=" << absl::StrJoin(stride, ",")
@@ -4361,40 +4362,106 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitAclnnConvolutionBackwa
           << ", transposed=" << transposed
           << ", output_padding=" << absl::StrJoin(output_padding, ",")
           << ", groups=" << groups
-          << ", cube_math_type=" << cube_math_type
-          << ", output_mask=[" << output_mask[0] << "," << output_mask[1] << "," << output_mask[2] << "]";
+          << ", cube_math_type=" << static_cast<int>(cube_math_type)
+          << ", output_mask=[" << output_mask[0] << "," << output_mask[1] << "," << output_mask[2] << "]"
+          << ", dim_labels=" << dim_labels;
 
   std::vector<NullableShapedSlice> operands;
   std::vector<NullableShapedSlice> results;
 
-  operands.push_back(grad_output_slice);
-  operands.push_back(weight_slice);
-  
-  if (output_mask[1] && instr->operand_count() > 2) {
-    TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(instr->operand(2)));
-    operands.push_back(input_slice);
-    VLOG(2) << "ACLNN ConvolutionBackward: added input operand for gradWeight computation";
+  aclFormat grad_output_format = ACL_FORMAT_ND;
+  aclFormat input_format = ACL_FORMAT_ND;
+  aclFormat weight_format = ACL_FORMAT_ND;
+  aclFormat grad_input_format = ACL_FORMAT_ND;
+  aclFormat grad_weight_format = ACL_FORMAT_ND;
+
+  if (!dim_labels.empty()) {
+    size_t underscore_pos = dim_labels.find('_');
+    size_t arrow_pos = dim_labels.find("->");
+
+    if (underscore_pos != std::string::npos && arrow_pos != std::string::npos) {
+      std::string input_label = dim_labels.substr(0, underscore_pos);
+      std::string weight_label = dim_labels.substr(underscore_pos + 1, arrow_pos - underscore_pos - 1);
+      std::string output_label = dim_labels.substr(arrow_pos + 2);
+
+      VLOG(2) << "Parsed dim_labels: input=" << input_label
+              << ", weight=" << weight_label << ", output=" << output_label;
+
+      if (output_label == "b01f") {
+        grad_output_format = ACL_FORMAT_NHWC;
+      } else if (output_label == "bf01") {
+        grad_output_format = ACL_FORMAT_NCHW;
+      }
+
+      if (input_label == "b01f") {
+        input_format = ACL_FORMAT_NHWC;
+      } else if (input_label == "bf01") {
+        input_format = ACL_FORMAT_NCHW;
+      }
+
+      if (weight_label == "01io") {
+        weight_format = ACL_FORMAT_NCHW;
+      } else if (weight_label == "oi01") {
+        weight_format = ACL_FORMAT_NCHW;
+      } else if (weight_label == "oihw") {
+        weight_format = ACL_FORMAT_NCHW;
+      } else if (weight_label == "hwio") {
+        weight_format = ACL_FORMAT_NHWC;
+      }
+
+      grad_input_format = input_format;
+      grad_weight_format = weight_format;
+
+      VLOG(2) << "Determined ACL formats: grad_output=" << grad_output_format
+              << ", input=" << input_format << ", weight=" << weight_format
+              << ", grad_input=" << grad_input_format
+              << ", grad_weight=" << grad_weight_format;
+    } else {
+      VLOG(1) << "Invalid dim_labels format: " << dim_labels
+              << ", using default ACL_FORMAT_ND";
+    }
   }
+
+  std::vector<aclFormat> operand_formats;
+  operands.push_back(grad_output_slice);
+  operand_formats.push_back(grad_output_format);
+
+
+  TF_ASSIGN_OR_RETURN(auto input_slice, GetShapedSliceForHlo(instr->operand(1)));
+  operands.push_back(input_slice);
+  operand_formats.push_back(input_format);
+  TF_ASSIGN_OR_RETURN(auto weight_slice, GetShapedSliceForHlo(instr->operand(2)));
+  operands.push_back(weight_slice);
+  operand_formats.push_back(weight_format);
+  VLOG(2) << "ACLNN ConvolutionBackward: fused mode, operands=[gradOutput, input, weight]";
+
+
+  std::vector<aclFormat> result_formats;
 
   int result_idx = 0;
   if (output_mask[0]) {
     TF_ASSIGN_OR_RETURN(auto grad_input_slice, GetShapedSliceForHlo(instr, {result_idx}));
     results.push_back(grad_input_slice);
+    result_formats.push_back(grad_input_format);
     result_idx++;
   }
   if (output_mask[1]) {
     TF_ASSIGN_OR_RETURN(auto grad_weight_slice, GetShapedSliceForHlo(instr, {result_idx}));
     results.push_back(grad_weight_slice);
+    result_formats.push_back(grad_weight_format);
     result_idx++;
   }
   if (output_mask[2]) {
     TF_ASSIGN_OR_RETURN(auto grad_bias_slice, GetShapedSliceForHlo(instr, {result_idx}));
     results.push_back(grad_bias_slice);
+    result_formats.push_back(ACL_FORMAT_ND);
     result_idx++;
   }
 
   VLOG(2) << "ACLNN ConvolutionBackward: operands=" << operands.size()
-          << ", results=" << results.size();
+          << ", results=" << results.size()
+          << ", operand_formats=" << operand_formats.size()
+          << ", result_formats=" << result_formats.size();
 
   std::vector<xla::ascend::AclnnThunk::Param> params;
   
@@ -4412,163 +4479,15 @@ absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitAclnnConvolutionBackwa
       "aclnnConvolutionBackward",
       std::move(operands),
       std::move(results),
-      std::move(params));
+      std::move(params),
+      std::move(operand_formats),
+      std::move(result_formats));
 
   xla::gpu::ThunkSequence thunk_sequence;
   thunk_sequence.push_back(std::move(thunk));
 
   return thunk_sequence;
 }
-
-#if 0
-// Original code for CustomCallThunk
-absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitGemmThunk(
-    const HloCustomCallInstruction* instr) {
-  VLOG(2) << "Emitting matmul as ascend.gemm: " << instr->name();
-
-  TF_ASSIGN_OR_RETURN(auto a_slice, GetShapedSliceForHlo(instr->operand(0)));
-  TF_ASSIGN_OR_RETURN(auto b_slice, GetShapedSliceForHlo(instr->operand(1)));
-  
-  // Handle tuple return value (result + workspace)
-  TF_ASSIGN_OR_RETURN(auto c_slice, GetShapedSliceForHlo(instr, {0}));
-  std::optional<xla::ShapedSlice> workspace_slice;
-  if (instr->shape().IsTuple() && instr->shape().tuple_shapes_size() > 1) {
-    TF_ASSIGN_OR_RETURN(auto ws, GetShapedSliceForHlo(instr, {1}));
-    workspace_slice = ws;
-  }
-
-  const Shape& a_shape = instr->operand(0)->shape();
-  PrimitiveType element_type = a_shape.element_type();
-
-  VLOG(2) << "Matmul: a_shape=" << a_shape.ToString()
-          << ", b_shape=" << instr->operand(1)->shape().ToString()
-          << ", c_shape=" << instr->shape().ToString()
-          << ", element_type=" << PrimitiveType_Name(element_type);
-
-  // Parse GEMM backend config to get transpose information
-  int64_t transA = 0;
-  int64_t transB = 0;
-  float alpha = 1.0f;
-  float beta = 0.0f;
-
-  // Try to parse backend config using raw_backend_config_string
-  const std::string& backend_config = instr->raw_backend_config_string();
-  VLOG(2) << "Backend config: " << backend_config;
-  
-  // Simple parsing to extract gemm_backend_config
-  // This is a simplified parsing, in a real implementation you would use proper JSON parsing
-  if (!backend_config.empty()) {
-    // Check for rhs_contracting_dimensions to determine if B needs transpose
-    // If rhs_contracting_dimensions is ["1"], it means B's contracting dimension is the second dimension,
-    // so B needs to be transposed
-    size_t rhs_pos = backend_config.find("rhs_contracting_dimensions");
-    if (rhs_pos != std::string::npos) {
-      // Find the colon after rhs_contracting_dimensions
-      size_t colon_pos = backend_config.find(":", rhs_pos);
-      if (colon_pos != std::string::npos) {
-        // Find the value after the colon, which should be ["1"]
-        size_t val_start = backend_config.find("[", colon_pos);
-        if (val_start != std::string::npos) {
-          size_t val_end = backend_config.find("]", val_start);
-          if (val_end != std::string::npos) {
-            std::string val = backend_config.substr(val_start, val_end - val_start + 1);
-            if (val == "[\"1\"]") {
-              transB = 1;
-              VLOG(2) << "Setting transB=1 based on rhs_contracting_dimensions=" << val;
-            }
-          }
-        }
-      }
-    }
-    
-    // Check for lhs_contracting_dimensions to determine if A needs transpose
-    // If lhs_contracting_dimensions is ["0"], it means A's contracting dimension is the first dimension,
-    // so A needs to be transposed
-    size_t lhs_pos = backend_config.find("lhs_contracting_dimensions");
-    if (lhs_pos != std::string::npos) {
-      // Find the colon after lhs_contracting_dimensions
-      size_t colon_pos = backend_config.find(":", lhs_pos);
-      if (colon_pos != std::string::npos) {
-        // Find the value after the colon, which should be ["0"]
-        size_t val_start = backend_config.find("[", colon_pos);
-        if (val_start != std::string::npos) {
-          size_t val_end = backend_config.find("]", val_start);
-          if (val_end != std::string::npos) {
-            std::string val = backend_config.substr(val_start, val_end - val_start + 1);
-            if (val == "[\"0\"]") {
-              transA = 1;
-              VLOG(2) << "Setting transA=1 based on lhs_contracting_dimensions=" << val;
-            }
-          }
-        }
-      }
-    }
-  }
-
-  std::string function_name = "ascend.gemm";
-  switch (element_type) {
-    case F32:
-      function_name += ".f32";
-      break;
-    case F16:
-      function_name += ".f16";
-      break;
-    case BF16:
-      function_name += ".bf16";
-      break;
-    default:
-      VLOG(2) << "Unsupported data type for matmul: " << PrimitiveType_Name(element_type);
-      function_name += ".f32";
-      break;
-  }
-
-  VLOG(2) << "Using gemm function: " << function_name;
-  VLOG(2) << "GEMM parameters: transA=" << transA << ", transB=" << transB << ", alpha=" << alpha << ", beta=" << beta;
-
-  std::vector<NullableShapedSlice> operands;
-  std::vector<NullableShapedSlice> results;
-
-  // Create a dummy C tensor (all zeros) since aclnnGemm requires it
-  // In a real implementation, you would create a proper zero tensor
-  // For simplicity, we'll just pass the same as C for now
-  operands.push_back(a_slice);
-  operands.push_back(b_slice);
-  operands.push_back(c_slice);  // Using c_slice as dummy C
-  results.push_back(c_slice);
-  
-  // Add workspace to results to maintain tuple structure
-  if (workspace_slice) {
-    results.push_back(*workspace_slice);
-  }
-
-  xla::ffi::AttributesMap attributes;
-  attributes["alpha"] = xla::ffi::Scalar(alpha);
-  attributes["beta"] = xla::ffi::Scalar(beta);
-  attributes["transA"] = xla::ffi::Scalar(transA);
-  attributes["transB"] = xla::ffi::Scalar(transB);
-
-  const se::GpuComputeCapability& gpu_compute_capability =
-      ir_emitter_context_->gpu_compute_capability();
-
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<xla::gpu::CustomCallThunk> thunk,
-      xla::gpu::CustomCallThunk::Create(
-          xla::gpu::Thunk::ThunkInfo::WithProfileAnnotation(instr, ir_emitter_context_->GetNextThunkId()),
-          function_name,
-          std::move(operands),
-          std::move(results),
-          std::move(attributes),
-          /*called_computation=*/nullptr,
-          "ASCEND",
-          gpu_compute_capability,
-          /*execution_state=*/nullptr));
-
-  xla::gpu::ThunkSequence sequence;
-  sequence.push_back(std::move(thunk));
-
-  return sequence;
-}
-#endif
 
 // Emit scalar multiply fusion using FFI
 absl::StatusOr<xla::gpu::ThunkSequence> ThunkEmitter::EmitScalarMultiplyFusion(

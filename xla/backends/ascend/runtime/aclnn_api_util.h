@@ -44,7 +44,13 @@ namespace ascend {
     } \
   } while (false)
 
-
+inline int64_t MaxShapeDims(const Shape& shape) {
+  int64_t max_dims = 0;
+  for (int64_t dim : shape.dimensions()) {
+    max_dims = std::max(max_dims, dim);
+  }
+  return max_dims;
+}
 
 // Forward declarations of ACL data structures
 typedef struct aclOpExecutor aclOpExecutor;
@@ -159,6 +165,23 @@ inline aclTensor *ConvertType(const gpu::BufferAllocations& buffer_allocations, 
       dimensions.data(),
       dimensions.size(),
       const_cast<void*>(device_addr.opaque()));
+}
+
+inline aclTensor* CreateEmptyAclTensor(const std::vector<int64_t>& shape, aclDataType data_type, aclFormat format = ACL_FORMAT_ND) {
+  std::vector<int64_t> strides(shape.size(), 1);
+  for (int64_t i = static_cast<int64_t>(shape.size()) - 2; i >= 0; --i) {
+    strides[i] = strides[i + 1] * shape[i + 1];
+  }
+  return aclCreateTensor(
+      shape.data(),
+      shape.size(),
+      data_type,
+      strides.data(),
+      0,
+      format,
+      shape.data(),
+      shape.size(),
+      nullptr);
 }
 
 // Overload without format parameter (defaults to ACL_FORMAT_ND)

@@ -61,7 +61,7 @@ class AclnnConvolutionConfig : public AclnnConfig {
   int64_t groups = 1;
   int8_t cube_math_type = 0;
   bool has_bias = false;
-  
+
   std::string dim_labels;  // e.g., "b01f_01io->b01f" for NHWC input/output
 
   std::string ToString() const override;
@@ -79,6 +79,16 @@ class AclnnConvolutionBackwardConfig : public AclnnConfig {
   int64_t groups = 1;
   int8_t cube_math_type = 0;
   std::vector<bool> output_mask = {true, true, false};  // gradInput, gradWeight, gradBias
+
+  // Dimension labels for layout conversion: input_kernel->output
+  // For backward input: output_kernel->input (dimension numbers are swapped)
+  // For backward filter: input_output->kernel (dimension numbers are swapped)
+  std::string dim_labels;
+
+  //std::vector<int64_t> input_shape;
+  //std::vector<int64_t> weight_shape;
+  //int64_t input_data_type = 0;
+  //int64_t weight_data_type = 0;
 
   std::string ToString() const override;
   absl::Status FromString(const std::string& config_str) override;

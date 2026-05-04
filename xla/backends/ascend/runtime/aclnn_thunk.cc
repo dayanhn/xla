@@ -209,7 +209,6 @@ static const std::unordered_map<std::string, ExecuteFunc> kOpExecutors = {
        const std::vector<NullableShapedSlice>& results,
        const std::vector<AclnnThunk::Param>& params_list,
        const std::function<TensorTriplet(size_t, bool)>& make_triplet_with_index) -> absl::Status {
-      // Extract parameters first (used to validate results size)
       auto stride = std::get<std::vector<int64_t>>(params_list[0]);
       auto padding = std::get<std::vector<int64_t>>(params_list[1]);
       auto dilation = std::get<std::vector<int64_t>>(params_list[2]);
@@ -218,41 +217,29 @@ static const std::unordered_map<std::string, ExecuteFunc> kOpExecutors = {
       auto groups = std::get<int64_t>(params_list[5]);
       auto cubeMathType = std::get<int8_t>(params_list[6]);
       auto outputMask = std::get<std::vector<bool>>(params_list[7]);
+      //auto inputShape = std::get<std::vector<int64_t>>(params_list[8]);
+      //auto weightShape = std::get<std::vector<int64_t>>(params_list[9]);
+      //auto inputDataType = std::get<int64_t>(params_list[10]);
+      //auto weightDataType = std::get<int64_t>(params_list[11]);
 
       int expected_results = (outputMask[0] ? 1 : 0) +
                              (outputMask[1] ? 1 : 0) +
                              (outputMask[2] ? 1 : 0);
-      ACLNN_CHECK(operands.size() >= 2 && operands.size() <= 3 &&
-            results.size() == expected_results && params_list.size() == 8,
+      ACLNN_CHECK(params_list.size() == 12 &&
+            results.size() == expected_results,
             "aclnnConvolutionBackward: expected " + std::to_string(expected_results) +
-            " results for output_mask=[" + std::to_string(outputMask[0]) + "," +
-            std::to_string(outputMask[1]) + "," + std::to_string(outputMask[2]) +
-            "], got " + std::to_string(results.size()) + " results, " +
-            std::to_string(operands.size()) + " operands");
+            " results, got " + std::to_string(results.size()) +
+            ", params_list size=" + std::to_string(params_list.size()));
 
-      // Determine output tensor sizes based on outputMask
-      // In NCHW weight format: dim 0 = C_out; in HWIO format: last dim = C_out
-      // The layout conversion pass ensures NCHW format at this point
-      // For transposed=true: biasSizes = [weight.shape[1] * groups]
-      // For transposed=false: biasSizes = [weight.shape[0]]
+      aclTensor* grad_output_tensor = ConvertType(make_triplet_with_index(0, true));
+      aclTensor* input_tensor = ConvertType(make_triplet_with_index(1, true));
+      aclTensor* weight_tensor = ConvertType(make_triplet_with_index(2, true));
+
       std::vector<int64_t> biasSizes;
       if (outputMask[2]) {
-        if (transposed) {
-          biasSizes.push_back(operands[1]->shape.dimensions(1) * groups);
-        } else {
-          biasSizes.push_back(operands[1]->shape.dimensions(0));
-        }
+        biasSizes.push_back(MaxShapeDims(operands[2].value().shape));
       }
 
-      // Prepare optional input tensor
-      aclTensor* input_tensor = nullptr;
-      if (operands.size() > 2) {
-        input_tensor = ConvertType(make_triplet_with_index(2, true));
-      }
-
-      // Map results to API parameters compactly based on outputMask.
-      // Each true entry in the mask consumes one result, in order:
-      //   gradInput (mask[0]), gradWeight (mask[1]), gradBias (mask[2])
       int result_idx = 0;
       aclTensor* gradInput_tensor = nullptr;
       if (outputMask[0] && result_idx < results.size()) {
@@ -269,23 +256,22 @@ static const std::unordered_map<std::string, ExecuteFunc> kOpExecutors = {
         gradBias_tensor = ConvertType(make_triplet_with_index(result_idx++, false));
       }
 
-      // Call aclnnConvolutionBackward
       EXEC_ACLNN_CMD(aclnnConvolutionBackward, stream,
-                     make_triplet_with_index(0, true),  // gradOutput
-                     input_tensor,  // input (optional)
-                     make_triplet_with_index(1, true),  // weight
-                     biasSizes,  // biasSizes
-                     stride,     // stride
-                     padding,    // padding
-                     dilation,   // dilation
-                     transposed, // transposed
-                     outputPadding, // outputPadding
-                     groups,     // groups
-                     outputMask, // outputMask
+                     grad_output_tensor,
+                     input_tensor,
+                     weight_tensor,
+                     biasSizes,
+                     stride,
+                     padding,
+                     dilation,
+                     transposed,
+                     outputPadding,
+                     groups,
+                     outputMask,
                      gradInput_tensor,
                      gradWeight_tensor,
                      gradBias_tensor,
-                     cubeMathType); // cubeMathType
+                     cubeMathType);
 
       return absl::OkStatus();
     }

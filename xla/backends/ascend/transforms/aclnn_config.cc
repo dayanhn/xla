@@ -191,6 +191,17 @@ std::string AclnnConvolutionBackwardConfig::ToString() const {
     if (i > 0) output_mask_str += "-";
     output_mask_str += output_mask[i] ? "1" : "0";
   }
+  /*
+  std::string input_shape_str, weight_shape_str;
+  for (size_t i = 0; i < input_shape.size(); ++i) {
+    if (i > 0) input_shape_str += "-";
+    input_shape_str += absl::StrCat(input_shape[i]);
+  }
+  for (size_t i = 0; i < weight_shape.size(); ++i) {
+    if (i > 0) weight_shape_str += "-";
+    weight_shape_str += absl::StrCat(weight_shape[i]);
+  }
+  */
 
   return absl::StrCat(
       "stride=", stride_str,
@@ -200,7 +211,9 @@ std::string AclnnConvolutionBackwardConfig::ToString() const {
       ",output_padding=", output_padding_str,
       ",groups=", groups,
       ",cube_math_type=", static_cast<int>(cube_math_type),
-      ",output_mask=", output_mask_str);
+      ",output_mask=", output_mask_str,
+      ",dim_labels=", dim_labels
+    );
 }
 
 absl::Status AclnnConvolutionBackwardConfig::FromString(const std::string& config_str) {
@@ -270,7 +283,9 @@ absl::Status AclnnConvolutionBackwardConfig::FromString(const std::string& confi
       for (const auto& o : absl::StrSplit(value, '-')) {
         output_mask.push_back((o == "1"));
       }
-    }
+    } else if (key == "dim_labels") {
+      dim_labels = value;
+    } 
   }
   return absl::OkStatus();
 }
@@ -294,7 +309,13 @@ absl::StatusOr<std::unique_ptr<AclnnConfig>> ParseAclnnConfig(
     return config_or.status();
   }
   std::unique_ptr<AclnnConfig> config = std::move(config_or).value();
-  TF_RETURN_IF_ERROR(config->FromString(std::string(config_str)));
+  auto status = config->FromString(std::string(config_str));
+  if (!status.ok()) {
+    std::cerr << "[ACLNN CONFIG ERROR] Failed to parse config string for target: " 
+              << target << ", error: " << status.ToString() 
+              << ", config_str: " << config_str << std::endl;
+    return status;
+  }
   return config;
 }
 
