@@ -1804,11 +1804,14 @@ absl::StatusOr<xla::ShapedSlice> ThunkEmitter::GetShapedSliceForHlo(
     const xla::HloInstruction* instr, const xla::ShapeIndex& index) const {
   TF_ASSIGN_OR_RETURN(xla::BufferAllocation::Slice slice,
                       GetAllocationSliceForHlo(instr, index));
-  // Use the instruction's logical shape directly instead of relying on
-  // GetShapeForUniqueSlice which may return incorrect shapes for operations
-  // like bitcast inside fusions where dataflow analysis traces back to
-  // the original value's shape.
-  xla::Shape shape = instr->shape();
+  // Use ShapeUtil::GetSubshape to extract the correct shape for the specific
+  // element at the given index. This handles both:
+  // 1. Empty index ({}): returns the entire instruction's shape
+  // 2. Non-empty index ({0}, {1}, etc.): extracts the corresponding tuple element shape
+  // 
+  // This is important because instr->shape() may return a tuple shape for 
+  // multi-output instructions, and we need the shape of the specific element.
+  xla::Shape shape = xla::ShapeUtil::GetSubshape(instr->shape(), index);
   return xla::ShapedSlice{slice, shape};
 }
 

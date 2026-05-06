@@ -225,7 +225,7 @@ static const std::unordered_map<std::string, ExecuteFunc> kOpExecutors = {
       int expected_results = (outputMask[0] ? 1 : 0) +
                              (outputMask[1] ? 1 : 0) +
                              (outputMask[2] ? 1 : 0);
-      ACLNN_CHECK(params_list.size() == 12 &&
+      ACLNN_CHECK(params_list.size() == 8 &&
             results.size() == expected_results,
             "aclnnConvolutionBackward: expected " + std::to_string(expected_results) +
             " results, got " + std::to_string(results.size()) +
@@ -268,10 +268,11 @@ static const std::unordered_map<std::string, ExecuteFunc> kOpExecutors = {
                      outputPadding,
                      groups,
                      outputMask,
+                     cubeMathType,
                      gradInput_tensor,
                      gradWeight_tensor,
-                     gradBias_tensor,
-                     cubeMathType);
+                     gradBias_tensor
+                     );
 
       return absl::OkStatus();
     }

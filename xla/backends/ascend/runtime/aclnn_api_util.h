@@ -35,12 +35,22 @@ namespace xla {
 namespace ascend {
 
 // ACLNN_CHECK macro: prints error message and returns InvalidArgumentError on failure
+// For functions returning pointers, use ACLNN_CHECK_PTR which returns nullptr
 #define ACLNN_CHECK(condition, message) \
   do { \
     if (!(condition)) { \
       std::cerr << "ACLNN_CHECK failed: " << (message) \
                 << " at " << __FILE__ << ":" << __LINE__ << std::endl; \
       return absl::InvalidArgumentError(message); \
+    } \
+  } while (false)
+
+#define ACLNN_CHECK_PTR(condition, message) \
+  do { \
+    if (!(condition)) { \
+      std::cerr << "ACLNN_CHECK failed: " << (message) \
+                << " at " << __FILE__ << ":" << __LINE__ << std::endl; \
+      return nullptr; \
     } \
   } while (false)
 
@@ -126,7 +136,7 @@ inline aclTensor *ConvertType(const gpu::BufferAllocations& buffer_allocations, 
   // Get data type
   PrimitiveType primitive_type = shape.element_type();
   aclDataType acl_data_type = PrimitiveTypeToAclDataType(primitive_type);
-  CHECK(acl_data_type != ACL_DT_UNDEFINED) << "Unsupported data type: " << PrimitiveType_Name(primitive_type);
+  ACLNN_CHECK_PTR(acl_data_type != ACL_DT_UNDEFINED, "Unsupported data type: " + std::string(PrimitiveType_Name(primitive_type)));
 
   // Get dimensions
   std::vector<int64_t> dimensions;
@@ -198,7 +208,7 @@ inline aclScalar *ConvertType(const T& value, PrimitiveType type) {
   }
 
   aclDataType acl_data_type = PrimitiveTypeToAclDataType(type);
-  CHECK(acl_data_type != ACL_DT_UNDEFINED) << "Unsupported data type: " << PrimitiveType_Name(type);
+  ACLNN_CHECK_PTR(acl_data_type != ACL_DT_UNDEFINED, "Unsupported data type: " + std::string(PrimitiveType_Name(type)));
 
   return aclCreateScalar(const_cast<void*>(reinterpret_cast<const void*>(&value)), acl_data_type);
 }
@@ -391,7 +401,10 @@ void ReleaseVector(const std::vector<T*>& vec) {
 // Helper function to check ACL status
 inline void CheckAclStatus(aclError status, const char* message) {
   if (status != ACL_SUCCESS) {
-    CHECK(false) << message << ": " << aclGetRecentErrMsg();
+    const char* acl_err_msg = aclGetRecentErrMsg();
+    std::string full_message = std::string(message) + ": " + (acl_err_msg ? acl_err_msg : "unknown error");
+    std::cerr << "ACLNN_CHECK failed: " << full_message
+              << " at " << __FILE__ << ":" << __LINE__ << std::endl;
   }
 }
 

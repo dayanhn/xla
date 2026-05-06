@@ -47,12 +47,6 @@ namespace ascend {
 using ConvolutionMatch = std::optional<
     std::tuple<Window, ConvolutionDimensionNumbers, HloInstruction*>>;
 
-// Helper function to convert ConvolutionDimensionNumbers to dim_labels string
-// dim_labels format: "input_weight->output"
-// e.g., "bf01_oi01->bf01" for NCHW format
-// For 4D (batch, feature, height, width):
-//   NCHW: input=bf01, weight=oi01, output=bf01
-//   NHWC: input=b01f, weight=oihw(or 01io), output=b01f
 std::string ConvolutionDimensionNumbersToDimLabels(
     const ConvolutionDimensionNumbers& dnums,
     const Shape& input_shape,
@@ -431,7 +425,6 @@ ConvolutionMatch MatchBackwardFilter(HloInstruction* conv) {
   return std::make_tuple(backward_conv_window, backward_conv_dnums, lhs);
 }
 
-// 从匹配到的窗口和维度编号生成配置
 void config_from_matched_conv(AclnnConvolutionBackwardConfig* config,
                               const Window& window,
                               const ConvolutionDimensionNumbers& dnums,
@@ -455,13 +448,11 @@ void config_from_matched_conv(AclnnConvolutionBackwardConfig* config,
   config->groups = groups;
   config->cube_math_type = 0;
 
-  // Convert ConvolutionDimensionNumbers to dim_labels string for format conversion
   config->dim_labels = ConvolutionDimensionNumbersToDimLabels(
       dnums, input_shape, weight_shape, output_shape);
   VLOG(2) << "Generated dim_labels: " << config->dim_labels;
 }
 
-// 检查两个卷积配置是否兼容（用于验证可融合）
 bool AreConvConfigsCompatible(const AclnnConvolutionBackwardConfig& a,
                               const AclnnConvolutionBackwardConfig& b) {
   return a.stride == b.stride &&
@@ -470,7 +461,6 @@ bool AreConvConfigsCompatible(const AclnnConvolutionBackwardConfig& a,
          a.groups == b.groups;
 }
 
-// 判断是否是偏置梯度计算：reduce_sum(gradOutput) over batch+spatial dims
 bool MatchGradBiasReduce(HloInstruction* instr,
                          HloInstruction** grad_output,
                          absl::flat_hash_set<HloInstruction*>* visited) {
@@ -517,6 +507,28 @@ bool MatchGradBiasReduce(HloInstruction* instr,
   return true;
 }
 
+struct BackwardInputMatch {
+  Window window;
+  ConvolutionDimensionNumbers dnums;
+  HloInstruction* weight;
+  HloInstruction* conv;
+  HloInstruction* grad_output;
+};
+
+struct BackwardFilterMatch {
+  Window window;
+  ConvolutionDimensionNumbers dnums;
+  HloInstruction* input;
+  HloInstruction* conv;
+  HloInstruction* grad_output;
+};
+
+struct ConvBackwardGroup {
+  HloInstruction* grad_output;
+  std::optional<BackwardInputMatch> backward_input_match;
+  std::optional<BackwardFilterMatch> backward_filter_match;
+};
+
 absl::StatusOr<bool> AclnnConvolutionBackwardRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -525,8 +537,11 @@ absl::StatusOr<bool> AclnnConvolutionBackwardRewriter::RunImpl(
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
 
+    int backward_fused_count = 0;
     int backward_input_count = 0;
     int backward_filter_count = 0;
+
+    absl::flat_hash_map<HloInstruction*, ConvBackwardGroup> groups;
 
     std::vector<HloInstruction*> convolutions;
     for (auto* instr : computation->MakeInstructionPostOrder()) {
@@ -542,35 +557,22 @@ absl::StatusOr<bool> AclnnConvolutionBackwardRewriter::RunImpl(
         auto& [window, dnums, weight] = *match;
         HloInstruction* grad_output = instr->mutable_operand(0);
 
-        VLOG(1) << "Converting gradInput conv: " << instr->name()
-                << ", grad_output: " << grad_output->name()
-                << ", weight: " << weight->name();
+        BackwardInputMatch bwd_input_match{window, dnums, weight, instr,
+                                           grad_output};
 
-        Shape input_shape = instr->shape();
-
-        AclnnConvolutionBackwardConfig config;
-        config_from_matched_conv(&config, window, dnums,
-                                 input_shape, weight->shape(),
-                                 instr->shape(),
-                                 instr->feature_group_count());
-        config.output_mask = {true, false, false};
-        config.transposed = false;
-        std::vector<HloInstruction*> operands = {grad_output, weight};
-
-        HloInstruction* custom_call =
-            computation->AddInstruction(HloInstruction::CreateCustomCall(
-                instr->shape(), operands,
-                kAclnnConvolutionBackwardCallTarget));
-        custom_call->set_raw_backend_config_string(config.ToString());
-        custom_call->SetAndSanitizeName(
-            absl::StrCat("aclnn-conv-backward-input.", backward_input_count++));
-
-        VLOG(2) << "Created custom call: " << custom_call->name()
-                << ", config: " << config.ToString();
-
-        TF_RETURN_IF_ERROR(instr->ReplaceAllUsesWith(custom_call));
-        TF_RETURN_IF_ERROR(computation->RemoveInstruction(instr));
-        changed = true;
+        auto it = groups.find(grad_output);
+        if (it == groups.end()) {
+          ConvBackwardGroup group;
+          group.grad_output = grad_output;
+          group.backward_input_match = bwd_input_match;
+          groups[grad_output] = group;
+        } else {
+          if (it->second.backward_input_match.has_value()) {
+            VLOG(1) << "Overwriting existing backward_input_match for grad_output "
+                    << grad_output->name();
+          }
+          it->second.backward_input_match = bwd_input_match;
+        }
         continue;
       }
 
@@ -578,37 +580,211 @@ absl::StatusOr<bool> AclnnConvolutionBackwardRewriter::RunImpl(
         auto& [window, dnums, input] = *match;
         HloInstruction* grad_output = instr->mutable_operand(1);
 
-        VLOG(1) << "Converting gradWeight conv: " << instr->name()
-                << ", grad_output: " << grad_output->name()
-                << ", input: " << input->name();
+        BackwardFilterMatch bwd_filter_match{window, dnums, input, instr,
+                                             grad_output};
 
-        Shape weight_shape = instr->shape();
+        auto it = groups.find(grad_output);
+        if (it == groups.end()) {
+          ConvBackwardGroup group;
+          group.grad_output = grad_output;
+          group.backward_filter_match = bwd_filter_match;
+          groups[grad_output] = group;
+        } else {
+          if (it->second.backward_filter_match.has_value()) {
+            VLOG(1) << "Overwriting existing backward_filter_match for grad_output "
+                    << grad_output->name();
+          }
+          it->second.backward_filter_match = bwd_filter_match;
+        }
+      }
+    }
 
-        AclnnConvolutionBackwardConfig config;
-        config_from_matched_conv(&config, window, dnums,
-                                 input->shape(), weight_shape,
-                                 instr->shape(),
-                                 instr->feature_group_count());
-        config.output_mask = {false, true, false};
-        config.transposed = false;
+    std::vector<HloInstruction*> to_remove;
 
-        std::vector<HloInstruction*> operands = {grad_output, input};
+    for (auto& [grad_output_ptr, group] : groups) {
+      if (group.backward_input_match.has_value() &&
+          group.backward_filter_match.has_value()) {
+        auto& bwd_input = *group.backward_input_match;
+        auto& bwd_filter = *group.backward_filter_match;
+
+        HloInstruction* grad_output = bwd_input.conv->mutable_operand(0);
+        HloInstruction* input = bwd_filter.conv->mutable_operand(0);
+        HloInstruction* weight = bwd_input.weight;
+
+        AclnnConvolutionBackwardConfig config_a;
+        config_from_matched_conv(&config_a, bwd_input.window, bwd_input.dnums,
+                                 bwd_input.conv->shape(),
+                                 weight->shape(),
+                                 grad_output->shape(),
+                                 bwd_input.conv->feature_group_count());
+
+        AclnnConvolutionBackwardConfig config_b;
+        config_from_matched_conv(&config_b, bwd_filter.window, bwd_filter.dnums,
+                                 input->shape(),
+                                 bwd_filter.conv->shape(),
+                                 grad_output->shape(),
+                                 bwd_filter.conv->feature_group_count());
+
+        if (!AreConvConfigsCompatible(config_a, config_b)) {
+          VLOG(1) << "Skipping fused backward conv for grad_output "
+                  << grad_output->name() << ": configs incompatible";
+          continue;
+        }
+
+        Shape gradInput_shape = bwd_input.conv->shape();
+        Shape gradWeight_shape = bwd_filter.conv->shape();
+
+        Shape tuple_shape =
+            ShapeUtil::MakeTupleShape({gradInput_shape, gradWeight_shape});
+
+        std::vector<HloInstruction*> operands = {grad_output, input, weight};
+
         HloInstruction* custom_call =
             computation->AddInstruction(HloInstruction::CreateCustomCall(
-                instr->shape(), operands,
+                tuple_shape, operands,
                 kAclnnConvolutionBackwardCallTarget));
+
+        AclnnConvolutionBackwardConfig config;
+        config_from_matched_conv(&config, bwd_input.window, bwd_input.dnums,
+                                 gradInput_shape, weight->shape(),
+                                 grad_output->shape(),
+                                 bwd_input.conv->feature_group_count());
+        config.output_mask = {true, true, false};
+        config.transposed = false;
         custom_call->set_raw_backend_config_string(config.ToString());
         custom_call->SetAndSanitizeName(
-            absl::StrCat("aclnn-conv-backward-filter.", backward_filter_count++));
+            absl::StrCat("aclnn-conv-backward-fused.",
+                         backward_fused_count++));
 
-        VLOG(2) << "Created custom call: " << custom_call->name()
+        VLOG(2) << "Created fused custom call: " << custom_call->name()
                 << ", config: " << config.ToString();
 
-        TF_RETURN_IF_ERROR(instr->ReplaceAllUsesWith(custom_call));
-        TF_RETURN_IF_ERROR(computation->RemoveInstruction(instr));
+        HloInstruction* gte0 = computation->AddInstruction(
+            HloInstruction::CreateGetTupleElement(gradInput_shape,
+                                                  custom_call, 0));
+        HloInstruction* gte1 = computation->AddInstruction(
+            HloInstruction::CreateGetTupleElement(gradWeight_shape,
+                                                  custom_call, 1));
+
+        TF_RETURN_IF_ERROR(bwd_input.conv->ReplaceAllUsesWith(gte0));
+        TF_RETURN_IF_ERROR(bwd_filter.conv->ReplaceAllUsesWith(gte1));
+        to_remove.push_back(bwd_input.conv);
+        to_remove.push_back(bwd_filter.conv);
         changed = true;
-        continue;
+
+      } else if (group.backward_input_match.has_value()) {
+        auto& bwd_input = *group.backward_input_match;
+
+        HloInstruction* grad_output = bwd_input.conv->mutable_operand(0);
+        Shape gradInput_shape = bwd_input.conv->shape();
+
+        HloInstruction* input = nullptr;
+        for (auto* param : computation->parameter_instructions()) {
+          if (ShapeUtil::Compatible(param->shape(), gradInput_shape)) {
+            input = param;
+            break;
+          }
+        }
+
+        if (input == nullptr) {
+          VLOG(1) << "Skipping backward-input conv " << bwd_input.conv->name()
+                  << ": no matching input parameter found";
+          continue;
+        }
+
+        Shape tuple_shape = ShapeUtil::MakeTupleShape({gradInput_shape});
+
+        std::vector<HloInstruction*> operands = {grad_output, input,
+                                                  bwd_input.weight};
+
+        HloInstruction* custom_call =
+            computation->AddInstruction(HloInstruction::CreateCustomCall(
+                tuple_shape, operands,
+                kAclnnConvolutionBackwardCallTarget));
+
+        AclnnConvolutionBackwardConfig config;
+        config_from_matched_conv(&config, bwd_input.window, bwd_input.dnums,
+                                 gradInput_shape, bwd_input.weight->shape(),
+                                 grad_output->shape(),
+                                 bwd_input.conv->feature_group_count());
+        config.output_mask = {true, false, false};
+        config.transposed = false;
+        custom_call->set_raw_backend_config_string(config.ToString());
+        custom_call->SetAndSanitizeName(
+            absl::StrCat("aclnn-conv-backward-input.",
+                         backward_input_count++));
+
+        VLOG(2) << "Created backward-input custom call: "
+                << custom_call->name()
+                << ", config: " << config.ToString();
+
+        HloInstruction* gte0 = computation->AddInstruction(
+            HloInstruction::CreateGetTupleElement(gradInput_shape,
+                                                  custom_call, 0));
+
+        TF_RETURN_IF_ERROR(bwd_input.conv->ReplaceAllUsesWith(gte0));
+        to_remove.push_back(bwd_input.conv);
+        changed = true;
+
+      } else if (group.backward_filter_match.has_value()) {
+        auto& bwd_filter = *group.backward_filter_match;
+
+        HloInstruction* grad_output = bwd_filter.conv->mutable_operand(1);
+        HloInstruction* input = bwd_filter.conv->mutable_operand(0);
+        Shape gradWeight_shape = bwd_filter.conv->shape();
+
+        HloInstruction* weight = nullptr;
+        for (auto* param : computation->parameter_instructions()) {
+          if (ShapeUtil::Compatible(param->shape(), gradWeight_shape)) {
+            weight = param;
+            break;
+          }
+        }
+
+        if (weight == nullptr) {
+          VLOG(1) << "Skipping backward-filter conv "
+                  << bwd_filter.conv->name()
+                  << ": no matching weight parameter found";
+          continue;
+        }
+
+        Shape tuple_shape = ShapeUtil::MakeTupleShape({gradWeight_shape});
+
+        std::vector<HloInstruction*> operands = {grad_output, input, weight};
+
+        HloInstruction* custom_call =
+            computation->AddInstruction(HloInstruction::CreateCustomCall(
+                tuple_shape, operands,
+                kAclnnConvolutionBackwardCallTarget));
+
+        AclnnConvolutionBackwardConfig config;
+        config_from_matched_conv(&config, bwd_filter.window, bwd_filter.dnums,
+                                 input->shape(), weight->shape(),
+                                 grad_output->shape(),
+                                 bwd_filter.conv->feature_group_count());
+        config.output_mask = {false, true, false};
+        config.transposed = false;
+        custom_call->set_raw_backend_config_string(config.ToString());
+        custom_call->SetAndSanitizeName(
+            absl::StrCat("aclnn-conv-backward-filter.",
+                         backward_filter_count++));
+
+        VLOG(2) << "Created backward-filter custom call: "
+                << custom_call->name()
+                << ", config: " << config.ToString();
+
+        HloInstruction* gte0 = computation->AddInstruction(
+            HloInstruction::CreateGetTupleElement(gradWeight_shape,
+                                                  custom_call, 0));
+
+        TF_RETURN_IF_ERROR(bwd_filter.conv->ReplaceAllUsesWith(gte0));
+        to_remove.push_back(bwd_filter.conv);
+        changed = true;
       }
+    }
+
+    for (auto* instr : to_remove) {
+      TF_RETURN_IF_ERROR(computation->RemoveInstruction(instr));
     }
   }
 
