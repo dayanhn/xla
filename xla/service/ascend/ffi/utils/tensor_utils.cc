@@ -103,6 +103,24 @@ aclDataType ConvertToAclDataType<DataType::U16>() {
   return ACL_UINT16;
 }
 
+aclTensor* ConvertAnyBufferToAclTensor(ffi::AnyBuffer buffer) {
+  aclDataType acl_dtype = ConvertToAclDataType(buffer.element_type());
+  auto dims = buffer.dimensions();
+  std::vector<int64_t> dimensions(dims.begin(), dims.end());
+  std::vector<int64_t> strides(dimensions.size(), 1);
+  for (int i = dimensions.size() - 2; i >= 0; --i) {
+    strides[i] = strides[i + 1] * dimensions[i + 1];
+  }
+  if (dimensions.empty()) {
+    dimensions.push_back(1);
+    strides.push_back(1);
+  }
+  return aclCreateTensor(dimensions.data(), dimensions.size(), acl_dtype,
+                         strides.data(), 0, ACL_FORMAT_ND,
+                         dimensions.data(), dimensions.size(),
+                         buffer.untyped_data());
+}
+
 // Explicit instantiations for common types
 template aclTensor* ConvertToAclTensor<DataType::F32>(const Buffer<DataType::F32>&);
 template aclTensor* ConvertToAclTensor<DataType::F16>(const Buffer<DataType::F16>&);

@@ -207,6 +207,8 @@ extern "C" XLA_FFI_Error* AscendMaxDimF32(XLA_FFI_CallFrame* frame);
 extern "C" XLA_FFI_Error* AscendMaxDimF16(XLA_FFI_CallFrame* frame);
 extern "C" XLA_FFI_Error* AscendMaxDimBF16(XLA_FFI_CallFrame* frame);
 
+extern "C" XLA_FFI_Error* AscendUnifiedOp(XLA_FFI_CallFrame* frame);
+
 
 
 

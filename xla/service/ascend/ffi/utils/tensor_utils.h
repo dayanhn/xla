@@ -13,6 +13,9 @@ namespace xla::ffi {
   template <DataType dtype>
   aclTensor* ConvertToAclTensor(const Buffer<dtype>& buffer);
   
+  // Convert AnyBuffer to Ascend Tensor (runtime type dispatch)
+  aclTensor* ConvertAnyBufferToAclTensor(AnyBuffer buffer);
+  
   // Convert XLA DataType to Ascend aclDataType
   aclDataType ConvertToAclDataType(DataType type);
   

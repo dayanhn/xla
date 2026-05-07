@@ -66,6 +66,7 @@ cc_library(
         "ops/math/cat/cat.cc",
         "ops/math/reduce_sum/reduce_sum.cc",
         "ops/math/iota/iota.cc",
+        "ops/aclnn/unified_aclnn.cc",
         "utils/tensor_utils.cc",
     ],
     hdrs = [

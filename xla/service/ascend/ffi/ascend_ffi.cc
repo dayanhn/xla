@@ -2397,6 +2397,19 @@ void RegisterAscendFfiHandlers() {
   if (!status.ok()) {
     LOG(ERROR) << "Failed to register ascend.max_dim.bf16 operator: " << status.ToString();
     throw std::runtime_error("Failed to register ascend.max_dim.bf16 operator: " + status.ToString());
+  }
+
+  // Register Unified ACLNN operator
+  error = Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(),
+      "ascend_op",
+      "ASCEND",
+      AscendUnifiedOp);
+  
+  status = TakeStatus(error);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to register ascend_op operator: " << status.ToString();
+    throw std::runtime_error("Failed to register ascend_op operator: " + status.ToString());
   }}
 
 }  // namespace xla::ffi
