@@ -107,18 +107,45 @@ aclTensor* ConvertAnyBufferToAclTensor(ffi::AnyBuffer buffer) {
   aclDataType acl_dtype = ConvertToAclDataType(buffer.element_type());
   auto dims = buffer.dimensions();
   std::vector<int64_t> dimensions(dims.begin(), dims.end());
-  std::vector<int64_t> strides(dimensions.size(), 1);
-  for (int i = dimensions.size() - 2; i >= 0; --i) {
-    strides[i] = strides[i + 1] * dimensions[i + 1];
-  }
+  
+  // Handle empty dimensions (scalar)
   if (dimensions.empty()) {
     dimensions.push_back(1);
-    strides.push_back(1);
   }
-  return aclCreateTensor(dimensions.data(), dimensions.size(), acl_dtype,
+  
+  // Calculate strides
+  std::vector<int64_t> strides(dimensions.size(), 1);
+  for (int i = static_cast<int>(dimensions.size()) - 2; i >= 0; --i) {
+    strides[i] = strides[i + 1] * dimensions[i + 1];
+  }
+  
+  void* data_ptr = buffer.untyped_data();
+  
+  LOG(ERROR) << "[TENSOR_UTILS DEBUG] Creating aclTensor:"
+             << " dtype=" << acl_dtype
+             << " ndim=" << dimensions.size()
+             << " dims=[";
+  for (size_t i = 0; i < dimensions.size(); ++i) {
+    LOG(ERROR) << dimensions[i] << (i < dimensions.size()-1 ? "," : "");
+  }
+  LOG(ERROR) << "] strides=[";
+  for (size_t i = 0; i < strides.size(); ++i) {
+    LOG(ERROR) << strides[i] << (i < strides.size()-1 ? "," : "");
+  }
+  LOG(ERROR) << "] data_ptr=" << data_ptr;
+  
+  aclTensor* tensor = aclCreateTensor(dimensions.data(), dimensions.size(), acl_dtype,
                          strides.data(), 0, ACL_FORMAT_ND,
                          dimensions.data(), dimensions.size(),
-                         buffer.untyped_data());
+                         data_ptr);
+  
+  if (tensor == nullptr) {
+    LOG(ERROR) << "[TENSOR_UTILS ERROR] aclCreateTensor returned nullptr!";
+  } else {
+    LOG(ERROR) << "[TENSOR_UTILS DEBUG] aclCreateTensor succeeded, tensor=" << tensor;
+  }
+  
+  return tensor;
 }
 
 // Explicit instantiations for common types

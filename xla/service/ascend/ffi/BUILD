@@ -87,12 +87,15 @@ cc_library(
         "//xla/ffi/api:c_api",
         "//xla:shape_util",
         "//third_party/acl:acl_headers",
+        "//third_party/libffi:libffi_headers",
         "@com_google_absl//absl/strings",
     ],
     copts = select({
-        "//conditions:default": ["-Ithird_party/acl/inc"],
+        "//conditions:default": [
+            "-Ithird_party/acl/inc",
+        ],
     }),
     linkopts = select({
-        "//conditions:default": [],
+        "//conditions:default": ["-L/usr/lib/aarch64-linux-gnu", "-lffi"],
     }),
 )
