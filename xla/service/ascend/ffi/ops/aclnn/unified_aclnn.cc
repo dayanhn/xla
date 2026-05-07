@@ -14,7 +14,7 @@ namespace ffi = xla::ffi;
 namespace {
 
 void* GetAclnnFuncAddr(const char* apiName) {
-  static auto custOpApiHandler = dlopen("libcust_opapi.so", RTLD_LAZY);
+  static auto custOpApiHandler = dlopen("libopapi.so", RTLD_LAZY);
   if (custOpApiHandler != nullptr) {
     auto funcAddr = dlsym(custOpApiHandler, apiName);
     if (funcAddr != nullptr) {
@@ -22,7 +22,7 @@ void* GetAclnnFuncAddr(const char* apiName) {
     }
   }
 
-  static auto opApiHandler = dlopen("libopapi.so", RTLD_LAZY);
+  static auto opApiHandler = dlopen("libcust_opapi.so", RTLD_LAZY);
   if (opApiHandler == nullptr) {
     return nullptr;
   }
@@ -76,6 +76,7 @@ ffi::Error UnifiedAclnnHandler(
 
   auto op_name_result = attrs.get<std::string_view>("op_name");
   if (!op_name_result.has_value()) {
+    LOG(ERROR) << "[ACLNN ERROR] Missing 'op_name' attribute";
     return ffi::Error::InvalidArgument("Missing 'op_name' attribute");
   }
   std::string op_name(*op_name_result);
@@ -83,16 +84,12 @@ ffi::Error UnifiedAclnnHandler(
   auto num_inputs_result = attrs.get<int64_t>("num_inputs");
   auto num_outputs_result = attrs.get<int64_t>("num_outputs");
   if (!num_inputs_result.has_value() || !num_outputs_result.has_value()) {
+    LOG(ERROR) << "[ACLNN ERROR] Missing num_inputs or num_outputs for op: " << op_name;
     return ffi::Error::InvalidArgument("Missing num_inputs or num_outputs");
   }
   int num_inputs = *num_inputs_result;
   int num_outputs = *num_outputs_result;
 
-  LOG(ERROR) << "[ACLNN DEBUG] ===== Starting parameter validation =====";
-  LOG(ERROR) << "[ACLNN DEBUG] op_name: " << op_name;
-  LOG(ERROR) << "[ACLNN DEBUG] num_inputs: " << num_inputs;
-  LOG(ERROR) << "[ACLNN DEBUG] num_outputs: " << num_outputs;
-  
   std::vector<AclnnParam> params;
   
   // Reserve space to avoid reallocation which would invalidate pointers
@@ -101,65 +98,46 @@ ffi::Error UnifiedAclnnHandler(
   for (int i = 0; i < num_inputs; i++) {
     auto buf_result = args.get<ffi::AnyBuffer>(i);
     if (!buf_result.has_value()) {
+      std::string error_msg = absl::StrCat("Failed to get input tensor at index ", i, " for op: ", op_name);
+      LOG(ERROR) << "[ACLNN ERROR] " << error_msg;
       CleanupResources(all_acl_tensors, acl_scalars, acl_int_arrays,
                        acl_float_arrays, acl_bool_arrays);
-      return ffi::Error::InvalidArgument(
-          absl::StrCat("Failed to get input tensor at index ", i));
+      return ffi::Error::InvalidArgument(error_msg);
     }
     aclTensor* tensor = ConvertAnyBufferToAclTensor(*buf_result);
     if (!tensor) {
-      LOG(ERROR) << "[ACLNN DEBUG] Failed to convert input tensor " << i 
-                 << " to aclTensor. Buffer info: element_type=" 
-                 << static_cast<int>((*buf_result).element_type())
-                 << ", dimensions=[";
-      for (auto dim : (*buf_result).dimensions()) {
-        LOG(ERROR) << dim << ",";
-      }
-      LOG(ERROR) << "]";
+      std::string error_msg = absl::StrCat("Failed to convert input tensor ", i, " to aclTensor for op: ", op_name);
+      LOG(ERROR) << "[ACLNN ERROR] " << error_msg;
       CleanupResources(all_acl_tensors, acl_scalars, acl_int_arrays,
                        acl_float_arrays, acl_bool_arrays);
-      return ffi::Error::Internal(
-          absl::StrCat("Failed to convert input tensor ", i, " to aclTensor"));
+      return ffi::Error::Internal(error_msg);
     }
     all_acl_tensors.push_back(tensor);
-  }
-
-  // Now add all input tensors to params after all pushes to avoid invalidation
-  for (int i = 0; i < num_inputs; i++) {
-    // For pointer parameters, pass the pointer value directly, not its address
-    params.push_back({&ffi_type_pointer, all_acl_tensors[i]});
   }
 
   for (int i = 0; i < num_outputs; i++) {
     auto ret_result = rets.get<ffi::AnyBuffer>(i);
     if (!ret_result.has_value()) {
+      std::string error_msg = absl::StrCat("Failed to get output tensor at index ", i, " for op: ", op_name);
+      LOG(ERROR) << "[ACLNN ERROR] " << error_msg;
       CleanupResources(all_acl_tensors, acl_scalars, acl_int_arrays,
                        acl_float_arrays, acl_bool_arrays);
-      return ffi::Error::InvalidArgument(
-          absl::StrCat("Failed to get output tensor at index ", i));
+      return ffi::Error::InvalidArgument(error_msg);
     }
     aclTensor* tensor = ConvertAnyBufferToAclTensor(**ret_result);
     if (!tensor) {
-      LOG(ERROR) << "[ACLNN DEBUG] Failed to convert output tensor " << i 
-                 << " to aclTensor";
+      std::string error_msg = absl::StrCat("Failed to convert output tensor ", i, " to aclTensor for op: ", op_name);
+      LOG(ERROR) << "[ACLNN ERROR] " << error_msg;
       CleanupResources(all_acl_tensors, acl_scalars, acl_int_arrays,
                        acl_float_arrays, acl_bool_arrays);
-      return ffi::Error::Internal(
-          absl::StrCat("Failed to convert output tensor ", i, " to aclTensor"));
+      return ffi::Error::Internal(error_msg);
     }
     all_acl_tensors.push_back(tensor);
   }
 
-  // Add output tensors to params
-  for (int i = 0; i < num_outputs; i++) {
-    // For pointer parameters, pass the pointer value directly, not its address
-    params.push_back({&ffi_type_pointer, all_acl_tensors[num_inputs + i]});
-  }
-
-  LOG(ERROR) << "[ACLNN DEBUG] After adding tensors, params.size() = " << params.size();
-  for (size_t i = 0; i < params.size(); ++i) {
-    LOG(ERROR) << "[ACLNN DEBUG]   params[" << i << "] ffi_type=" << params[i].ffi_type 
-               << ", value_ptr=" << params[i].value_ptr;
+  // Set up all tensor params after all pushes to avoid invalidation from reallocation
+  for (int i = 0; i < num_inputs + num_outputs; i++) {
+    params.push_back({&ffi_type_pointer, &all_acl_tensors[i]});
   }
 
   auto param_count_result = attrs.get<int64_t>("param_count");
@@ -179,149 +157,168 @@ ffi::Error UnifiedAclnnHandler(
 
     auto type_result = attrs.get<std::string_view>(type_key);
     if (!type_result.has_value()) {
+      std::string error_msg = absl::StrCat("Missing param type: ", type_key, " for op: ", op_name);
+      LOG(ERROR) << "[ACLNN ERROR] " << error_msg;
       CleanupResources(all_acl_tensors, acl_scalars, acl_int_arrays,
                        acl_float_arrays, acl_bool_arrays);
-      return ffi::Error::InvalidArgument(
-          absl::StrCat("Missing param type: ", type_key));
+      return ffi::Error::InvalidArgument(error_msg);
     }
     std::string param_type(*type_result);
 
     if (param_type == "int64") {
       auto val = attrs.get<int64_t>(value_key);
       if (!val.has_value()) {
+        std::string error_msg = absl::StrCat("Missing value for param: ", value_key, " for op: ", op_name);
+        LOG(ERROR) << "[ACLNN ERROR] " << error_msg;
         CleanupResources(all_acl_tensors, acl_scalars, acl_int_arrays,
                          acl_float_arrays, acl_bool_arrays);
-        return ffi::Error::InvalidArgument(
-            absl::StrCat("Missing value for param: ", value_key));
+        return ffi::Error::InvalidArgument(error_msg);
       }
       int64_values.push_back(*val);
       params.push_back({&ffi_type_sint64, &int64_values.back()});
     } else if (param_type == "float") {
       auto val = attrs.get<float>(value_key);
       if (!val.has_value()) {
+        std::string error_msg = absl::StrCat("Missing value for param: ", value_key, " for op: ", op_name);
+        LOG(ERROR) << "[ACLNN ERROR] " << error_msg;
         CleanupResources(all_acl_tensors, acl_scalars, acl_int_arrays,
                          acl_float_arrays, acl_bool_arrays);
-        return ffi::Error::InvalidArgument(
-            absl::StrCat("Missing value for param: ", value_key));
+        return ffi::Error::InvalidArgument(error_msg);
       }
       float_values.push_back(*val);
       params.push_back({&ffi_type_float, &float_values.back()});
     } else if (param_type == "int8") {
       auto val = attrs.get<int64_t>(value_key);
       if (!val.has_value()) {
+        std::string error_msg = absl::StrCat("Missing value for param: ", value_key, " for op: ", op_name);
+        LOG(ERROR) << "[ACLNN ERROR] " << error_msg;
         CleanupResources(all_acl_tensors, acl_scalars, acl_int_arrays,
                          acl_float_arrays, acl_bool_arrays);
-        return ffi::Error::InvalidArgument(
-            absl::StrCat("Missing value for param: ", value_key));
+        return ffi::Error::InvalidArgument(error_msg);
       }
       int8_values.push_back(static_cast<int8_t>(*val));
       params.push_back({&ffi_type_sint8, &int8_values.back()});
     } else if (param_type == "bool") {
       auto val = attrs.get<bool>(value_key);
       if (!val.has_value()) {
+        std::string error_msg = absl::StrCat("Missing value for param: ", value_key, " for op: ", op_name);
+        LOG(ERROR) << "[ACLNN ERROR] " << error_msg;
         CleanupResources(all_acl_tensors, acl_scalars, acl_int_arrays,
                          acl_float_arrays, acl_bool_arrays);
-        return ffi::Error::InvalidArgument(
-            absl::StrCat("Missing value for param: ", value_key));
+        return ffi::Error::InvalidArgument(error_msg);
       }
-      bool_values.push_back(*val ? 1 : 0);
-      params.push_back({&ffi_type_uint8, &bool_values.back()});
     } else if (param_type == "int_array") {
       auto val = attrs.get<Span<const int64_t>>(value_key);
       if (!val.has_value()) {
+        std::string error_msg = absl::StrCat("Missing value for param: ", value_key, " for op: ", op_name);
+        LOG(ERROR) << "[ACLNN ERROR] " << error_msg;
         CleanupResources(all_acl_tensors, acl_scalars, acl_int_arrays,
                          acl_float_arrays, acl_bool_arrays);
-        return ffi::Error::InvalidArgument(
-            absl::StrCat("Missing value for param: ", value_key));
+        return ffi::Error::InvalidArgument(error_msg);
       }
       int_array_storage.emplace_back(val->begin(), val->end());
       aclIntArray* arr = aclCreateIntArray(
           int_array_storage.back().data(), int_array_storage.back().size());
       if (!arr) {
+        std::string error_msg = absl::StrCat("Failed to create aclIntArray for op: ", op_name);
+        LOG(ERROR) << "[ACLNN ERROR] " << error_msg;
         CleanupResources(all_acl_tensors, acl_scalars, acl_int_arrays,
                          acl_float_arrays, acl_bool_arrays);
-        return ffi::Error::Internal("Failed to create aclIntArray");
+        return ffi::Error::Internal(error_msg);
       }
       acl_int_arrays.push_back(arr);
       params.push_back({&ffi_type_pointer, &acl_int_arrays.back()});
     } else if (param_type == "float_array") {
       auto val = attrs.get<Span<const float>>(value_key);
       if (!val.has_value()) {
+        std::string error_msg = absl::StrCat("Missing value for param: ", value_key, " for op: ", op_name);
+        LOG(ERROR) << "[ACLNN ERROR] " << error_msg;
         CleanupResources(all_acl_tensors, acl_scalars, acl_int_arrays,
                          acl_float_arrays, acl_bool_arrays);
-        return ffi::Error::InvalidArgument(
-            absl::StrCat("Missing value for param: ", value_key));
+        return ffi::Error::InvalidArgument(error_msg);
       }
       float_array_storage.emplace_back(val->begin(), val->end());
       aclFloatArray* arr = aclCreateFloatArray(
           float_array_storage.back().data(), float_array_storage.back().size());
       if (!arr) {
+        std::string error_msg = absl::StrCat("Failed to create aclFloatArray for op: ", op_name);
+        LOG(ERROR) << "[ACLNN ERROR] " << error_msg;
         CleanupResources(all_acl_tensors, acl_scalars, acl_int_arrays,
                          acl_float_arrays, acl_bool_arrays);
-        return ffi::Error::Internal("Failed to create aclFloatArray");
+        return ffi::Error::Internal(error_msg);
       }
       acl_float_arrays.push_back(arr);
       params.push_back({&ffi_type_pointer, &acl_float_arrays.back()});
     } else if (param_type == "bool_array") {
       auto val = attrs.get<Span<const uint8_t>>(value_key);
       if (!val.has_value()) {
+        std::string error_msg = absl::StrCat("Missing value for param: ", value_key, " for op: ", op_name);
+        LOG(ERROR) << "[ACLNN ERROR] " << error_msg;
         CleanupResources(all_acl_tensors, acl_scalars, acl_int_arrays,
                          acl_float_arrays, acl_bool_arrays);
-        return ffi::Error::InvalidArgument(
-            absl::StrCat("Missing value for param: ", value_key));
+        return ffi::Error::InvalidArgument(error_msg);
       }
       bool_array_storage.emplace_back(val->begin(), val->end());
       aclBoolArray* arr = aclCreateBoolArray(
           reinterpret_cast<const bool*>(bool_array_storage.back().data()),
           bool_array_storage.back().size());
       if (!arr) {
+        std::string error_msg = absl::StrCat("Failed to create aclBoolArray for op: ", op_name);
+        LOG(ERROR) << "[ACLNN ERROR] " << error_msg;
         CleanupResources(all_acl_tensors, acl_scalars, acl_int_arrays,
                          acl_float_arrays, acl_bool_arrays);
-        return ffi::Error::Internal("Failed to create aclBoolArray");
+        return ffi::Error::Internal(error_msg);
       }
       acl_bool_arrays.push_back(arr);
       params.push_back({&ffi_type_pointer, &acl_bool_arrays.back()});
     } else if (param_type == "scalar_int") {
       auto val = attrs.get<int64_t>(value_key);
       if (!val.has_value()) {
+        std::string error_msg = absl::StrCat("Missing value for param: ", value_key, " for op: ", op_name);
+        LOG(ERROR) << "[ACLNN ERROR] " << error_msg;
         CleanupResources(all_acl_tensors, acl_scalars, acl_int_arrays,
                          acl_float_arrays, acl_bool_arrays);
-        return ffi::Error::InvalidArgument(
-            absl::StrCat("Missing value for param: ", value_key));
+        return ffi::Error::InvalidArgument(error_msg);
       }
-      int64_t v = *val;
+      float v = *val;
       aclScalar* scalar = aclCreateScalar(
           const_cast<void*>(reinterpret_cast<const void*>(&v)), ACL_INT64);
       if (!scalar) {
+        std::string error_msg = absl::StrCat("Failed to create aclScalar for int for op: ", op_name);
+        LOG(ERROR) << "[ACLNN ERROR] " << error_msg;
         CleanupResources(all_acl_tensors, acl_scalars, acl_int_arrays,
                          acl_float_arrays, acl_bool_arrays);
-        return ffi::Error::Internal("Failed to create aclScalar for int");
+        return ffi::Error::Internal(error_msg);
       }
       acl_scalars.push_back(scalar);
       params.push_back({&ffi_type_pointer, &acl_scalars.back()});
     } else if (param_type == "scalar_float") {
       auto val = attrs.get<float>(value_key);
       if (!val.has_value()) {
+        std::string error_msg = absl::StrCat("Missing value for param: ", value_key, " for op: ", op_name);
+        LOG(ERROR) << "[ACLNN ERROR] " << error_msg;
         CleanupResources(all_acl_tensors, acl_scalars, acl_int_arrays,
                          acl_float_arrays, acl_bool_arrays);
-        return ffi::Error::InvalidArgument(
-            absl::StrCat("Missing value for param: ", value_key));
+        return ffi::Error::InvalidArgument(error_msg);
       }
       float v = *val;
       aclScalar* scalar = aclCreateScalar(
           const_cast<void*>(reinterpret_cast<const void*>(&v)), ACL_FLOAT);
       if (!scalar) {
+        std::string error_msg = absl::StrCat("Failed to create aclScalar for float for op: ", op_name);
+        LOG(ERROR) << "[ACLNN ERROR] " << error_msg;
         CleanupResources(all_acl_tensors, acl_scalars, acl_int_arrays,
                          acl_float_arrays, acl_bool_arrays);
-        return ffi::Error::Internal("Failed to create aclScalar for float");
+        return ffi::Error::Internal(error_msg);
       }
       acl_scalars.push_back(scalar);
       params.push_back({&ffi_type_pointer, &acl_scalars.back()});
     } else {
+      std::string error_msg = absl::StrCat("Unknown param type: ", param_type, " for op: ", op_name);
+      LOG(ERROR) << "[ACLNN ERROR] " << error_msg;
       CleanupResources(all_acl_tensors, acl_scalars, acl_int_arrays,
                        acl_float_arrays, acl_bool_arrays);
-      return ffi::Error::InvalidArgument(
-          absl::StrCat("Unknown param type: ", param_type));
+      return ffi::Error::InvalidArgument(error_msg);
     }
   }
 
@@ -330,33 +327,20 @@ ffi::Error UnifiedAclnnHandler(
   void* execute_func = GetAclnnFuncAddr(op_name.c_str());
 
   if (!get_workspace_func || !execute_func) {
+    std::string error_msg = absl::StrCat("ACLNN function not found: ", op_name);
+    LOG(ERROR) << "[ACLNN ERROR] " << error_msg;
     CleanupResources(all_acl_tensors, acl_scalars, acl_int_arrays,
                      acl_float_arrays, acl_bool_arrays);
-    return ffi::Error::Internal(
-        absl::StrCat("ACLNN function not found: ", op_name));
-  }
-
-  LOG(ERROR) << "[ACLNN DEBUG] Calling " << get_workspace_name 
-            << " with " << params.size() << " parameters";
-  
-  // Debug: print tensor addresses and validate them
-  for (size_t i = 0; i < all_acl_tensors.size(); ++i) {
-    if (all_acl_tensors[i] == nullptr) {
-      LOG(ERROR) << "[ACLNN DEBUG] ERROR: Tensor " << i << " is nullptr!";
-    } else {
-      LOG(ERROR) << "[ACLNN DEBUG] Tensor " << i << " address: " << all_acl_tensors[i]
-                 << ", will pass as arg_values[" << i << "] = " << all_acl_tensors[i];
-    }
+    return ffi::Error::Internal(error_msg);
   }
 
   uint64_t workspace_size = 0;
   aclOpExecutor* executor = nullptr;
-  
-  // For libffi, we need to pass the pointers directly as argument values
-  // The function signature is: aclnnStatus func(..., uint64_t* workspaceSize, aclOpExecutor** executor)
-  // So we pass &workspace_size (which is uint64_t*) and &executor (which is aclOpExecutor**)
-  params.push_back({&ffi_type_pointer, &workspace_size});
-  params.push_back({&ffi_type_pointer, &executor});
+  void* ws_ptr_storage = &workspace_size;
+  void* exec_ptr_storage = &executor;
+
+  params.push_back({&ffi_type_pointer, &ws_ptr_storage});
+  params.push_back({&ffi_type_pointer, &exec_ptr_storage});
 
   std::vector<ffi_type*> arg_types;
   std::vector<void*> arg_values;
@@ -372,50 +356,16 @@ ffi::Error UnifiedAclnnHandler(
                                     static_cast<unsigned int>(arg_types.size()),
                                     &ffi_type_sint, arg_types.data());
   if (status != FFI_OK) {
+    std::string error_msg = absl::StrCat("ffi_prep_cif failed for ", op_name,
+                     " with status ", static_cast<int>(status));
+    LOG(ERROR) << "[ACLNN ERROR] " << error_msg;
     CleanupResources(all_acl_tensors, acl_scalars, acl_int_arrays,
                      acl_float_arrays, acl_bool_arrays);
-    return ffi::Error::Internal(
-        absl::StrCat("ffi_prep_cif failed for ", op_name,
-                     " with status ", static_cast<int>(status)));
+    return ffi::Error::Internal(error_msg);
   }
 
   int ws_status = 0;
-  LOG(ERROR) << "[ACLNN DEBUG] Before ffi_call: workspace_size=" << workspace_size 
-            << ", executor=" << executor;
-  LOG(ERROR) << "[ACLNN DEBUG] Passing addresses: &workspace_size=" << &workspace_size 
-            << ", &executor=" << &executor;
-  
-  // Print all argument values being passed to libffi
-  for (size_t i = 0; i < arg_values.size(); ++i) {
-    LOG(ERROR) << "[ACLNN DEBUG] arg_values[" << i << "] = " << arg_values[i];
-  }
-  
-  // Try direct call with correct function signature for testing
-  typedef aclnnStatus (*DirectGetWorkspaceFunc)(const aclTensor*, aclTensor*, uint64_t*, aclOpExecutor**);
-  DirectGetWorkspaceFunc direct_func = reinterpret_cast<DirectGetWorkspaceFunc>(get_workspace_func);
-  
-  LOG(ERROR) << "[ACLNN DEBUG] ===== Testing direct call =====";
-  uint64_t test_workspace_size = 0;
-  aclOpExecutor* test_executor = nullptr;
-  aclnnStatus direct_status = direct_func(
-      all_acl_tensors[0],  // self
-      all_acl_tensors[1],  // out
-      &test_workspace_size,
-      &test_executor
-  );
-  LOG(ERROR) << "[ACLNN DEBUG] Direct call result: status=" << direct_status 
-            << ", workspace_size=" << test_workspace_size 
-            << ", executor=" << test_executor;
-  LOG(ERROR) << "[ACLNN DEBUG] ===== End direct call test =====";
-  
-  // Now try libffi call
-  LOG(ERROR) << "[ACLNN DEBUG] ===== Starting libffi call =====";
   ffi_call(&cif, reinterpret_cast<void (*)(void)>(get_workspace_func), &ws_status, arg_values.data());
-  LOG(ERROR) << "[ACLNN DEBUG] ===== End libffi call =====";
-
-  LOG(ERROR) << "[ACLNN DEBUG] After ffi_call: ws_status=" << ws_status 
-            << ", workspace_size=" << workspace_size 
-            << ", executor=" << executor;
 
   if (ws_status != ACL_SUCCESS) {
     const char* err_msg = aclGetRecentErrMsg();
@@ -436,10 +386,11 @@ ffi::Error UnifiedAclnnHandler(
     aclError malloc_status = aclrtMalloc(
         &workspace_addr, workspace_size, ACL_MEM_MALLOC_HUGE_FIRST);
     if (malloc_status != ACL_SUCCESS) {
+      std::string error_msg = absl::StrCat("aclrtMalloc failed for workspace: ", malloc_status, " for op: ", op_name);
+      LOG(ERROR) << "[ACLNN ERROR] " << error_msg;
       CleanupResources(all_acl_tensors, acl_scalars, acl_int_arrays,
                        acl_float_arrays, acl_bool_arrays);
-      return ffi::Error::Internal(
-          absl::StrCat("aclrtMalloc failed for workspace: ", malloc_status));
+      return ffi::Error::Internal(error_msg);
     }
   }
 
