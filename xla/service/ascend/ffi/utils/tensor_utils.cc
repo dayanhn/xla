@@ -103,7 +103,7 @@ aclDataType ConvertToAclDataType<DataType::U16>() {
   return ACL_UINT16;
 }
 
-aclTensor* ConvertAnyBufferToAclTensor(ffi::AnyBuffer buffer) {
+aclTensor* ConvertAnyBufferToAclTensor(ffi::AnyBuffer buffer, aclFormat format) {
   aclDataType acl_dtype = ConvertToAclDataType(buffer.element_type());
   auto dims = buffer.dimensions();
   std::vector<int64_t> dimensions(dims.begin(), dims.end());
@@ -120,7 +120,7 @@ aclTensor* ConvertAnyBufferToAclTensor(ffi::AnyBuffer buffer) {
   }
   
   aclTensor* tensor = aclCreateTensor(dimensions.data(), dimensions.size(), acl_dtype,
-                         strides.data(), 0, ACL_FORMAT_ND,
+                         strides.data(), 0, format,
                          dimensions.data(), dimensions.size(),
                          buffer.untyped_data());
   
@@ -128,6 +128,24 @@ aclTensor* ConvertAnyBufferToAclTensor(ffi::AnyBuffer buffer) {
     LOG(ERROR) << "[TENSOR_UTILS ERROR] aclCreateTensor returned nullptr!";
   }
   return tensor;
+}
+
+aclFormat ParseAclFormat(const std::string& format_str) {
+  if (format_str == "ND") {
+    return ACL_FORMAT_ND;
+  } else if (format_str == "NCHW") {
+    return ACL_FORMAT_NCHW;
+  } else if (format_str == "NCL") {
+    return ACL_FORMAT_NCL;
+  } else if (format_str == "NCDHW") {
+    return ACL_FORMAT_NCDHW;
+  } else if (format_str == "NHWC") {
+    return ACL_FORMAT_NHWC;
+  } else {
+    LOG(WARNING) << "[TENSOR_UTILS WARNING] Unknown format string: " << format_str 
+                 << ", falling back to ACL_FORMAT_ND";
+    return ACL_FORMAT_ND;
+  }
 }
 
 // Explicit instantiations for common types

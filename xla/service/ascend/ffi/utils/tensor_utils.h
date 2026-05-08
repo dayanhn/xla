@@ -14,7 +14,10 @@ namespace xla::ffi {
   aclTensor* ConvertToAclTensor(const Buffer<dtype>& buffer);
   
   // Convert AnyBuffer to Ascend Tensor (runtime type dispatch)
-  aclTensor* ConvertAnyBufferToAclTensor(AnyBuffer buffer);
+  aclTensor* ConvertAnyBufferToAclTensor(AnyBuffer buffer, aclFormat format = ACL_FORMAT_ND);
+  
+  // Convert format string to aclFormat enum
+  aclFormat ParseAclFormat(const std::string& format_str);
   
   // Convert XLA DataType to Ascend aclDataType
   aclDataType ConvertToAclDataType(DataType type);

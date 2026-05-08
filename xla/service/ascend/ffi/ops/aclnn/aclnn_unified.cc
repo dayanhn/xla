@@ -104,7 +104,13 @@ ffi::Error UnifiedAclnnHandler(
                        acl_float_arrays, acl_bool_arrays);
       return ffi::Error::InvalidArgument(error_msg);
     }
-    aclTensor* tensor = ConvertAnyBufferToAclTensor(*buf_result);
+    std::string format_key = "input_" + std::to_string(i) + "_format";
+    auto format_result = attrs.get<std::string_view>(format_key);
+    aclFormat format = ACL_FORMAT_ND;
+    if (format_result.has_value()) {
+      format = ParseAclFormat(std::string(*format_result));
+    }
+    aclTensor* tensor = ConvertAnyBufferToAclTensor(*buf_result, format);
     if (!tensor) {
       std::string error_msg = absl::StrCat("Failed to convert input tensor ", i, " to aclTensor for op: ", op_name);
       LOG(ERROR) << "[ACLNN ERROR] " << error_msg;
@@ -124,7 +130,13 @@ ffi::Error UnifiedAclnnHandler(
                        acl_float_arrays, acl_bool_arrays);
       return ffi::Error::InvalidArgument(error_msg);
     }
-    aclTensor* tensor = ConvertAnyBufferToAclTensor(**ret_result);
+    std::string format_key = "output_" + std::to_string(i) + "_format";
+    auto format_result = attrs.get<std::string_view>(format_key);
+    aclFormat format = ACL_FORMAT_ND;
+    if (format_result.has_value()) {
+      format = ParseAclFormat(std::string(*format_result));
+    }
+    aclTensor* tensor = ConvertAnyBufferToAclTensor(**ret_result, format);
     if (!tensor) {
       std::string error_msg = absl::StrCat("Failed to convert output tensor ", i, " to aclTensor for op: ", op_name);
       LOG(ERROR) << "[ACLNN ERROR] " << error_msg;
