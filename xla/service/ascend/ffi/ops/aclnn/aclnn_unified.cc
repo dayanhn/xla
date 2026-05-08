@@ -150,6 +150,18 @@ ffi::Error UnifiedAclnnHandler(
   std::vector<std::vector<float>> float_array_storage;
   std::vector<std::vector<uint8_t>> bool_array_storage;
 
+  int64_values.reserve(param_count);
+  float_values.reserve(param_count);
+  int8_values.reserve(param_count);
+  bool_values.reserve(param_count);
+  int_array_storage.reserve(param_count);
+  float_array_storage.reserve(param_count);
+  bool_array_storage.reserve(param_count);
+  acl_scalars.reserve(param_count);
+  acl_int_arrays.reserve(param_count);
+  acl_float_arrays.reserve(param_count);
+  acl_bool_arrays.reserve(param_count);
+
   for (int i = 0; i < param_count; i++) {
     std::string type_key = "param_" + std::to_string(i) + "_type";
     std::string value_key = "param_" + std::to_string(i);
